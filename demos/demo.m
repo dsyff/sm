@@ -272,15 +272,17 @@ end
 
 if Montana2_Use
     handle_Montana2 = instrument_Montana2(Montana2_IP);
-    handle_Montana2.requireSetCheck = false;
+    handle_Montana2.requireSetCheck = true;
     rack.addInstrument(handle_Montana2, "Montana2");
     rack.addChannel("Montana2", "T", "T");
 end
 
 if Opticool_Use
     handle_Opticool = instrument_Opticool(Opticool_IP);
+    handle_Opticool.requireSetCheck = true;
     rack.addInstrument(handle_Opticool, "Opticool");
     rack.addChannel("Opticool", "T", "T");
+    rack.addChannel("Opticool", "B", "B");
 end
 
 %% wrap up setup
