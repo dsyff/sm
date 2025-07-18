@@ -7,10 +7,11 @@ code/legacyInstruments/
 *.m~
 *.autosave
 
-# Data files
+# Data files (but keep GUI figure files like sm.fig)
 *.mat
-*.fig
 *.pdf
+*.ppt
+demos/data/
 
 # Log files
 *.log
