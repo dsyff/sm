@@ -31,6 +31,11 @@ git commit -m "Initial commit: SM1.5 scientific measurement framework"
 # Add the GitHub remote (replace YOUR_USERNAME with your GitHub username)
 git remote add origin https://github.com/YOUR_USERNAME/sm.git
 
-# Push to GitHub
-git branch -M main
-git push -u origin main
+# Push to GitHub (beta branch for development)
+git branch -M beta
+git push -u origin beta
+
+# Later, when ready for release, you can merge beta to main:
+# git checkout main (or: git switch main)
+# git merge beta
+# git push origin main
