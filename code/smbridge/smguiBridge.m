@@ -1,6 +1,6 @@
 classdef smguiBridge < handle
     % Bridge class to adapt new instrumentRack system for legacy smgui_small
-    % This allows the GUI to work with the new QMInstruments architecture
+    % This allows the GUI to work with the new sm2 architecture
     % while maintaining compatibility with the old smdata structure
     
     properties (Access = private)
@@ -29,8 +29,6 @@ classdef smguiBridge < handle
             smdata.channels = obj.createChannelsStruct();
             
             % Initialize optional fields for compatibility
-            smdata.configch = [];  % Configuration channels (empty by default)
-            smdata.configfn = [];  % Configuration functions (empty by default)
             smdata.chanvals = [];  % Channel values cache (empty by default)
             smdata.options.skip_forced_ramp = false;  % Options structure with default values
         end

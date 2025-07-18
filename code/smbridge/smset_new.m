@@ -1,6 +1,6 @@
 function smset_new(channels, vals, ~)
 % Modern smset function that works with instrumentRack
-% This replaces the old smset function to work with the new QMInstruments
+% This replaces the old smset function to work with the new sm2
 %
 % Usage: smset_new(channels, vals, ramprate)
 % channels: string array of channel names or numeric channel indices

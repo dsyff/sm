@@ -1,6 +1,6 @@
 function data = smget_new(channels)
 % Modern smget function that works with instrumentRack (optimized for performance)
-% This replaces the old smget function to work with the new QMInstruments
+% This replaces the old smget function to work with the new sm2
 %
 % Usage: data = smget_new(channels)
 % channels: string array of channel names or numeric channel indices

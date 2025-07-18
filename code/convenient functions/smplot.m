@@ -304,18 +304,6 @@ if isfield(scan, 'comments') && ~isempty(scan.comments)
     fprintf('Scan comments: %s\n', comment_str);
 end
 
-% Display configuration if available
-if exist('loaded_data', 'var') && isfield(loaded_data, 'configch') && isfield(loaded_data, 'configvals')
-    configch = loaded_data.configch;
-    configvals = loaded_data.configvals;
-    if ~isempty(configch) && ~isempty(configvals)
-        fprintf('Configuration:\n');
-        for i = 1:min(length(configch), length(configvals))
-            fprintf('  %s = %.3g\n', configch{i}, configvals(i));
-        end
-    end
-end
-
 fprintf('Plot created from: %s\n', filename);
 
 end

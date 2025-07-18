@@ -12,7 +12,7 @@ classdef (Sealed) instrumentRack < handle
             VariableNames = ["instruments", "instrumentFriendlyNames", "addresses"]);
         channelTable = table(Size = [0, 8], ...
             VariableTypes = ["instrumentInterface", "string", "string", "string", "uint64", "double", "cell", "cell"], ...
-            VariableNames = ["instruments", "instrumentFriendlyNames", "channels", "channelFriendlyNames", "channelSizes", "getReadTimes", "rampRates", "rampThresholds"]);
+            VariableNames = ["instruments", "instrumentFriendlyNames", "channels", "channelFriendlyNames", "channelSizes", "readDelays", "rampRates", "rampThresholds"]);
     end
     methods
         function obj = instrumentRack(skipDialog)
@@ -91,17 +91,17 @@ classdef (Sealed) instrumentRack < handle
             instrument.getChannel(channel);
             
             % obtain response time of getRead over a few trials
-            responseTimes = nan(5, 1);
+            readDelayArray = nan(5, 1);
             trials = 5;
             for tryIndex = 1:trials
                 instrument.getWriteChannel(channel);
                 startTime = tic;
                 instrument.getReadChannel(channel);
-                responseTimes(tryIndex) = toc(startTime);
+                readDelayArray(tryIndex) = toc(startTime);
             end
-            getReadTime = median(responseTimes);
+            readDelay = median(readDelayArray);
 
-            newTable = [obj.channelTable; {instrument, instrumentFriendlyName, channel, channelFriendlyName, channelSize, getReadTime, {rampRates}, {rampThresholds}}];
+            newTable = [obj.channelTable; {instrument, instrumentFriendlyName, channel, channelFriendlyName, channelSize, readDelay, {rampRates}, {rampThresholds}}];
             
             % check for repetitions
             if ~isempty(obj.channelTable)
@@ -127,7 +127,7 @@ classdef (Sealed) instrumentRack < handle
             getTableFull.getValues = cell(height(getTableFull), 1);
             
             % sort descending based on response time
-            getTableFull = sortrows(getTableFull, "getReadTimes", "descend");
+            getTableFull = sortrows(getTableFull, "readDelays", "descend");
             
             tries = 0;
             while tries < obj.tryTimes

@@ -19,7 +19,7 @@ classdef instrument_SR830 < instrumentInterface
             
             % Create VISA connection
             handle = visadev(address);
-            handle.Timeout = 5;
+            handle.Timeout = 1;
             configureTerminator(handle, "LF");
 
             % Assign object properties

@@ -1,5 +1,5 @@
 function data = smrun_new(scan, filename)
-% Modified version of smrun that uses the new QMInstruments system
+% Modified version of smrun that uses the new sm2 system
 % data = smrun_new(scan, filename)
 % data = smrun_new(filename) will assume scan = smscan
 %
@@ -30,12 +30,6 @@ if isfield(scan,'consts') && ~isempty(scan.consts)
         setchans = {scan.consts(set_mask).setchan};
         setvals = [scan.consts(set_mask).val];
         smset_new(setchans, setvals);
-    end
-end
-
-if isfield(scan, 'configfn')
-    for i = 1:length(scan.configfn)
-        scan = scan.configfn(i).fn(scan, scan.configfn(i).args{:});
     end
 end
 
@@ -258,41 +252,8 @@ end
 
 x = zeros(1, nloops);
 
-% Handle configuration channels
-if isfield(scan,'configch') && ~isempty(scan.configch)
-    configvals = cell2mat(smget_new(scan.configch));    
-    config_indices = smchanlookup_new(scan.configch);
-    configch = {smdata.channels(config_indices).name};
-elseif ~isempty(smdata.configch)
-    configvals = cell2mat(smget_new(smdata.configch));
-    config_indices = smchanlookup_new(smdata.configch);
-    configch = {smdata.channels(config_indices).name};
-else
-    configvals = [];
-    configch = {};
-end
-
-% Handle configuration functions
-configdata = cell(1, length(smdata.configfn));
-if ~isempty(smdata.configfn)
-    for i = 1:length(smdata.configfn)
-        if iscell(smdata.configfn)
-            configdata{i} = smdata.configfn{i}();
-        else
-            configdata{i} = smdata.configfn(i).fn(smdata.configfn(i).args);   
-        end
-    end
-end
-
 if nargin >= 2
-    save(filename, 'configvals', 'configdata', 'scan', 'configch');
-    if ~isempty(configch) && ~isempty(configvals)
-        str = [configch; num2cell(configvals)];
-        logentry(filename);
-        logadd(sprintf('%s=%.3g, ', str{:}));
-    else
-        logentry(filename);
-    end
+    save(filename, 'scan');
 end
 
 tic;
@@ -534,7 +495,7 @@ scan_finished = true;
         % Save data file
         if exist('filename', 'var') && ~isempty(filename)
             try
-                save(filename, 'configvals', 'configdata', 'scan', 'configch', 'data')
+                save(filename, 'data', 'scan')
                 
                 % Remove temporary files created for this scan only
                 [p,f,e] = fileparts(filename);

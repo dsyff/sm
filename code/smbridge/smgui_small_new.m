@@ -35,7 +35,6 @@ if ~exist('smscan', 'var') || isempty(smscan)
     smscan.loops(1).numchans = 0;
     smscan.loops(1).waittime = 0;
     smscan.data = [];
-    smscan.configch = [];
     smscan.consts = struct('setchan', {}, 'val', {}, 'set', {});
     % Add missing fields that scaninit expects
     smscan.saveloop = 2;  % Default to loop 2
