@@ -1,4 +1,11 @@
 %%
+global instrumentRackGlobal smscan smaux smdata;
+%% Clean up existing instruments to release serial ports
+if exist('instrumentRackGlobal', 'var') && ~isempty(instrumentRackGlobal)
+    delete(instrumentRackGlobal);
+    clear instrumentRackGlobal;
+end
+
 clear;
 %clear all;
 close all;
@@ -10,11 +17,7 @@ addpath(genpath(sprintf("C:\\Users\\%s\\Desktop\\SM1.5", username)));
 %addpath(genpath(sprintf("C:\\Users\\%s\\Desktop\\sm-dev", username)));
 %addpath(genpath(sprintf("C:\\Users\\%s\\Desktop\\sm-main", username)));
 
-%% Clean up existing instruments to release serial ports
-if exist('instrumentRackGlobal', 'var') && ~isempty(instrumentRackGlobal)
-    delete(instrumentRackGlobal);
-    clear instrumentRackGlobal;
-end
+
 
 %% instrument addresses
 LockIn1_GPIB = 7; %sd
