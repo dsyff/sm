@@ -1,0 +1,32 @@
+# Exclude testing and legacy folders
+testing/
+code/legacyInstruments/
+
+# MATLAB specific ignores
+*.asv
+*.m~
+*.autosave
+
+# Data files
+*.mat
+*.fig
+*.pdf
+
+# Log files
+*.log
+strain_logs/
+strain_data/
+
+# Temporary files
+*~
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+*.swp
+*.swo
+
+# Compiled files
+*.mex*
+*.p
