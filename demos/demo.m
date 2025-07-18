@@ -5,10 +5,10 @@ close all;
 global instrumentRackGlobal smscan smaux smdata;
 path(pathdef);
 username=getenv("USERNAME");
-addpath(genpath(sprintf("C:\\Users\\%s\\Desktop\\SM1.5", username)));
 
-% Suppress VISA timeout warnings
-warning('off', 'instrument:visa:unsuccessfulSetTimeout');
+addpath(genpath(sprintf("C:\\Users\\%s\\Desktop\\SM1.5", username)));
+%addpath(genpath(sprintf("C:\\Users\\%s\\Desktop\\sm-dev", username)));
+%addpath(genpath(sprintf("C:\\Users\\%s\\Desktop\\sm-main", username)));
 
 %% Clean up existing instruments to release serial ports
 if exist('instrumentRackGlobal', 'var') && ~isempty(instrumentRackGlobal)
@@ -68,7 +68,7 @@ if strainController_Use
 end
 
 %% Create instrumentRack
-rack = instrumentRack(false); % TF to skip safety dialog for setup script
+rack = instrumentRack(true); % TF to skip safety dialog for setup script
 
 %% Create strain controller first (if enabled) - manages K2450s A&B and cryostat internally
 if strainController_Use
