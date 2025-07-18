@@ -70,7 +70,7 @@ classdef instrument_SR830 < instrumentInterface
             % This allows instrumentRack to minimize reading time by sending all
             % getWrite commands first, then reading all results in sequence
             handle = obj.communicationHandle;
-            
+            flush(handle);
             switch channelIndex
                 case 1  % X
                     writeline(handle, 'OUTP? 1');

@@ -2,6 +2,18 @@
 global instrumentRackGlobal smscan smaux smdata;
 %% Clean up existing instruments to release serial ports
 if exist('instrumentRackGlobal', 'var') && ~isempty(instrumentRackGlobal)
+    % Delete each instrument individually to properly release resources
+    if ~isempty(instrumentRackGlobal.instrumentTable)
+        instruments = instrumentRackGlobal.instrumentTable.instruments;
+        for i = 1:length(instruments)
+            try
+                delete(instruments(i));
+            catch ME
+                warning('Failed to delete instrument %d: %s', i, ME.message);
+            end
+        end
+    end
+    % Now delete the rack itself
     delete(instrumentRackGlobal);
     clear instrumentRackGlobal;
 end
@@ -13,11 +25,9 @@ global instrumentRackGlobal smscan smaux smdata;
 path(pathdef);
 username=getenv("USERNAME");
 
-addpath(genpath(sprintf("C:\\Users\\%s\\Desktop\\SM1.5", username)));
-%addpath(genpath(sprintf("C:\\Users\\%s\\Desktop\\sm-dev", username)));
-%addpath(genpath(sprintf("C:\\Users\\%s\\Desktop\\sm-main", username)));
-
-
+addpath(genpath(sprintf("C:\\Users\\%s\\Desktop\\sm1.5", username)));
+addpath(genpath(sprintf("C:\\Users\\%s\\Desktop\\sm-dev", username)));
+addpath(genpath(sprintf("C:\\Users\\%s\\Desktop\\sm-main", username)));
 
 %% instrument addresses
 LockIn1_GPIB = 7; %sd
@@ -139,19 +149,14 @@ if K2450_C_Use
     
     % Configure instrument communication and settings
     h = handle_K2450_C.communicationHandle;
-    % Set timeout to 10 seconds to avoid VISA warnings
-    try
-        h.Timeout = 10;
-    catch
-        % Ignore if timeout setting fails
-    end
+
     %writeline(h,"source:voltage:read:back off"); %do not measure voltage
     writeline(h,":sense:current:range 1e-7"); %sets the sense current range
     writeline(h,"source:voltage:Ilimit 1e-7"); %sets a current limit protector
     writeline(h,":source:voltage:range 20"); %sets the source voltage range
     %writeline(h,":source:voltage:range:auto ON"); %use auto range for voltage
     %writeline(h,":route:terminals rear"); %use rear terminal
-    %writeline(h,":sense:current:NPLcycles 2"); %number of power line cycles per measurement
+    writeline(h,"NPLcycles 0.1"); %number of power line cycles per measurement
     writeline(h,":OUTP ON");
     pause(2);
     %andle_K2450_C.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load

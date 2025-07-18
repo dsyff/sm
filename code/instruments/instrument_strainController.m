@@ -451,6 +451,8 @@ classdef instrument_strainController < instrumentInterface
             writeline(h,"source:voltage:Ilimit 8e-8");
             writeline(h,":source:voltage:range 200");
             writeline(h,":OUTP ON");
+            writeline(h,"NPLcycles 0.2"); %number of power line cycles per measurement
+
             pause(2);
             handle_K2450_A.chargeCurrentLimit = 1E-7;
             handle_K2450_A.setSetTolerances("V_source", 5E-3);
@@ -466,6 +468,8 @@ classdef instrument_strainController < instrumentInterface
             writeline(h,"source:voltage:Ilimit 5e-8");
             writeline(h,":source:voltage:range 200");
             writeline(h,":OUTP ON");
+            writeline(h,"NPLcycles 0.2"); %number of power line cycles per measurement
+
             pause(2);
             handle_K2450_B.chargeCurrentLimit = 1E-7;
             handle_K2450_B.setSetTolerances("V_source", 5E-3);

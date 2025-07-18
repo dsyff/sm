@@ -39,6 +39,7 @@ classdef instrument_K2400 < instrumentInterface
         % starting from 1
         function getWriteChannelHelper(obj, ~)
             handle = obj.communicationHandle;
+            flush(handle);
             writeline(handle, ":READ?");
         end
 

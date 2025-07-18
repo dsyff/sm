@@ -275,7 +275,6 @@ disp_dims = [disp.dim];
 % Cache figure handle checks
 figure_valid = true;
 scan_should_exit = false;
-scan_finished = false;
 temp_file_counter = 0;
 
 save_operations_completed = false;
@@ -409,7 +408,6 @@ for point_idx = 1:totpoints_cached
         if current_char == char(27)  % Escape key
             set(figurenumber, 'CurrentCharacter', char(0));
             saveData();
-            scan_finished = true;
             return;
 %        elseif current_char == ' '  % Space bar
 %            set(figurenumber, 'CurrentCharacter', char(0));
@@ -419,11 +417,6 @@ for point_idx = 1:totpoints_cached
     
     % Check if scan should exit (e.g., figure was closed)
     if scan_should_exit
-        saveData();
-        if ishandle(figurenumber)
-            delete(figurenumber); % Close the figure
-            figure_valid = false;
-        end
         return;
     end
   
@@ -431,14 +424,6 @@ end
 
 % Scan completed normally
 saveData();
-    if scan_should_exit
-        if ishandle(figurenumber)
-            delete(figurenumber); % Close the figure
-            figure_valid = false;
-        end
-        return;
-    end
-scan_finished = true;
 
     % Nested function for data save operations only
     function saveData()
@@ -529,17 +514,12 @@ scan_finished = true;
 
     % Nested function for graceful window close
     function gracefulClose()
-        if scan_finished
-            % Main loop already finished - just close the figure
-            if ishandle(figurenumber)
-                %in case interrupted during or before save, ensure data is saved
-                saveData();
-                delete(figurenumber); % Close the figure
-            end
-        else
-            % Main loop still running - signal it to exit
-            scan_should_exit = true;
+        if ishandle(figurenumber)
+            % In case interrupted during or before save, ensure data is saved
+            saveData();
+            delete(figurenumber); % Close the figure
         end
+        scan_should_exit = true;
     end
 
 end

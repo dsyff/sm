@@ -44,7 +44,7 @@ classdef instrument_BK889B < instrumentInterface
 
         function getWriteChannelHelper(obj, channelIndex)
             handle = obj.communicationHandle;
-
+            flush(handle);
             if ~isempty(obj.lastWritten)
                 timeToWait = obj.writeInterval - (datetime("now") - obj.lastWritten);
                 if timeToWait > 0

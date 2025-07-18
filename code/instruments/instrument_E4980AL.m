@@ -32,6 +32,7 @@ classdef instrument_E4980AL < instrumentInterface
 
         function getWriteChannelHelper(obj, ~)
             handle = obj.communicationHandle;
+            flush(handle);
             writeline(handle, ":FETC?");
         end
 
