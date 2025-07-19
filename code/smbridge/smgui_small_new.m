@@ -642,7 +642,7 @@ end
 function RunNumber(varargin)
     global smaux;
     if isempty(get(smaux.smgui.runnumber_eth,'String'))
-        set(autoincrement_cbh,'Value',0);
+        set(smaux.smgui.autoincrement_cbh,'Value',0);
         smaux.run=[];
     else
         val = str2double(get(smaux.smgui.runnumber_eth,'String'));
@@ -654,6 +654,52 @@ function RunNumber(varargin)
             set(smaux.smgui.runnumber_eth,'String','');
         end
     end
+end
+
+% Callback for updating number of loops
+function NumLoops(hObject,eventdata)
+    global smaux smscan;
+    val = str2double(get(smaux.smgui.numloops_eth,'String'));
+    if (isnan(val) || mod(val,1)~=0 || val<1)
+        errordlg('Please enter a positive integer','Invalid Input Value');
+        numloops = length(smscan.loops);
+        set(smaux.smgui.numloops_eth,'String',numloops);
+        return;
+    else
+        if length(smscan.loops) > val
+            smscan.loops = smscan.loops(1:val);
+        else
+            for i=length(smscan.loops)+1:val
+                smscan.loops(i).npoints=101;
+                smscan.loops(i).rng=[0 1];
+                smscan.loops(i).getchan={};
+                smscan.loops(i).setchan={'none'};
+                smscan.loops(i).setchanranges={[0 1]};
+                smscan.loops(i).ramptime=[];
+                smscan.loops(i).numchans=0;
+                smscan.loops(i).waittime=0;
+            end
+        end
+    end
+       
+    makelooppanels;
+    makeconstpanel;
+end
+
+% Callback for updating save loop
+function SaveLoop(hObject,eventdata)
+    global smaux smscan;
+    val = str2double(get(smaux.smgui.saveloop_eth,'String'));
+    if (isnan(val) || mod(val,1)~=0 || val<1)
+        errordlg('Please enter a positive integer','Invalid Input Value');
+        set(smaux.smgui.saveloop_eth,'String',smscan.saveloop);
+        return;
+    else
+        smscan.saveloop = val;
+    end
+       
+    makelooppanels;
+    makeconstpanel;
 end
 
 %callback for plot list box objects
