@@ -26,6 +26,11 @@ classdef instrument_E4980AL < instrumentInterface
             obj.addChannel("CpQ", 2);
         end
 
+        function flush(obj)
+            % Flush communication buffer
+            flush(obj.communicationHandle);
+        end
+        
     end
     
     methods (Access = ?instrumentInterface)

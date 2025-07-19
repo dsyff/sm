@@ -345,6 +345,14 @@ classdef (Sealed) instrumentRack < handle
             obj.dispLine();
         end
         
+        function flush(obj)
+            % Flush communication buffer for all instruments in the rack
+            for i = 1:height(obj.instrumentTable)
+                instrument = obj.instrumentTable.instruments(i);
+                instrument.flush();
+            end
+        end
+
         function dummy(obj)
             % for copy pasting
             tries = 0;

@@ -76,6 +76,11 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
             %implementation is redundant but serves as an example
             delete(obj.communicationHandle);
         end
+        
+        function flush(~)
+            % Default flush implementation - does nothing
+            % Override in specific instruments if flushing is needed
+        end
     end
 
     methods (Sealed)
