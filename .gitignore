@@ -33,5 +33,4 @@ Thumbs.db
 *.p
 
 # Ignore instructions folder and file
-.github/instructions/
-instructions/
+.github/
