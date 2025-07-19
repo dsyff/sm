@@ -94,9 +94,6 @@ classdef (Sealed) instrumentRack < handle
             readDelayArray = nan(5, 1);
             trials = 5;
             for tryIndex = 1:trials
-                if isprop(instrument, "commandDelay")
-                    pause(seconds(instrument.commandDelay) * 1.01);
-                end
                 instrument.getWriteChannel(channel);
                 startTime = tic;
                 instrument.getReadChannel(channel);
@@ -490,7 +487,7 @@ classdef (Sealed) instrumentRack < handle
                 % Remove rows where all elements have reached target from setTable
                 setTable(allReached, :) = [];
                 if ~isempty(setTable)
-                    pause(0.001); % avoid busy-waiting
+                    pause(0.25); % avoid busy-waiting
                 end
             end
         end
