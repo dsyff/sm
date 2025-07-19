@@ -414,49 +414,57 @@ classdef (Sealed) instrumentRack < handle
             if isempty(setTable)
                 return;
             end
-            % Attach currentValues and reachedTargets columns
-            setTable.currentValues = cell(height(setTable), 1);
+            % Attach startValues and reachedTargets columns
+            setTable.startValues = cell(height(setTable), 1);
             setTable.reachedTargets = cell(height(setTable), 1);
             
-            % Initialize currentValues and reachedTargets
+            % Initialize startValues and reachedTargets
             for i = 1:height(setTable)
-                setTable.currentValues{i} = setTable.instruments(i).getChannel(setTable.channels(i));
+                setTable.startValues{i} = setTable.instruments(i).getChannel(setTable.channels(i));
                 setValues = setTable.setValues{i};
-                currentValues = setTable.currentValues{i};
-                setTable.reachedTargets{i} = (currentValues == setValues);
+                startValues = setTable.startValues{i};
+                setTable.reachedTargets{i} = (startValues == setValues);
             end
-            firstStep = true;
+            
+            % Record start time
+            startTime = datetime("now");
+            
             % Main ramping loop
             while ~isempty(setTable)
                 rampStepSetValues = cell(height(setTable), 1);
                 allReached = false(height(setTable), 1); % Track which rows are done this step
+                
+                % Calculate total elapsed time
+                nowTime = datetime("now");
+                totalElapsed = seconds(nowTime - startTime);
+                
                 for i = 1:height(setTable)
-                    currentValues = setTable.currentValues{i};
+                    startValues = setTable.startValues{i};
                     setValues = setTable.setValues{i};
                     rampRates = setTable.rampRates{i};
                     rampThresholds = setTable.rampThresholds{i};
                     reachedTargets = setTable.reachedTargets{i};
-                    deltas = setValues - currentValues;
+                    
+                    deltas = setValues - startValues;
                     signs = sign(deltas);
                     needRamp = ~reachedTargets;
                     
-                    if firstStep
+                    % Calculate position based on total elapsed time
+                    if totalElapsed == 0
                         % Initial step: use rampThresholds as step size
-                        rampStepsMagnitude = rampThresholds;
+                        rampDistance = rampThresholds;
                     else
-                        nowTime = datetime("now");
-                        dt = seconds(nowTime - lastSetTime);
-                        rampStepsMagnitude = rampRates * dt;
+                        rampDistance = rampRates * totalElapsed;
                     end
                     
                     % Calculate new step values
                     rampStepSetValues{i} = setValues;
                     if any(needRamp)
-                        rampStepSetValues{i}(needRamp) = currentValues(needRamp) + signs(needRamp) .* rampStepsMagnitude(needRamp);
+                        rampStepSetValues{i}(needRamp) = startValues(needRamp) + signs(needRamp) .* rampDistance(needRamp);
                     end
                     
                     % Check if step would reach or overshoot target
-                    overshoot = needRamp & (rampStepsMagnitude >= abs(deltas));
+                    overshoot = needRamp & (rampDistance >= abs(deltas));
                     if any(overshoot)
                         rampStepSetValues{i}(overshoot) = setValues(overshoot);
                     end
@@ -469,14 +477,13 @@ classdef (Sealed) instrumentRack < handle
                         allReached(i) = true;
                     end
                 end
-                firstStep = false;
+                
                 setTableStep = setTable;
                 setTableStep.setValues = rampStepSetValues;
-                lastSetTime = datetime("now");
                 
                 % execute the set
                 obj.rackSetWriteHelperNoRamp(setTableStep);
-                setTable.currentValues = rampStepSetValues;
+                
                 % Remove rows where all elements have reached target from setTable
                 setTable(allReached, :) = [];
                 if ~isempty(setTable)
