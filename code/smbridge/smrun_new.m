@@ -476,22 +476,22 @@ saveData();
         end
         
         % Save figure if it still exists
-        if ishandle(figurenumber)
-            try
-                if exist('filename', 'var') && ~isempty(filename)
-                    figstring = filename(1:length(filename)-4);
-                    % Suppress figure file size warning
-                    warning('off', 'MATLAB:Figure:FigureSavedToMATFileFormat');
-                    warning('off', 'MATLAB:savefig:LargeFigure');
-                    saveas(figurenumber, figstring, 'fig');
-                    warning('on', 'MATLAB:Figure:FigureSavedToMATFileFormat');
-                    warning('on', 'MATLAB:savefig:LargeFigure');
-                    print(figurenumber, '-bestfit', figstring, '-dpdf');
-                end
-            catch ME
-                % Figure save failed - continue silently
-            end
-        end
+        % if ishandle(figurenumber)
+        %     try
+        %         if exist('filename', 'var') && ~isempty(filename)
+        %             figstring = filename(1:length(filename)-4);
+        %             % Suppress figure file size warning
+        %             warning('off', 'MATLAB:Figure:FigureSavedToMATFileFormat');
+        %             warning('off', 'MATLAB:savefig:LargeFigure');
+        %             saveas(figurenumber, figstring, 'fig');
+        %             warning('on', 'MATLAB:Figure:FigureSavedToMATFileFormat');
+        %             warning('on', 'MATLAB:savefig:LargeFigure');
+        %             print(figurenumber, '-bestfit', figstring, '-dpdf');
+        %         end
+        %     catch ME
+        %         % Figure save failed - continue silently
+        %     end
+        % end
         
         % Save PowerPoint if enabled
         if exist('smaux', 'var') && isstruct(smaux) && isfield(smaux, 'smgui') && isfield(smaux.smgui, 'appendppt_cbh') && get(smaux.smgui.appendppt_cbh,'Value')
