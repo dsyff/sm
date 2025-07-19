@@ -31,3 +31,6 @@ Thumbs.db
 # Compiled files
 *.mex*
 *.p
+
+# Ignore instructions folder
+.github/instructions/
