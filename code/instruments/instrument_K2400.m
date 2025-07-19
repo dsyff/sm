@@ -31,6 +31,10 @@ classdef instrument_K2400 < instrumentInterface
             writeline(handle,":OUTP ON");
         end
 
+        function flush(obj)
+            % Flush communication buffer
+            flush(obj.communicationHandle);
+        end
     end
     
     methods (Access = ?instrumentInterface)
@@ -39,7 +43,6 @@ classdef instrument_K2400 < instrumentInterface
         % starting from 1
         function getWriteChannelHelper(obj, ~)
             handle = obj.communicationHandle;
-            flush(handle);
             writeline(handle, ":READ?");
         end
 

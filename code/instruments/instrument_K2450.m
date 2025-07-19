@@ -30,13 +30,17 @@ classdef instrument_K2450 < instrumentInterface
             writeline(handle,":OUTP ON");
         end
 
+        function flush(obj)
+            % Flush communication buffer
+            flush(obj.communicationHandle);
+        end
+
     end
     
     methods (Access = ?instrumentInterface)
 
         function getWriteChannelHelper(obj, channelIndex)
             handle = obj.communicationHandle;
-            flush(handle);
             switch channelIndex
                 case 1
                     writeline(handle, ":READ? ""defbuffer1"", SOUR");

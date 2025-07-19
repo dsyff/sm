@@ -54,11 +54,10 @@ classdef instrument_SR860 < instrumentInterface
             obj.addChannel("dc_offset", setTolerances = 1e-6);    % Channel 22: DC output level
         end
 
-        function delete(obj)
-            % Gracefully close connection
-            if ~isempty(obj.communicationHandle)
-                delete(obj.communicationHandle);
-            end
+        function flush(obj)
+            % Flush communication buffer
+            flush(obj.communicationHandle);
+            pause(0.2); % SR860 flushes extremely slowly
         end
 
         function reset(obj)
@@ -77,7 +76,7 @@ classdef instrument_SR860 < instrumentInterface
             % This allows instrumentRack to minimize reading time by sending all
             % getWrite commands first, then reading all results in sequence
             handle = obj.communicationHandle;
-            flush(handle);
+            %flush(handle); SR860 flushes extremely slowly
             switch channelIndex
                 case 1  % X
                     writeline(handle, 'OUTP? 0');
