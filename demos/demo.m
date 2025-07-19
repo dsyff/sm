@@ -258,7 +258,7 @@ if K2450_C_Use
     rack.addInstrument(handle_K2450_C, "K2450_C");
     rack.addChannel("K2450_C", "V_source", "V_tg", 1, 0.5); % 1V/s ramp rate, 10mV threshold
     rack.addChannel("K2450_C", "I_measure", "I_tg");
-    %rack.addChannel("K2450_C", "VI", "VI_tg");
+    rack.addChannel("K2450_C", "VI", "VI_tg");
 end
 
 if Lockin1_Use
