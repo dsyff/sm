@@ -5,6 +5,10 @@ classdef instrument_SR860 < instrumentInterface
     % Thomas 2025-07-17
     % Note: SR860 uses 0-based indexing for AUX channels (different from SR830)
     
+    properties
+        commandDelay (1, 1) duration = milliseconds(10); % Minimum time between commands
+    end
+    
     properties (Access = private)
         sensibilityValues = [1e0 5e-1 2e-1 1e-1 5e-2 2e-2 1e-2 5e-3 2e-3 1e-3 ...
                             5e-4 2e-4 1e-4 5e-5 2e-5 1e-5 5e-6 2e-6 1e-6 5e-7 ...
@@ -12,6 +16,7 @@ classdef instrument_SR860 < instrumentInterface
         timeConstValues = [1e-6 3e-6 10e-6 30e-6 100e-6 300e-6 1e-3 3e-3 10e-3 30e-3 ...
                           100e-3 300e-3 1e0 3e0 10e0 30e0 100e0 300e0 1e3 3e3 ...
                           10e3 30e3];
+        lastCommandTime = datetime.empty; % Track last command time
     end
 
     methods
@@ -64,7 +69,7 @@ classdef instrument_SR860 < instrumentInterface
         function reset(obj)
             % Reset instrument to default state
             handle = obj.communicationHandle;
-            writeline(handle, "*RST");
+            obj.writeline_with_wait(handle, '*RST');
             pause(1); % Allow time for reset
         end
 
@@ -80,49 +85,49 @@ classdef instrument_SR860 < instrumentInterface
             flush(handle);
             switch channelIndex
                 case 1  % X
-                    writeline(handle, 'OUTP? 0');
+                    obj.writeline_with_wait(handle, 'OUTP? 0');
                 case 2  % Y
-                    writeline(handle, 'OUTP? 1');
+                    obj.writeline_with_wait(handle, 'OUTP? 1');
                 case 3  % R
-                    writeline(handle, 'OUTP? 2');
+                    obj.writeline_with_wait(handle, 'OUTP? 2');
                 case 4  % Theta
-                    writeline(handle, 'OUTP? 3');
+                    obj.writeline_with_wait(handle, 'OUTP? 3');
                 case 5  % Frequency
-                    writeline(handle, 'FREQ?');
+                    obj.writeline_with_wait(handle, 'FREQ?');
                 case 6  % Amplitude
-                    writeline(handle, 'SLVL?');
+                    obj.writeline_with_wait(handle, 'SLVL?');
                 case 7  % Aux in 0
-                    writeline(handle, 'OAUX? 0');
+                    obj.writeline_with_wait(handle, 'OAUX? 0');
                 case 8  % Aux in 1
-                    writeline(handle, 'OAUX? 1');
+                    obj.writeline_with_wait(handle, 'OAUX? 1');
                 case 9  % Aux in 2
-                    writeline(handle, 'OAUX? 2');
+                    obj.writeline_with_wait(handle, 'OAUX? 2');
                 case 10 % Aux in 3
-                    writeline(handle, 'OAUX? 3');
+                    obj.writeline_with_wait(handle, 'OAUX? 3');
                 case 11 % Aux out 0
-                    writeline(handle, 'AUXV? 0');
+                    obj.writeline_with_wait(handle, 'AUXV? 0');
                 case 12 % Aux out 1
-                    writeline(handle, 'AUXV? 1');
+                    obj.writeline_with_wait(handle, 'AUXV? 1');
                 case 13 % Aux out 2
-                    writeline(handle, 'AUXV? 2');
+                    obj.writeline_with_wait(handle, 'AUXV? 2');
                 case 14 % Aux out 3
-                    writeline(handle, 'AUXV? 3');
+                    obj.writeline_with_wait(handle, 'AUXV? 3');
                 case 15 % Sensitivity
-                    writeline(handle, 'SCAL?');
+                    obj.writeline_with_wait(handle, 'SCAL?');
                 case 16 % Time constant
-                    writeline(handle, 'OFLT?');
+                    obj.writeline_with_wait(handle, 'OFLT?');
                 case 17 % Sync filter
-                    writeline(handle, 'SYNC?');
+                    obj.writeline_with_wait(handle, 'SYNC?');
                 case 18 % XY simultaneous
-                    writeline(handle, 'SNAP? 0,1');
+                    obj.writeline_with_wait(handle, 'SNAP? 0,1');
                 case 19 % XTheta simultaneous
-                    writeline(handle, 'SNAP? 0,3');
+                    obj.writeline_with_wait(handle, 'SNAP? 0,3');
                 case 20 % YTheta simultaneous
-                    writeline(handle, 'SNAP? 1,3');
+                    obj.writeline_with_wait(handle, 'SNAP? 1,3');
                 case 21 % RTheta simultaneous
-                    writeline(handle, 'SNAP? 2,3');
+                    obj.writeline_with_wait(handle, 'SNAP? 2,3');
                 case 22 % DC offset
-                    writeline(handle, 'SOFF?');
+                    obj.writeline_with_wait(handle, 'SOFF?');
                 otherwise
                     error('Unsupported channel index: %d', channelIndex);
             end
@@ -154,27 +159,27 @@ classdef instrument_SR860 < instrumentInterface
             
             switch channelIndex
                 case 5  % Frequency
-                    writeline(handle, sprintf('FREQ %g', setValues));
+                    obj.writeline_with_wait(handle, sprintf('FREQ %g', setValues));
                 case 6  % Amplitude
-                    writeline(handle, sprintf('SLVL %g', setValues));
+                    obj.writeline_with_wait(handle, sprintf('SLVL %g', setValues));
                 case 11 % Aux out 0
-                    writeline(handle, sprintf('AUXV 0, %g', setValues));
+                    obj.writeline_with_wait(handle, sprintf('AUXV 0, %g', setValues));
                 case 12 % Aux out 1
-                    writeline(handle, sprintf('AUXV 1, %g', setValues));
+                    obj.writeline_with_wait(handle, sprintf('AUXV 1, %g', setValues));
                 case 13 % Aux out 2
-                    writeline(handle, sprintf('AUXV 2, %g', setValues));
+                    obj.writeline_with_wait(handle, sprintf('AUXV 2, %g', setValues));
                 case 14 % Aux out 3
-                    writeline(handle, sprintf('AUXV 3, %g', setValues));
+                    obj.writeline_with_wait(handle, sprintf('AUXV 3, %g', setValues));
                 case 15 % Sensitivity
                     sensIndex = obj.valueToSensitivityIndex(setValues);
-                    writeline(handle, sprintf('SCAL %d', sensIndex));
+                    obj.writeline_with_wait(handle, sprintf('SCAL %d', sensIndex));
                 case 16 % Time constant
                     tauIndex = obj.valueToTimeConstantIndex(setValues);
-                    writeline(handle, sprintf('OFLT %d', tauIndex));
+                    obj.writeline_with_wait(handle, sprintf('OFLT %d', tauIndex));
                 case 17 % Sync filter
-                    writeline(handle, sprintf('SYNC %d', round(setValues)));
+                    obj.writeline_with_wait(handle, sprintf('SYNC %d', round(setValues)));
                 case 22 % DC offset
-                    writeline(handle, sprintf('SOFF %g', setValues));
+                    obj.writeline_with_wait(handle, sprintf('SOFF %g', setValues));
                 otherwise
                     error('Set operation not supported for channel %s', ...
                         obj.channelTable.channels(channelIndex));
@@ -184,6 +189,18 @@ classdef instrument_SR860 < instrumentInterface
     end
 
     methods (Access = private)
+        
+        function writeline_with_wait(obj, handle, command)
+            % Write command with proper timing control
+            if ~isempty(obj.lastCommandTime)
+                elapsed = datetime("now") - obj.lastCommandTime;
+                if elapsed < obj.commandDelay
+                    pause(seconds(obj.commandDelay - elapsed));
+                end
+            end
+            writeline(handle, command);
+            obj.lastCommandTime = datetime("now");
+        end
         
         function value = robustReadDouble(obj, handle, channelIndex)
             % Robust reading with retry logic for SR860 timeout issues

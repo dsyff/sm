@@ -4,6 +4,10 @@ classdef instrument_K2450 < instrumentInterface
     properties
         % used to determine if voltage has been reached
         chargeCurrentLimit double {mustBePositive} = inf;
+        commandDelay (1, 1) duration = milliseconds(10);
+    end
+    properties (Access = private)
+        lastCommandTime = datetime.empty;
     end
 
     methods
@@ -26,12 +30,24 @@ classdef instrument_K2450 < instrumentInterface
 
         function reset(obj)
             handle = obj.communicationHandle;
-            writeline(handle,"*RST");
-            writeline(handle,":OUTP ON");
+            obj.writeline_with_wait(handle,"*RST");
+            obj.writeline_with_wait(handle,":OUTP ON");
         end
-
     end
-    
+
+    methods (Access = private)
+        function writeline_with_wait(obj, handle, command)
+            if ~isempty(obj.lastCommandTime)
+                elapsed = datetime("now") - obj.lastCommandTime;
+                if elapsed < obj.commandDelay
+                    pause(seconds(obj.commandDelay - elapsed));
+                end
+            end
+            writeline(handle, command);
+            obj.lastCommandTime = datetime("now");
+        end
+    end
+
     methods (Access = ?instrumentInterface)
 
         function getWriteChannelHelper(obj, channelIndex)
@@ -39,11 +55,11 @@ classdef instrument_K2450 < instrumentInterface
             flush(handle);
             switch channelIndex
                 case 1
-                    writeline(handle, ":READ? ""defbuffer1"", SOUR");
+                    obj.writeline_with_wait(handle, ":READ? ""defbuffer1"", SOUR");
                 case 2
-                    writeline(handle, ":READ?");
+                    obj.writeline_with_wait(handle, ":READ?");
                 case 3
-                    writeline(handle, ":READ? ""defbuffer1"", SOUR, READ");
+                    obj.writeline_with_wait(handle, ":READ? ""defbuffer1"", SOUR, READ");
             end
         end
 
@@ -56,7 +72,7 @@ classdef instrument_K2450 < instrumentInterface
             handle = obj.communicationHandle;
             switch channelIndex
                 case 1
-                    writeline(handle, sprintf(":SOUR:VOLT %g", setValues));
+                    obj.writeline_with_wait(handle, sprintf(":SOUR:VOLT %g", setValues));
                 otherwise
                     obj.setWriteChannelHelper@instrument(channelIndex, setValues);
             end
@@ -67,7 +83,7 @@ classdef instrument_K2450 < instrumentInterface
             switch channelIndex
                 case 1
                     handle = obj.communicationHandle;
-                    writeline(handle, ":READ? ""defbuffer1"", SOUR, READ");
+                    obj.writeline_with_wait(handle, ":READ? ""defbuffer1"", SOUR, READ");
                     outputValues = str2double(split(strip(readline(handle)), ","));
                     getValues = outputValues(1);
                     current = outputValues(2);

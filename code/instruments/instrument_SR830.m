@@ -60,7 +60,7 @@ classdef instrument_SR830 < instrumentInterface
         function reset(obj)
             % Reset instrument to default state
             handle = obj.communicationHandle;
-            writeline(handle, "*RST");
+            obj.writeline_with_wait(handle, "*RST");
             pause(1); % Allow time for reset
         end
 
@@ -69,17 +69,17 @@ classdef instrument_SR830 < instrumentInterface
     methods (Access = ?instrumentInterface)
 
         function getWriteChannelHelper(obj, channelIndex)
-            % Send commands to instrument - separated from reading for optimal batching
-            % This allows instrumentRack to minimize reading time by sending all
-            % getWrite commands first, then reading all results in sequence
             handle = obj.communicationHandle;
             flush(handle);
             switch channelIndex
                 case 1  % X
-                    writeline(handle, 'OUTP? 1');
+                    obj.writeline_with_wait(handle, 'OUTP? 1');
                 case 2  % Y
-                    writeline(handle, 'OUTP? 2');
+                    obj.writeline_with_wait(handle, 'OUTP? 2');
                 case 3  % R
+                    obj.writeline_with_wait(handle, 'OUTP? 3');
+                case 4  % Theta
+                    obj.writeline_with_wait(handle, 'OUTP? 4');
                     writeline(handle, 'OUTP? 3');
                 case 4  % Theta
                     writeline(handle, 'OUTP? 4');
