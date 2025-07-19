@@ -427,9 +427,9 @@ classdef (Sealed) instrumentRack < handle
                 rampThresholds = setTable.rampThresholds{i};
                 deltas = abs(setValues - startValues);
                 % Mark as reached if delta is within rampThreshold
-                setTable.reachedTargets{i} = (deltas <= rampThresholds);
+                setTable.reachedTargets{i} = false(size(startValues));
                 % Mark for immediate set if all elements have delta > rampThreshold
-                if all(deltas > rampThresholds)
+                if all(deltas < rampThresholds)
                     isInstant(i) = true;
                 end
             end

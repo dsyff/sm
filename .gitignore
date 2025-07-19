@@ -32,5 +32,5 @@ Thumbs.db
 *.mex*
 *.p
 
-# Ignore instructions folder
+# Ignore instructions folder and file
 .github/instructions/
