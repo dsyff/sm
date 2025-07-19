@@ -321,18 +321,18 @@ for i = 1:length(disp)
         set(gca, 'ydir', 'normal');
         colorbar;
         if dc <= length(getch)
-            title(smdata.channels(getch(dc)).name);
+            title(strrep(smdata.channels(getch(dc)).name, '_', '\_'));
         end
-        xlabel(xlab);
-        ylabel(ylab);
+        xlabel(strrep(xlab, '_', '\_'));
+        ylabel(strrep(ylab, '_', '\_'));
     else
         y = zeros(size(x));
         y(:) = subsref(data{dc}, s);
         disph(i) = plot(x, y);
         xlim(sort(x([1, end])));
-        xlabel(xlab);
+        xlabel(strrep(xlab, '_', '\_'));
         if dc <= length(getch)
-            ylabel(smdata.channels(getch(dc)).name);
+            ylabel(strrep(smdata.channels(getch(dc)).name, '_', '\_'));
         end
     end
 end  
