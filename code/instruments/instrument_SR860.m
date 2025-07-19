@@ -6,7 +6,7 @@ classdef instrument_SR860 < instrumentInterface
     % Note: SR860 uses 0-based indexing for AUX channels (different from SR830)
     
     properties
-        commandDelay (1, 1) duration = milliseconds(10); % Minimum time between commands
+        commandDelay (1, 1) duration = milliseconds(300); % Minimum time between commands
     end
     
     properties (Access = private)

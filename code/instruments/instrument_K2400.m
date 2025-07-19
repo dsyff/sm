@@ -4,7 +4,7 @@ classdef instrument_K2400 < instrumentInterface
     properties
         % used to determine if voltage has been reached
         chargeCurrentLimit double {mustBePositive} = inf;
-        commandDelay (1, 1) duration = milliseconds(10);
+        commandDelay (1, 1) duration = milliseconds(300);
     end
     properties (Access = private)
         lastCommandTime = datetime.empty;

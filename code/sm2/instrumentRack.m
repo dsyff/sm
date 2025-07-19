@@ -94,6 +94,9 @@ classdef (Sealed) instrumentRack < handle
             readDelayArray = nan(5, 1);
             trials = 5;
             for tryIndex = 1:trials
+                if isprop(instrument, "commandDelay")
+                    pause(seconds(instrument.commandDelay) * 1.01);
+                end
                 instrument.getWriteChannel(channel);
                 startTime = tic;
                 instrument.getReadChannel(channel);
