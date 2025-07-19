@@ -1,7 +1,7 @@
 # sm 1.5 - MATLAB Measurement Automation System
 
 ## 🚀 QUICK START:
-- download and extract `sm-main` folder to desktop
+- Download and extract `sm-main` folder to desktop
 - Run `demos/demo.m` for complete example
 - The familiar GUI interface is largely unchanged from the original system
 - Use `smget("channel")` and `smset("channel", value)` for quick access
