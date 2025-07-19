@@ -191,7 +191,7 @@ obj.addChannel("frequency", setTolerances = 0.01);   % 10mHz tolerance
 - **Comprehensive error handling** with try-catch blocks and fallback mechanisms
 - **Proper resource management** with automatic cleanup in destructors
 - **Extensive documentation** with inline comments and usage examples
-- **Vector channel support** in new instrument classes (bridge integration pending)
+- **Vector channel support** in new instrument classes (partially implemented in smgui: only vector getting is allowed, setting is not allowed)
 
 ## 🔄 INSTRUMENT MIGRATION STATUS
 
@@ -202,7 +202,10 @@ obj.addChannel("frequency", setTolerances = 0.01);   % 10mHz tolerance
   - **SR860**: Enhanced robust retry logic exactly matching legacy behavior
     - Re-sends query commands when NaN responses received (not just re-reads)
     - Handles SR860's tendency to ignore commands with proper command retry
-  - XY simultaneous reads with intelligent retry handling (SR860) and standard reads (SR830)
+  - **Vector channels**: XY, XTheta, YTheta, and RTheta simultaneous reads
+    - SR830 uses 1-based indexing (X=1, Y=2, R=3, Theta=4)
+    - SR860 uses 0-based indexing (X=0, Y=1, R=2, Theta=3)
+    - Optimized for single SCPI command efficiency with robust error handling
 
 - **strainController**: Persistent strain control system (migrated from v1.3)
   - **Parallel processing**: Real-time PID control loop running on worker thread
@@ -226,14 +229,15 @@ For each instrument, ensure:
 - [ ] Descriptive channel names
 - [ ] setTolerances for verification
 - [ ] Documentation and examples
-- [ ] Vector channel support where applicable (see limitations below)
+- [ ] Vector channel support where applicable (implemented in instruments and smgui)
 
-### 🔮 FUTURE ENHANCEMENTS:
+### 🔮 CURRENT ENHANCEMENTS:
 - **Vector Channels**: New instrument classes support vector channels for enhanced efficiency
-  - Example: `obj.addChannel("VI", 2)` creates 2-element vector channel
+  - Example: `obj.addChannel("XTheta", 2)` creates 2-element vector channel for simultaneous X and Theta measurements
   - Allows simultaneous multi-parameter reads in single operation
-  - **Current Status**: Not yet implemented in bridge functions (`smrun_new`, etc.)
-  - **Timeline**: Bridge support planned for future sm updates
+  - **Available Channels**: SR830/SR860 support XY, XTheta, YTheta, and RTheta vector channels
+  - **Current Status**: Fully implemented in instruments and smgui interface
+  - **Usage**: Select vector channels as "get" channels in smgui for efficient simultaneous measurements
 
 ## 💡 EXAMPLE USAGE
 
@@ -248,12 +252,14 @@ smset("sr830.sensitivity", 1e-6);      % Set 1µV sensitivity
 % Single measurements
 x_signal = smget("sr830.X");            % Get X component (quick syntax)
 magnitude = smget("sr830.R");          % Get magnitude
-xy_data = smget({"sr830.X", "sr830.Y"}); % Get both X,Y simultaneously
+xy_data = smget("sr830.XY");           % Get both X,Y simultaneously using vector channel
+xtheta_data = smget("sr830.XTheta");   % Get X and Theta simultaneously
+rtheta_data = smget("sr830.RTheta");   % Get R and Theta simultaneously
 
 % Alternative: Full function names for scripts
 sr830.setChannel("frequency", 1000);        % Direct method call
 x_signal = sr830.getChannel("X");            % Direct method call
-xy_data = smget_new({"sr830.X", "sr830.Y"}); % Full bridge function
+xy_data = smget_new("sr830.XY");            % Full bridge function with vector channel
 ```
 
 ### Scan Configuration and Execution:
@@ -264,13 +270,13 @@ clear smscan;
 smscan.loops(1).setchan = "sr830.frequency";
 smscan.loops(1).rng = [100, 1000];         % 100Hz to 1kHz
 smscan.loops(1).npoints = 101;              % 101 points (default)
-smscan.loops(1).getchan = {"sr830.X", "sr830.Y", "sr830.R"};
+smscan.loops(1).getchan = {"sr830.XTheta", "sr830.R"}; % Use vector channel for efficiency
 smscan.loops(1).waittime = 0.1;            % 100ms settling time
 
 % Optional: Configure display
-smscan.disp(1).channel = 1;                % Plot channel 1 (X)
+smscan.disp(1).channel = 1;                % Plot channel 1 (XTheta - returns 2-element vector)
 smscan.disp(1).dim = 1;                    % 1D line plot
-smscan.disp(2).channel = 3;                % Plot channel 3 (R) 
+smscan.disp(2).channel = 2;                % Plot channel 2 (R) 
 smscan.disp(2).dim = 1;                    % 1D line plot
 
 % Execute scan
@@ -279,6 +285,24 @@ data = smrun_new(smscan, "frequency_sweep");
 % Post-processing
 smplot("sm_frequency_sweep.mat");          % Recreate plots
 load("sm_frequency_sweep.mat");            % Load data for analysis
+```
+
+### Vector Channel Usage:
+
+```matlab
+% Efficient simultaneous measurements using vector channels
+smscan.loops(1).setchan = "gate_voltage";
+smscan.loops(1).rng = [-1, 1];
+smscan.loops(1).npoints = 101;
+% Use vector channels for efficient multi-parameter acquisition:
+smscan.loops(1).getchan = {"sr830.XTheta", "sr860.RTheta", "k2400.VI"};
+% XTheta returns [X, Theta], RTheta returns [R, Theta], VI returns [V, I]
+
+% Each getchan entry creates one data column per vector element
+% Data structure: [XTheta_1, XTheta_2, RTheta_1, RTheta_2, VI_1, VI_2]
+%                 [   X   ,  Theta ,   R   ,  Theta ,  V  ,  I ]
+
+data = smrun_new(smscan, "vector_scan");
 ```
 
 ### Advanced: Nested Scanning
@@ -455,5 +479,5 @@ end
 
 ---
 
-✨ **SM 1.5 Complete Documentation Guide** - Last Updated: 2025-07-17  
+✨ **SM 1.5 Complete Documentation Guide** - Last Updated: 2025-07-19  
    Prepared for optimal Copilot productivity and user experience

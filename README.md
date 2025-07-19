@@ -18,7 +18,7 @@
 ## 🔑 KEY CONCEPTS:
 - **Batch Optimization**: getWrite/getRead separation and smart ordering for performance
 - **Bridge System**: Seamless compatibility between old/new instruments
-- **Vector Channels**: New instruments support multi-element channels (bridge pending)
+- **Vector Channels**: Multi-element channels (e.g., XY, XTheta, YTheta, RTheta) supported in smgui and instruments (get only, no vector setting)
 - **Data Compatibility**: Same file format as legacy system - existing analysis code works unchanged
 - **Virtual Instruments**: Create complex scans (non-linear ramping) and parameter conversions (field→gate voltages)
 
@@ -31,4 +31,4 @@
 ---
 
 📖 **For complete documentation, see [README_LONG.md](README_LONG.md)**  
-📅 **Last Updated**: 2025-07-17
+📅 **Last Updated**: 2025-07-19
