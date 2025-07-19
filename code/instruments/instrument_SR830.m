@@ -7,7 +7,7 @@ classdef instrument_SR830 < instrumentInterface
     properties (Access = private)
         sensibilityValues = [2e-9 5e-9 10e-9 20e-9 50e-9 100e-9 200e-9 500e-9 ...
                             1e-6 2e-6 5e-6 10e-6 20e-6 50e-6 100e-6 200e-6 500e-6 ...
-                            1e-3 2e-3 5e-3 10e-3 20e-3 50e-3 100e-3 200e-3 500e-3 1e0];
+                            1e-3 2e-3 5e-3 10e-3 20e-3 50e-3 100e-3 200e-3 500e-3 1e0]; % in voltage units
         timeConstValues = [10e-6 30e-6 100e-6 300e-6 1e-3 3e-3 10e-3 30e-3 100e-3 300e-3 ...
                           1e0 3e0 10e0 30e0 100e0 300e0 1e3 3e3 10e3 30e3];
     end
@@ -45,6 +45,9 @@ classdef instrument_SR830 < instrumentInterface
             obj.addChannel("time_constant", setTolerances = 1e-9); % Channel 16: Time constant
             obj.addChannel("sync_filter", setTolerances = 0.1);   % Channel 17: Sync filter on/off
             obj.addChannel("XY", 2);                % Channel 18: X,Y simultaneous read
+            obj.addChannel("XTheta", 2);            % Channel 19: X,Theta simultaneous read
+            obj.addChannel("YTheta", 2);            % Channel 20: Y,Theta simultaneous read
+            obj.addChannel("RTheta", 2);            % Channel 21: R,Theta simultaneous read
         end
 
         function delete(obj)
@@ -108,6 +111,12 @@ classdef instrument_SR830 < instrumentInterface
                     writeline(handle, 'SYNC?');
                 case 18 % XY simultaneous
                     writeline(handle, 'SNAP? 1,2');
+                case 19 % XTheta simultaneous
+                    writeline(handle, 'SNAP? 1,4');
+                case 20 % YTheta simultaneous
+                    writeline(handle, 'SNAP? 2,4');
+                case 21 % RTheta simultaneous
+                    writeline(handle, 'SNAP? 3,4');
                 otherwise
                     error('Unsupported channel index: %d', channelIndex);
             end
@@ -127,7 +136,7 @@ classdef instrument_SR830 < instrumentInterface
                 case 16 % Time constant
                     tauIndex = str2double(strip(readline(handle)));
                     getValues = obj.timeConstValues(tauIndex + 1);
-                case 18 % XY simultaneous
+                case {18, 19, 20, 21} % Vector channels: XY, XTheta, YTheta, RTheta
                     response = strip(readline(handle));
                     getValues = str2double(split(response, ','));
                 otherwise

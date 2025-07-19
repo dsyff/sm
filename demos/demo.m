@@ -275,8 +275,8 @@ if Lockin1_Use
 
     % Add to rack and configure channels
     rack.addInstrument(handle_SR860_1, "LockIn1");
-    rack.addChannel("LockIn1", "X", "Ixx_X");
-    rack.addChannel("LockIn1", "Theta", "Ixx_Th");
+    %rack.addChannel("LockIn1", "X", "Ixx_X");
+    %rack.addChannel("LockIn1", "Theta", "Ixx_Th");
     rack.addChannel("LockIn1", "frequency", "Freq");
     rack.addChannel("LockIn1", "amplitude", "V_exc");
     %rack.addChannel("LockIn1", "Y", "Ixx_Y");
@@ -290,10 +290,14 @@ if Lockin1_Use
     %rack.addChannel("LockIn1", "aux_out_2", "Ixx_AuxOut2");
     %rack.addChannel("LockIn1", "aux_out_3", "Ixx_AuxOut3");
     %rack.addChannel("LockIn1", "aux_out_4", "Ixx_AuxOut4");
-    %rack.addChannel("LockIn1", "sensitivity", "Ixx_Sens");
+    rack.addChannel("LockIn1", "sensitivity", "Ixx_Sens"); % in volts; multiply by 1E-6 for amps
     %rack.addChannel("LockIn1", "time_constant", "Ixx_TimeConst");
     %rack.addChannel("LockIn1", "sync_filter", "Ixx_SyncFilter");
     %rack.addChannel("LockIn1", "XY", "Ixx_XY");
+    rack.addChannel("LockIn1", "XTheta", "Ixx_XTheta");
+    %rack.addChannel("LockIn1", "YTheta", "Ixx_YTheta");
+    %rack.addChannel("LockIn1", "RTheta", "Ixx_RTheta");
+    %rack.addChannel("LockIn1", "dc_offset", "Ixx_dc_offset");
 end
 
 if Lockin2_Use
@@ -311,9 +315,9 @@ if Lockin2_Use
     %writeline(h, "slp 0"); % Output filter slope: 0=6dB, 1=12dB, 2=18dB, 3=24dB
     
     % Add to rack and configure channels
-    rack.addInstrument(handle_SR830_2, "LockIn2");
-    rack.addChannel("LockIn2", "X", "Vxx1_X");
-    rack.addChannel("LockIn2", "Theta", "Vxx1_Th");
+    %rack.addInstrument(handle_SR830_2, "LockIn2");
+    %rack.addChannel("LockIn2", "X", "Vxx1_X");
+    %rack.addChannel("LockIn2", "Theta", "Vxx1_Th");
     %rack.addChannel("LockIn2", "Y", "Vxx1_Y");
     %rack.addChannel("LockIn2", "R", "Vxx1_R");
     %rack.addChannel("LockIn2", "frequency", "Vxx1_Freq");
@@ -327,10 +331,13 @@ if Lockin2_Use
     %rack.addChannel("LockIn2", "aux_out_2", "Vxx1_AuxOut2");
     %rack.addChannel("LockIn2", "aux_out_3", "Vxx1_AuxOut3");
     %rack.addChannel("LockIn2", "aux_out_4", "Vxx1_AuxOut4");
-    %rack.addChannel("LockIn2", "sensitivity", "Vxx1_Sens");
+    rack.addChannel("LockIn2", "sensitivity", "Vxx1_Sens"); % in volts; multiply by 1E-6 for amps
     %rack.addChannel("LockIn2", "time_constant", "Vxx1_TimeConst");
     %rack.addChannel("LockIn2", "sync_filter", "Vxx1_SyncFilter");
     %rack.addChannel("LockIn2", "XY", "Vxx1_XY");
+    rack.addChannel("LockIn2", "XTheta", "Vxx1_XTheta");
+    %rack.addChannel("LockIn2", "YTheta", "Vxx1_YTheta");
+    %rack.addChannel("LockIn2", "RTheta", "Vxx1_RTheta");
 end
 
 if Lockin3_Use
@@ -349,10 +356,10 @@ if Lockin3_Use
     
     % Add to rack and configure channels
     rack.addInstrument(handle_SR830_3, "LockIn3");
-    rack.addChannel("LockIn3", "R", "Vxx2_R");
-    rack.addChannel("LockIn3", "X", "Vxx2_X");
-    rack.addChannel("LockIn3", "Theta", "Vxx2_Th");
-    rack.addChannel("LockIn3", "Y", "Vxx2_Y");
+    %rack.addChannel("LockIn3", "R", "Vxx2_R");
+    %rack.addChannel("LockIn3", "X", "Vxx2_X");
+    %rack.addChannel("LockIn3", "Theta", "Vxx2_Th");
+    %rack.addChannel("LockIn3", "Y", "Vxx2_Y");
     %rack.addChannel("LockIn3", "frequency", "Vxx2_Freq");
     %rack.addChannel("LockIn3", "amplitude", "Vxx2_Amp");
     %rack.addChannel("LockIn3", "phase", "Vxx2_Phase");
@@ -364,10 +371,13 @@ if Lockin3_Use
     %rack.addChannel("LockIn3", "aux_out_2", "Vxx2_AuxOut2");
     %rack.addChannel("LockIn3", "aux_out_3", "Vxx2_AuxOut3");
     %rack.addChannel("LockIn3", "aux_out_4", "Vxx2_AuxOut4");
-    %rack.addChannel("LockIn3", "sensitivity", "Vxx2_Sens");
+    rack.addChannel("LockIn3", "sensitivity", "Vxx2_Sens"); % in volts; multiply by 1E-6 for amps
     %rack.addChannel("LockIn3", "time_constant", "Vxx2_TimeConst");
     %rack.addChannel("LockIn3", "sync_filter", "Vxx2_SyncFilter");
     %rack.addChannel("LockIn3", "XY", "Vxx2_XY");
+    rack.addChannel("LockIn3", "XTheta", "Vxx2_XTheta");
+    %rack.addChannel("LockIn3", "YTheta", "Vxx2_YTheta");
+    %rack.addChannel("LockIn3", "RTheta", "Vxx2_RTheta");
 end
 
 if Montana2_Use

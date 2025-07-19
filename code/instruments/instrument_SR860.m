@@ -8,7 +8,7 @@ classdef instrument_SR860 < instrumentInterface
     properties (Access = private)
         sensibilityValues = [1e0 5e-1 2e-1 1e-1 5e-2 2e-2 1e-2 5e-3 2e-3 1e-3 ...
                             5e-4 2e-4 1e-4 5e-5 2e-5 1e-5 5e-6 2e-6 1e-6 5e-7 ...
-                            2e-7 1e-7 5e-8 2e-8 1e-8 5e-9 2e-9 1e-9];
+                            2e-7 1e-7 5e-8 2e-8 1e-8 5e-9 2e-9 1e-9]; % in voltage units
         timeConstValues = [1e-6 3e-6 10e-6 30e-6 100e-6 300e-6 1e-3 3e-3 10e-3 30e-3 ...
                           100e-3 300e-3 1e0 3e0 10e0 30e0 100e0 300e0 1e3 3e3 ...
                           10e3 30e3];
@@ -48,7 +48,10 @@ classdef instrument_SR860 < instrumentInterface
             obj.addChannel("time_constant", setTolerances = 1e-9); % Channel 16: Time constant
             obj.addChannel("sync_filter", setTolerances = 0.1);   % Channel 17: Sync filter on/off
             obj.addChannel("XY", 2);                % Channel 18: X,Y simultaneous read
-            obj.addChannel("dc_offset", setTolerances = 1e-6);    % Channel 19: DC output level
+            obj.addChannel("XTheta", 2);            % Channel 19: X,Theta simultaneous read
+            obj.addChannel("YTheta", 2);            % Channel 20: Y,Theta simultaneous read
+            obj.addChannel("RTheta", 2);            % Channel 21: R,Theta simultaneous read
+            obj.addChannel("dc_offset", setTolerances = 1e-6);    % Channel 22: DC output level
         end
 
         function delete(obj)
@@ -112,7 +115,13 @@ classdef instrument_SR860 < instrumentInterface
                     writeline(handle, 'SYNC?');
                 case 18 % XY simultaneous
                     writeline(handle, 'SNAP? 0,1');
-                case 19 % DC offset
+                case 19 % XTheta simultaneous
+                    writeline(handle, 'SNAP? 0,3');
+                case 20 % YTheta simultaneous
+                    writeline(handle, 'SNAP? 1,3');
+                case 21 % RTheta simultaneous
+                    writeline(handle, 'SNAP? 2,3');
+                case 22 % DC offset
                     writeline(handle, 'SOFF?');
                 otherwise
                     error('Unsupported channel index: %d', channelIndex);
@@ -125,7 +134,7 @@ classdef instrument_SR860 < instrumentInterface
             handle = obj.communicationHandle;
             
             switch channelIndex
-                case {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 17, 19}  % Single value channels
+                case {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 17, 22}  % Single value channels
                     getValues = obj.robustReadDouble(handle, channelIndex);
                 case 15 % Sensitivity
                     sensIndex = obj.robustReadDouble(handle, channelIndex);
@@ -133,8 +142,8 @@ classdef instrument_SR860 < instrumentInterface
                 case 16 % Time constant
                     tauIndex = obj.robustReadDouble(handle, channelIndex);
                     getValues = obj.timeConstValues(tauIndex + 1);
-                case 18 % XY simultaneous
-                    getValues = obj.robustReadXY(handle, channelIndex);
+                case {18, 19, 20, 21} % Vector channels: XY, XTheta, YTheta, RTheta
+                    getValues = obj.robustReadVector(handle, channelIndex);
                 otherwise
                     error('Unsupported channel index: %d', channelIndex);
             end
@@ -164,7 +173,7 @@ classdef instrument_SR860 < instrumentInterface
                     writeline(handle, sprintf('OFLT %d', tauIndex));
                 case 17 % Sync filter
                     writeline(handle, sprintf('SYNC %d', round(setValues)));
-                case 19 % DC offset
+                case 22 % DC offset
                     writeline(handle, sprintf('SOFF %g', setValues));
                 otherwise
                     error('Set operation not supported for channel %s', ...
@@ -205,7 +214,7 @@ classdef instrument_SR860 < instrumentInterface
                     % Re-send the query command (this is the key insight from legacy code)
                     obj.getWriteChannelHelper(channelIndex);
                     pause(0.001);
-                    
+
                 catch ME
                     attempts = attempts + 1;
                     disp(datetime);
@@ -232,8 +241,8 @@ classdef instrument_SR860 < instrumentInterface
             tauIndex = idx - 1;  % SR860 uses 0-based indexing
         end
 
-        function values = robustReadXY(obj, handle, channelIndex)
-            % Robust reading for XY simultaneous with retry logic
+        function values = robustReadVector(obj, handle, channelIndex)
+            % Robust reading for vector channels with retry logic
             % SNAP command sometimes returns invalid data on SR860
             % Re-sends SNAP command when invalid response received
             maxAttempts = 5;
@@ -260,7 +269,7 @@ classdef instrument_SR860 < instrumentInterface
                     if attempts < maxAttempts
                         % Re-send the SNAP command for retry (using getWriteChannelHelper)
                         obj.getWriteChannelHelper(channelIndex);
-                        pause(0.05);
+                        pause(0.001);
                     end
                     
                 catch ME
@@ -276,7 +285,7 @@ classdef instrument_SR860 < instrumentInterface
                 end
             end
             
-            error('Failed to read valid XY response from SR860 after %d attempts', maxAttempts);
+            error('Failed to read valid SNAP response from SR860 after %d attempts', maxAttempts);
         end
 
     end
