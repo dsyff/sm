@@ -233,7 +233,20 @@ if clock_Use
     rack.addInstrument(handle_clock, "clock");
     rack.addChannel("clock", "timeStamp", "time");
 end
+if counter_Use
+    handle_counter_1 = instrument_counter("counter_1");
+    rack.addInstrument(handle_counter_1, "counter_1");
+    rack.addChannel("counter_1", "count", "count_1");
 
+    handle_counter_2 = instrument_counter("counter_2");
+    rack.addInstrument(handle_counter_2, "counter_2");
+    rack.addChannel("counter_2", "count", "count_2");
+
+    handle_counter_3 = instrument_counter("counter_3");
+    rack.addInstrument(handle_counter_3, "counter_3");
+    rack.addChannel("counter_3", "count", "count_3");
+
+end
 if K2450_C_Use
     handle_K2450_C = instrument_K2450(gpibAddress(K2450_C_GPIB, adaptorIndex));
     handle_K2450_C.requireSetCheck = false; %dose not wait for instrument to reach set value

@@ -93,13 +93,26 @@ if nargin >= 2 && filename(2)~=':'
 end
 
 
+% Handle setchanranges field from legacy GUI compatibility 
+% setchanranges contains the [start, end] values for each channel
+% Example: setchanranges = {[2, -5], [12, 13]} means:
+%   - Channel 1 should go from 2 to -5  
+%   - Channel 2 should go from 12 to 13
+% We'll use a simple index-based approach where all channels are treated equally
+for i=1:length(scandef)
+    if isfield(scandef(i),'setchanranges') && ~isempty(scandef(i).setchanranges)
+        % setchanranges detected - will be handled during scanning
+    end
+end
+
 for i = 1:nloops
+    % Ensure npoints is set - either from existing value or default
     if isempty(scandef(i).npoints)        
-        scandef(i).npoints = length(scandef(i).rng);
-    elseif isempty(scandef(i).rng)        
-        scandef(i).rng = 1:scandef(i).npoints;
-    else
-        scandef(i).rng = linspace(scandef(i).rng(1), scandef(i).rng(end), scandef(i).npoints);
+        if isfield(scandef(i), 'rng') && ~isempty(scandef(i).rng)
+            scandef(i).npoints = length(scandef(i).rng);
+        else
+            scandef(i).npoints = 101;  % Default value if nothing is specified
+        end
     end
     
     % Store original vector channel names for efficient smget_new calls
@@ -242,9 +255,24 @@ for i = 1:length(disp)
         x = 1:datadim(dc, ndim(dc));
         xlab = 'n';
     else
-        x = scandef(dataloop(dc) - ndim(dc)).rng;        
-        if ~isempty(scandef(dataloop(dc) - ndim(dc)).setchan)
-            xlab = smdata.channels(scandef(dataloop(dc) - ndim(dc)).setchan(1)).name;
+        % Check if the relevant loop uses setchanranges for the x-axis
+        loop_idx = dataloop(dc) - ndim(dc);
+        if isfield(scandef(loop_idx),'setchanranges') && ~isempty(scandef(loop_idx).setchanranges)
+            % Generate x values using the first channel's range from setchanranges
+            first_channel_range = scandef(loop_idx).setchanranges{1};
+            total_points = npoints(loop_idx);
+            if total_points > 1
+                x = linspace(first_channel_range(1), first_channel_range(2), total_points);
+            else
+                x = first_channel_range(1);
+            end
+        else
+            % For scans without setchanranges, use simple index-based x-axis
+            x = 1:npoints(loop_idx);
+        end
+        
+        if ~isempty(scandef(loop_idx).setchan)
+            xlab = smdata.channels(scandef(loop_idx).setchan(1)).name;
         else
             xlab = '';
         end
@@ -255,9 +283,24 @@ for i = 1:length(disp)
             y = 1:datadim(dc, ndim(dc)-1);
             ylab = 'n';
         else
-            y = scandef(dataloop(dc) - ndim(dc) + 1).rng;
-            if ~isempty(scandef(dataloop(dc) - ndim(dc) + 1).setchan)
-                ylab = smdata.channels(scandef(dataloop(dc) - ndim(dc) + 1).setchan(1)).name;
+            % Check if the relevant loop uses setchanranges for the y-axis
+            loop_idx = dataloop(dc) - ndim(dc) + 1;
+            if isfield(scandef(loop_idx),'setchanranges') && ~isempty(scandef(loop_idx).setchanranges)
+                % Generate y values using the first channel's range from setchanranges
+                first_channel_range = scandef(loop_idx).setchanranges{1};
+                total_points = npoints(loop_idx);
+                if total_points > 1
+                    y = linspace(first_channel_range(1), first_channel_range(2), total_points);
+                else
+                    y = first_channel_range(1);
+                end
+            else
+                % For scans without setchanranges, use simple index-based y-axis
+                y = 1:npoints(loop_idx);
+            end
+            
+            if ~isempty(scandef(loop_idx).setchan)
+                ylab = smdata.channels(scandef(loop_idx).setchan(1)).name;
             else
                 ylab = '';
             end
@@ -284,8 +327,6 @@ for i = 1:length(disp)
         end
     end
 end  
-
-x = zeros(1, nloops);
 
 if nargin >= 2
     save(filename, 'scan');
@@ -336,17 +377,41 @@ for point_idx = 1:totpoints_cached
         loops = 1:loops_end_idx;
     end       
     
-    for j = loops
-        x(j) = scandef(j).rng(count(j));
-    end
-    
     for j = fliplr(loops(~isdummy(loops) | count(loops)==1))
-        val = x;
+        % Calculate channel values: treat all channels equally using simple index mapping
+        if isfield(scandef(j),'setchanranges') && ~isempty(scandef(j).setchanranges)
+            % Simple approach: map current point index to each channel's range
+            % count(j) goes from 1 to npoints(j) FOR EACH COMPLETE CYCLE of this loop
+            % This works correctly for multi-dimensional scans because count(j) resets to 1
+            % when outer loops increment
+            
+            val_for_channels = zeros(1, nsetchan(j));
+            current_index = count(j);        % Current point: 1, 2, 3, ..., npoints(j)
+            total_points = npoints(j);       % Total points in this loop
+            
+            for k = 1:min(nsetchan(j), length(scandef(j).setchanranges))
+                channel_range = scandef(j).setchanranges{k};  % [start, end] for this channel
+                
+                % Simple linear interpolation from index to channel value
+                % Point 1 → channel_range(1), Point npoints → channel_range(2)
+                if total_points > 1
+                    val_for_channels(k) = channel_range(1) + ...
+                        (channel_range(2) - channel_range(1)) * ...
+                        (current_index - 1) / (total_points - 1);
+                else
+                    val_for_channels(k) = channel_range(1);  % Single point case
+                end
+            end
+        else
+            % For scans without setchanranges, use simple sequential values
+            % This ensures all channels get the same progression: 1, 2, 3, ..., npoints
+            val_for_channels = repmat(count(j), 1, max(1, nsetchan(j)));
+        end
 
         if count(j) == 1
             if nsetchan(j) && ~isempty(setchan_strings{j})
                 % Direct instrumentRack call using pre-computed strings
-                instrumentRackGlobal.rackSet(setchan_strings{j}, val(j));
+                instrumentRackGlobal.rackSet(setchan_strings{j}, val_for_channels);
                 
                 if isfield(scandef(j),'startwait')
                     pause(scandef(j).startwait)
@@ -356,7 +421,7 @@ for point_idx = 1:totpoints_cached
         else
             if nsetchan(j) > 0 && ~isempty(setchan_strings{j})
                 % Direct instrumentRack call using pre-computed strings
-                instrumentRackGlobal.rackSet(setchan_strings{j}, val(j));
+                instrumentRackGlobal.rackSet(setchan_strings{j}, val_for_channels);
             end
         end
 
@@ -468,12 +533,12 @@ end
 % Scan completed normally
 saveData();
 
-    % Nested function for data save operations only
-    function saveData()
-        % Prevent double saving
-        if save_operations_completed
-            return;
-        end
+% Nested function for data save operations only
+function saveData()
+    % Prevent double saving
+    if save_operations_completed
+        return;
+    end
         
         % Save figure if it still exists
         % if ishandle(figurenumber)
@@ -558,16 +623,16 @@ saveData();
 
         save_operations_completed = true;
 
-    end
+end
 
-    % Nested function for graceful window close
-    function gracefulClose()
-        if ishandle(figurenumber)
-            % In case interrupted during or before save, ensure data is saved
-            saveData();
-            delete(figurenumber); % Close the figure
-        end
-        scan_should_exit = true;
+% Nested function for graceful window close
+function gracefulClose()
+    if ishandle(figurenumber)
+        % In case interrupted during or before save, ensure data is saved
+        saveData();
+        delete(figurenumber); % Close the figure
     end
+    scan_should_exit = true;
+end
 
 end
