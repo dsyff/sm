@@ -261,7 +261,7 @@ if K2450_C_Use
     writeline(h,":source:voltage:range 20"); %sets the source voltage range
     %writeline(h,":source:voltage:range:auto ON"); %use auto range for voltage
     %writeline(h,":route:terminals rear"); %use rear terminal
-    writeline(h,"NPLcycles 0.1"); %number of power line cycles per measurement
+    writeline(h,"NPLcycles 0.2"); %number of power line cycles per measurement
     writeline(h,":OUTP ON");
     pause(2);
     %andle_K2450_C.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
