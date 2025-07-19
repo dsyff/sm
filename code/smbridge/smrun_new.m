@@ -13,6 +13,7 @@ function data = smrun_new(scan, filename)
 global smdata;
 global smscan;
 global smaux;
+global instrumentRackGlobal
 
 if ~isstruct(scan) 
     filename=scan;
@@ -29,7 +30,12 @@ if isfield(scan,'consts') && ~isempty(scan.consts)
     if any(set_mask)
         setchans = {scan.consts(set_mask).setchan};
         setvals = [scan.consts(set_mask).val];
-        smset_new(setchans, setvals);
+        % Direct instrumentRack call for maximum efficiency
+        channelNames = string(setchans);
+        if isrow(channelNames)
+            channelNames = channelNames';  % Ensure column vector
+        end
+        instrumentRackGlobal.rackSet(channelNames, setvals);
     end
 end
 
@@ -45,6 +51,12 @@ nloops = length(scandef);
 nsetchan = zeros(1, nloops);
 ngetchan = zeros(1, nloops);
 tloop = zeros(1, nloops);
+
+% Initialize storage for original vector channel names
+original_getchan = cell(1, nloops);
+original_setchan = cell(1, nloops);
+getchan_strings = cell(1, nloops);
+setchan_strings = cell(1, nloops);
 
 % Vectorized field initialization
 if ~isfield(scandef, 'npoints')
@@ -90,8 +102,31 @@ for i = 1:nloops
         scandef(i).rng = linspace(scandef(i).rng(1), scandef(i).rng(end), scandef(i).npoints);
     end
     
-    scandef(i).setchan = smchanlookup_new(scandef(i).setchan);
-    scandef(i).getchan = smchanlookup_new(scandef(i).getchan);
+    % Store original vector channel names for efficient smget_new calls
+    original_getchan{i} = scandef(i).getchan;
+    original_setchan{i} = scandef(i).setchan;
+    
+    % Pre-convert channel names to column vectors of strings for performance
+    if ~isempty(original_getchan{i})
+        getchan_strings{i} = string(original_getchan{i});
+        if isrow(getchan_strings{i})
+            getchan_strings{i} = getchan_strings{i}';
+        end
+    else
+        getchan_strings{i} = string.empty(0,1);  % Empty column vector
+    end
+    
+    if ~isempty(original_setchan{i})
+        setchan_strings{i} = string(original_setchan{i});
+        if isrow(setchan_strings{i})
+            setchan_strings{i} = setchan_strings{i}';
+        end
+    else
+        setchan_strings{i} = string.empty(0,1);  % Empty column vector
+    end
+    
+    scandef(i).setchan = smchanlookup_new(scandef(i).setchan, true);
+    scandef(i).getchan = smchanlookup_new(scandef(i).getchan, true);
     nsetchan(i) = length(scandef(i).setchan);
     ngetchan(i) = length(scandef(i).getchan);
 end
@@ -273,7 +308,6 @@ disp_channels = [disp.channel];
 disp_dims = [disp.dim];
 
 % Cache figure handle checks
-figure_valid = true;
 scan_should_exit = false;
 temp_file_counter = 0;
 
@@ -310,8 +344,9 @@ for point_idx = 1:totpoints_cached
         val = x;
 
         if count(j) == 1
-            if nsetchan(j)
-                smset_new(scandef(j).setchan, val(j));
+            if nsetchan(j) && ~isempty(setchan_strings{j})
+                % Direct instrumentRack call using pre-computed strings
+                instrumentRackGlobal.rackSet(setchan_strings{j}, val(j));
                 
                 if isfield(scandef(j),'startwait')
                     pause(scandef(j).startwait)
@@ -319,8 +354,9 @@ for point_idx = 1:totpoints_cached
             end
             tloop(j) = now;
         else
-            if nsetchan(j) > 0
-                smset_new(scandef(j).setchan, val(j));
+            if nsetchan(j) > 0 && ~isempty(setchan_strings{j})
+                % Direct instrumentRack call using pre-computed strings
+                instrumentRackGlobal.rackSet(setchan_strings{j}, val(j));
             end
         end
 
@@ -341,7 +377,16 @@ for point_idx = 1:totpoints_cached
     end
     
     for j = loops(~isdummy(loops))
-        newdata = smget_new(scandef(j).getchan);
+        % Direct instrumentRack call using pre-computed strings
+        if ~isempty(getchan_strings{j})
+            newdata = instrumentRackGlobal.rackGet(getchan_strings{j});
+            % Convert to cell array to match expected format
+            if ~iscell(newdata)
+                newdata = num2cell(newdata);
+            end
+        else
+            newdata = {};
+        end
 
         % OPTIMIZED: Direct data storage with pre-computed offsets
         ind_offset = channel_offsets(j);
@@ -351,26 +396,24 @@ for point_idx = 1:totpoints_cached
         end
         
         % Update display every point for immediate responsiveness
-        if figure_valid
-            % Update displays with cached values for speed
-            for k = 1:length(disp)
-                if disp_loops(k) == j
-                    dc = disp_channels(k);
-                    nind = ndim(dc)+ nloops+1-dataloop(dc)-disp_dims(k);
-                    s2.subs = [num2cell([count(end:-1:max(j, end-nind+1)), ones(1, max(0, nind+j-1-nloops))]),...
-                        repmat({':'},1, disp_dims(k))];
-                        try
-                            if disp_dims(k) == 2
-                                z_data = subsref(data{dc}, s2);
-                                set(disph(k), 'cdata', z_data);
-                            else                
-                                set(disph(k), 'ydata', subsref(data{dc}, s2));
-                            end
-                        catch
-                            figure_valid = false;
-                            break;
+        % Update displays with cached values for speed
+        for k = 1:length(disp)
+            if disp_loops(k) == j
+                dc = disp_channels(k);
+                nind = ndim(dc)+ nloops+1-dataloop(dc)-disp_dims(k);
+                s2.subs = [num2cell([count(end:-1:max(j, end-nind+1)), ones(1, max(0, nind+j-1-nloops))]),...
+                    repmat({':'},1, disp_dims(k))];
+                    try
+                        if disp_dims(k) == 2
+                            z_data = subsref(data{dc}, s2);
+                            set(disph(k), 'cdata', z_data);
+                        else                
+                            set(disph(k), 'ydata', subsref(data{dc}, s2));
                         end
-                end
+                    catch ME
+                        saveData(); % Ensure data is saved before exiting
+                        rethrow(ME);
+                    end
             end
         end
         
@@ -403,7 +446,7 @@ for point_idx = 1:totpoints_cached
     count(loops(end)) =  count(loops(end)) + 1;
     
     %% Optimized exit/pause checks with reduced figure handle calls
-    if figure_valid && ishandle(figurenumber)
+    if ishandle(figurenumber)
         current_char = get(figurenumber, 'CurrentCharacter');
         if current_char == char(27)  % Escape key
             set(figurenumber, 'CurrentCharacter', char(0));
@@ -437,7 +480,12 @@ saveData();
             try
                 if exist('filename', 'var') && ~isempty(filename)
                     figstring = filename(1:length(filename)-4);
+                    % Suppress figure file size warning
+                    warning('off', 'MATLAB:Figure:FigureSavedToMATFileFormat');
+                    warning('off', 'MATLAB:savefig:LargeFigure');
                     saveas(figurenumber, figstring, 'fig');
+                    warning('on', 'MATLAB:Figure:FigureSavedToMATFileFormat');
+                    warning('on', 'MATLAB:savefig:LargeFigure');
                     print(figurenumber, '-bestfit', figstring, '-dpdf');
                 end
             catch ME

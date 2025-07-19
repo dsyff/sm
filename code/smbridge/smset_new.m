@@ -15,7 +15,7 @@ end
 
 % Convert channel names to indices if needed
 if ~isnumeric(channels)
-    channels = smchanlookup_new(channels);
+    channels = smchanlookup_new(channels, true);
 end
 
 % Ensure channels is a numeric vector

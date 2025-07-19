@@ -62,16 +62,30 @@ classdef smguiBridge < handle
                     numChannels = 4;
                 end
                 
-                % Create datadim field - assumes all channels return scalar values (1x1)
+                % Create datadim field - use actual channel sizes from instruments
                 % This field specifies the dimensions of data returned by each channel
                 % Format: [numChannels x 5] array where each row is [dim1, dim2, dim3, dim4, dim5]
-                % For scalar channels, this is [1, 1, 1, 1, 1]
+                % For vector channels, first dimension indicates vector size
                 instStruct(i).datadim = ones(numChannels, 5);
+                
+                % Update datadim with actual channel sizes for vector channels
+                for chanIdx = 1:numChannels
+                    try
+                        channelSize = inst.findChannelSize(channelNames{chanIdx});
+                        if channelSize > 1
+                            instStruct(i).datadim(chanIdx, 1) = channelSize;
+                        end
+                    catch
+                        % If findChannelSize fails, default to scalar (size 1)
+                        instStruct(i).datadim(chanIdx, 1) = 1;
+                    end
+                end
             end
         end
         
         function channelsStruct = createChannelsStruct(obj)
             % Create smdata.channels structure from instrumentRack channelTable
+            % Expands vector channels into individual scalar channels for plotting compatibility
             channelsStruct = struct("name", {}, "instchan", {}, "rangeramp", {});
             
             if isempty(obj.rack.channelTable)
@@ -79,19 +93,32 @@ classdef smguiBridge < handle
             end
             
             numChannels = height(obj.rack.channelTable);
+            scalarChannelIdx = 1;
             
             for i = 1:numChannels
                 channelFriendlyName = obj.rack.channelTable.channelFriendlyNames(i);
                 instrument = obj.rack.channelTable.instruments(i);
+                channelSize = obj.rack.channelTable.channelSizes(i);
                 
                 % Find instrument index in instrumentTable
                 instIdx = obj.findInstrumentIndex(instrument);
                 
-                channelsStruct(i).name = char(channelFriendlyName); % Convert to char for old interface
-                channelsStruct(i).instchan = [instIdx, 1];  % Use 1 as default channel number for old interface
-                
-                % Default range/ramp values - can be customized later
-                channelsStruct(i).rangeramp = [0, 0, 0, 1];  % [min, max, ramprate, conversion]
+                if channelSize == 1
+                    % Scalar channel - add directly
+                    channelsStruct(scalarChannelIdx).name = char(channelFriendlyName);
+                    channelsStruct(scalarChannelIdx).instchan = [instIdx, 1];
+                    channelsStruct(scalarChannelIdx).rangeramp = [0, 0, 0, 1];
+                    scalarChannelIdx = scalarChannelIdx + 1;
+                else
+                    % Vector channel - expand into scalar elements
+                    for vecIdx = 1:channelSize
+                        scalarName = sprintf("%s_%d", channelFriendlyName, vecIdx);
+                        channelsStruct(scalarChannelIdx).name = char(scalarName);
+                        channelsStruct(scalarChannelIdx).instchan = [instIdx, vecIdx];
+                        channelsStruct(scalarChannelIdx).rangeramp = [0, 0, 0, 1];
+                        scalarChannelIdx = scalarChannelIdx + 1;
+                    end
+                end
             end
         end
         
@@ -137,6 +164,85 @@ classdef smguiBridge < handle
                 warning("instrumentWrapper:error", "instrumentWrapper error: %s", ME.message);
                 result = 0;
             end
+        end
+        
+        function vectorChannelNames = getVectorChannelNames(obj)
+            % Get vector channel names for efficient data acquisition
+            % Returns only the original vector channel names (e.g., "XY", not "XY_1", "XY_2")
+            vectorChannelNames = {};
+            
+            if isempty(obj.rack.channelTable)
+                return;
+            end
+            
+            numChannels = height(obj.rack.channelTable);
+            for i = 1:numChannels
+                channelFriendlyName = obj.rack.channelTable.channelFriendlyNames(i);
+                vectorChannelNames{end+1} = char(channelFriendlyName);
+            end
+        end
+        
+        function scalarChannelNames = getScalarChannelNames(obj)
+            % Get scalar channel names for plotting and data saving
+            % Returns expanded channel names (e.g., "XY_1", "XY_2" for vector channels)
+            scalarChannelNames = {};
+            
+            if isempty(obj.rack.channelTable)
+                return;
+            end
+            
+            numChannels = height(obj.rack.channelTable);
+            for i = 1:numChannels
+                channelFriendlyName = obj.rack.channelTable.channelFriendlyNames(i);
+                channelSize = obj.rack.channelTable.channelSizes(i);
+                
+                if channelSize == 1
+                    % Scalar channel
+                    scalarChannelNames{end+1} = char(channelFriendlyName);
+                else
+                    % Vector channel - expand
+                    for vecIdx = 1:channelSize
+                        scalarName = sprintf("%s_%d", channelFriendlyName, vecIdx);
+                        scalarChannelNames{end+1} = char(scalarName);
+                    end
+                end
+            end
+        end
+        
+        function pureScalarChannelNames = getPureScalarChannelNames(obj)
+            % Get only inherently scalar channel names (channelSize == 1)
+            % Used for set channel dropdowns - excludes expanded vector components
+            pureScalarChannelNames = {};
+            
+            if isempty(obj.rack.channelTable)
+                return;
+            end
+            
+            numChannels = height(obj.rack.channelTable);
+            for i = 1:numChannels
+                channelFriendlyName = obj.rack.channelTable.channelFriendlyNames(i);
+                channelSize = obj.rack.channelTable.channelSizes(i);
+                
+                if channelSize == 1
+                    % Only scalar channels (not expanded vector components)
+                    pureScalarChannelNames{end+1} = char(channelFriendlyName);
+                end
+            end
+        end
+        
+        function channelSize = getChannelSize(obj, channelFriendlyName)
+            % Get the size of a channel by its friendly name
+            % Returns 1 for scalar channels, >1 for vector channels
+            if isempty(obj.rack.channelTable)
+                error('Channel table is empty');
+            end
+            
+            channelIdx = find(strcmp(obj.rack.channelTable.channelFriendlyNames, channelFriendlyName), 1);
+            if isempty(channelIdx)
+                error('Channel "%s" not found', channelFriendlyName);
+            end
+            
+            channelSize = obj.rack.channelTable.channelSizes(channelIdx);
         end
     end
 end

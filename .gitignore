@@ -1,6 +1,6 @@
 # Exclude testing and legacy folders
-testing/
 code/legacyInstruments/
+debug/
 
 # MATLAB specific ignores
 *.asv

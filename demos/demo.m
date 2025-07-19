@@ -1,7 +1,7 @@
 %%
-global instrumentRackGlobal smscan smaux smdata;
+global instrumentRackGlobal smscan smaux smdata bridge;
 %% Clean up existing instruments to release serial ports
-if exist('instrumentRackGlobal', 'var') && ~isempty(instrumentRackGlobal)
+if exist("instrumentRackGlobal", "var") && ~isempty(instrumentRackGlobal)
     % Delete each instrument individually to properly release resources
     if ~isempty(instrumentRackGlobal.instrumentTable)
         instruments = instrumentRackGlobal.instrumentTable.instruments;
@@ -9,7 +9,7 @@ if exist('instrumentRackGlobal', 'var') && ~isempty(instrumentRackGlobal)
             try
                 delete(instruments(i));
             catch ME
-                warning('Failed to delete instrument %d: %s', i, ME.message);
+                warning("Failed to delete instrument %d: %s", i, ME.message);
             end
         end
     end
@@ -21,13 +21,23 @@ end
 clear;
 %clear all;
 close all;
-global instrumentRackGlobal smscan smaux smdata;
+global instrumentRackGlobal smscan smaux smdata bridge;
 path(pathdef);
 username=getenv("USERNAME");
 
-addpath(genpath(sprintf("C:\\Users\\%s\\Desktop\\sm1.5", username)));
-addpath(genpath(sprintf("C:\\Users\\%s\\Desktop\\sm-dev", username)));
-addpath(genpath(sprintf("C:\\Users\\%s\\Desktop\\sm-main", username)));
+% Check for sm-main first, then sm-dev, then report error
+sm_main_path = sprintf("C:\\Users\\%s\\Desktop\\sm-main", username);
+sm_dev_path = sprintf("C:\\Users\\%s\\Desktop\\sm-dev", username);
+
+if exist(sm_main_path, "dir")
+    addpath(genpath(sm_main_path));
+    fprintf("Added sm-main to path: %s\n", sm_main_path);
+elseif exist(sm_dev_path, "dir")
+    addpath(genpath(sm_dev_path));
+    fprintf("Added sm-dev to path: %s\n", sm_dev_path);
+else
+    error("Neither sm-main nor sm-dev folders found in %s\\Desktop\\", sprintf("C:\\Users\\%s", username));
+end
 
 %% instrument addresses
 LockIn1_GPIB = 7; %sd
@@ -69,19 +79,101 @@ if strainController_Use
     % Strain controller manages K2450 A&B and cryostat internally
     % Force these to be disabled to avoid conflicts
     if K2450_A_Use || K2450_B_Use
-        fprintf('Warning: K2450 A&B disabled - managed internally by strain controller.\n');
+        fprintf("Warning: K2450 A&B disabled - managed internally by strain controller.\n");
         K2450_A_Use = 0;
         K2450_B_Use = 0;
     end
     if Montana2_Use || Opticool_Use
-        fprintf('Warning: Cryostat disabled - managed internally by strain controller.\n');
+        fprintf("Warning: Cryostat disabled - managed internally by strain controller.\n");
         Montana2_Use = 0;
         Opticool_Use = 0;
     end
 end
 
+%% INSTRUMENT SETUP GUIDE
+% This section explains the standard pattern for adding instruments and channels
+% to the instrument rack. Follow this pattern for consistent setup.
+%
+% STEP 1: Create Instrument Object
+% ===============================
+% Syntax: handle = instrument_ClassName(address)
+% Examples:
+%   handle_clock = instrument_clock("address_string");
+%   handle_K2450 = instrument_K2450(gpibAddress(18, 0));
+%   handle_SR830 = instrument_SR830(gpibAddress(7, 0));
+%   handle_Montana = instrument_Montana2("192.168.1.100");
+%
+% STEP 2: Add Instrument to Rack
+% ===============================
+% Syntax: rack.addInstrument(instrumentHandle, "friendlyName")
+% - instrumentHandle: The object created in Step 1
+% - friendlyName: A unique string to identify this instrument in the rack
+% Examples:
+%   rack.addInstrument(handle_clock, "clock");
+%   rack.addInstrument(handle_K2450, "K2450_C");
+%   rack.addInstrument(handle_SR830, "LockIn1");
+%
+% STEP 3: Add Channels from Instrument
+% ====================================
+% Syntax: rack.addChannel("instrumentFriendlyName", "instrumentChannel", "channelFriendlyName", rampRate, rampThreshold)
+% - instrumentFriendlyName: Must match the name used in addInstrument
+% - instrumentChannel: The actual channel name from the instrument class
+% - channelFriendlyName: A unique name for this channel (used in smset/smget)
+% - rampRate: (optional) Maximum rate of change (units/second)
+% - rampThreshold: (optional) Minimum step size for ramping
+% Examples:
+%   rack.addChannel("clock", "timeStamp", "time");
+%   rack.addChannel("K2450_C", "V_source", "V_tg", 1, 0.5);  % 1V/s rate, 0.5V threshold
+%   rack.addChannel("LockIn1", "X", "Ixx_X");
+%
+% STEP 4: Send Custom Commands to Hardware (Optional)
+% ===================================================
+% For advanced configuration, you can send custom SCPI/GPIB commands directly to the hardware
+% by accessing the instrument's communication handle.
+%
+% Syntax: h = instrumentHandle.communicationHandle;
+% Then use: writeline(h, "command"); or response = writeread(h, "query?");
+%
+% Examples:
+%   % Configure K2450 current measurement settings
+%   h = handle_K2450.communicationHandle;
+%   writeline(h, ":sense:current:range 1e-7");        % Set current range
+%   writeline(h, "source:voltage:Ilimit 1e-7");       % Set current limit
+%   writeline(h, ":OUTP ON");                         % Turn output on
+%
+%   % Configure SR830 lock-in amplifier settings
+%   h = handle_SR830.communicationHandle;
+%   writeline(h, "isrc 1");                           % Set input to A-B
+%   writeline(h, "ignd 1");                           % Set input grounding
+%   sensitivity = writeread(h, "sens?");              % Query sensitivity
+%
+%   % Query instrument identification
+%   h = handle_instrument.communicationHandle;
+%   id_string = writeread(h, "*IDN?");                % Get instrument ID
+%
+% IMPORTANT NOTES FOR CUSTOM COMMANDS:
+% - Only use this for settings not available through instrument class methods
+% - Always check instrument manual for correct SCPI command syntax
+% - Use writeline() for commands that don't return data
+% - Use writeread() for queries that return responses
+% - Be careful with timing - some instruments need delays between commands
+% - Custom configuration should be done AFTER adding instrument to rack but BEFORE operation
+%
+% IMPORTANT NOTES:
+% - All names must be unique within their scope (instrument names, channel names)
+% - The instrument must be added to rack before adding its channels
+% - Channel names from the instrument class can be found in the instrument's documentation
+% - Ramping parameters are optional and default to infinite (instant set)
+%
+% COMMON MISTAKES TO AVOID:
+% - Wrong parameter order in addInstrument: use (handle, "name"), not ("name", handle)
+% - Mismatched friendly names between addInstrument and addChannel
+% - Using non-existent channel names from the instrument class
+% - Duplicate friendly names for instruments or channels
+
 %% Create instrumentRack
 rack = instrumentRack(true); % TF to skip safety dialog for setup script
+
 
 %% Create strain controller first (if enabled) - manages K2450s A&B and cryostat internally
 if strainController_Use
@@ -112,11 +204,11 @@ if strainController_Use
 
     % Set initial parameters (based on legacy setup)
     handle_strainController.setParameters(...
-        'frequency', 100e3, ...
-        'Z_short_r', 1.783, ...
-        'Z_short_theta', deg2rad(29.85), ...
-        'Z_open_r', 27.9e6, ...
-        'Z_open_theta', deg2rad(104.17));
+        "frequency", 100e3, ...
+        "Z_short_r", 1.783, ...
+        "Z_short_theta", deg2rad(29.85), ...
+        "Z_open_r", 27.9e6, ...
+        "Z_open_theta", deg2rad(104.17));
     
     % Perform tare operation
     handle_strainController.tareDisplacement(20);
@@ -125,7 +217,7 @@ if strainController_Use
     smset("strain.V_str_o", 0);
     smset("strain.V_str_i", 0);
     
-    fprintf('Strain controller initialized and tared.\n');
+    fprintf("Strain controller initialized and tared.\n");
 end
 
 %% Create other instruments using new sm2

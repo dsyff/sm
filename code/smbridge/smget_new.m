@@ -15,7 +15,7 @@ end
 
 % Convert channel names to indices if needed
 if ~isnumeric(channels)
-    channels = smchanlookup_new(channels);
+    channels = smchanlookup_new(channels, true);
 end
 
 % Ensure channels is a numeric vector
@@ -30,35 +30,26 @@ data = cell(1, nchan);
 
 % Use instrumentRack if available
 if exist("instrumentRackGlobal", "var") && ~isempty(instrumentRackGlobal)
-    try
-        % Performance optimization: pre-allocate and cache smdata.channels length
-        smdata_channels_length = length(smdata.channels);
-        channelNames = strings(nchan, 1);
-        
-        % Performance optimization: vectorized channel name lookup
-        for i = 1:nchan
-            if channels(i) <= smdata_channels_length
-                channelNames(i) = string(smdata.channels(channels(i)).name);
-            else
-                error("Channel index %d out of range", channels(i));
-            end
-        end
-        
-        % Use instrumentRack for getting values (bulk read for performance)
-        values = instrumentRackGlobal.rackGet(channelNames);
-        
-        % Performance optimization: direct assignment instead of loop
-        data = num2cell(values);
-        return;
-    catch ME
-        warning("smget_new:fallback", "Failed to use instrumentRack, falling back to old method: %s", ME.message);
-    end
-end
+    % Performance optimization: pre-allocate and cache smdata.channels length
+    smdata_channels_length = length(smdata.channels);
+    channelNames = strings(nchan, 1);
 
-% Fallback to old smget behavior if instrumentRack not available
-if exist("smget", "file") == 2
-    data = smget(channels);
+    % Performance optimization: vectorized channel name lookup
+    for i = 1:nchan
+        if channels(i) <= smdata_channels_length
+            channelNames(i) = string(smdata.channels(channels(i)).name);
+        else
+            error("Channel index %d out of range", channels(i));
+        end
+    end
+
+    % Use instrumentRack for getting values (bulk read for performance)
+    values = instrumentRackGlobal.rackGet(channelNames);
+
+    % Performance optimization: direct assignment instead of loop
+    data = num2cell(values);
+    return;
 else
-    error("Neither instrumentRack nor old smget available");
+    error("smget_new:no_instrumentRack", "instrumentRackGlobal is not available. Cannot get values.");
 end
 end

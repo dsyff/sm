@@ -169,7 +169,7 @@ classdef (Sealed) instrumentRack < handle
                         obj.dispLine()
                         obj.dispTime()
                         warning("An error occured during rackGet");
-                        disp(getReport(ME,'extended'));
+                        disp(getReport(ME, "extended"));
                         obj.dispTime()
                         obj.dispLine()
                     end
@@ -220,7 +220,7 @@ classdef (Sealed) instrumentRack < handle
                     else
                         obj.dispTime()
                         warning("An error occured during rackSetWrite");
-                        disp(getReport(ME,'extended'));
+                        disp(getReport(ME,"extended"));
                     end
                     if obj.tryInterval > 0
                         pause(seconds(obj.tryInterval));
@@ -278,7 +278,7 @@ classdef (Sealed) instrumentRack < handle
                     else
                         obj.dispTime()
                         warning("An error occured during rackSetWrite");
-                        disp(getReport(ME,'extended'));
+                        disp(getReport(ME,"extended"));
                     end
                     if obj.tryInterval > 0
                         pause(seconds(obj.tryInterval));
@@ -310,7 +310,7 @@ classdef (Sealed) instrumentRack < handle
                     else
                         obj.dispTime()
                         warning("An error occured during rackSetWrite");
-                        disp(getReport(ME,'extended'));
+                        disp(getReport(ME,"extended"));
                     end
                     if obj.tryInterval > 0
                         pause(seconds(obj.tryInterval));
@@ -337,8 +337,8 @@ classdef (Sealed) instrumentRack < handle
             obj.dispLine();
             tempChannelTable = obj.channelTable(:, 2:end);
             tempChannelTable.Properties.VariableNames(1) = "instruments";
-            tempChannelTable.rampRates = cellfun(@(x) x.', tempChannelTable.rampRates, 'UniformOutput', false);
-            tempChannelTable.rampThresholds = cellfun(@(x) x.', tempChannelTable.rampThresholds, 'UniformOutput', false);
+            tempChannelTable.rampRates = cellfun(@(x) x.', tempChannelTable.rampRates, UniformOutput = false);
+            tempChannelTable.rampThresholds = cellfun(@(x) x.', tempChannelTable.rampThresholds, UniformOutput = false);
             disp(tempChannelTable);
             obj.dispLine();
             obj.dispTime();
@@ -359,7 +359,7 @@ classdef (Sealed) instrumentRack < handle
                     else
                         obj.dispTime()
                         warning("An error occured during rackGet");
-                        disp(getReport(ME,'extended'));
+                        disp(getReport(ME,"extended"));
                     end
                     if obj.tryInterval > 0
                         pause(seconds(obj.tryInterval));
