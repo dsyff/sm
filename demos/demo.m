@@ -315,7 +315,7 @@ if Lockin2_Use
     %writeline(h, "slp 0"); % Output filter slope: 0=6dB, 1=12dB, 2=18dB, 3=24dB
     
     % Add to rack and configure channels
-    %rack.addInstrument(handle_SR830_2, "LockIn2");
+    rack.addInstrument(handle_SR830_2, "LockIn2");
     %rack.addChannel("LockIn2", "X", "Vxx1_X");
     %rack.addChannel("LockIn2", "Theta", "Vxx1_Th");
     %rack.addChannel("LockIn2", "Y", "Vxx1_Y");
