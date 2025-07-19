@@ -255,12 +255,13 @@ for i = 1:length(disp)
         x = 1:datadim(dc, ndim(dc));
         xlab = 'n';
     else
-        % Check if the relevant loop uses setchanranges for the x-axis
-        loop_idx = dataloop(dc) - ndim(dc);
-        if isfield(scandef(loop_idx),'setchanranges') && ~isempty(scandef(loop_idx).setchanranges)
+        % For x-axis: Loop 1 corresponds to columns (second dimension)
+        % Since data is stored as [npoints(end:-1:i), ...], loop 1 is the last loop
+        loop_idx_x = 1;  % Loop 1 for x-axis
+        if isfield(scandef(loop_idx_x),'setchanranges') && ~isempty(scandef(loop_idx_x).setchanranges)
             % Generate x values using the first channel's range from setchanranges
-            first_channel_range = scandef(loop_idx).setchanranges{1};
-            total_points = npoints(loop_idx);
+            first_channel_range = scandef(loop_idx_x).setchanranges{1};
+            total_points = npoints(loop_idx_x);
             if total_points > 1
                 x = linspace(first_channel_range(1), first_channel_range(2), total_points);
             else
@@ -268,11 +269,11 @@ for i = 1:length(disp)
             end
         else
             % For scans without setchanranges, use simple index-based x-axis
-            x = 1:npoints(loop_idx);
+            x = 1:npoints(loop_idx_x);
         end
         
-        if ~isempty(scandef(loop_idx).setchan)
-            xlab = smdata.channels(scandef(loop_idx).setchan(1)).name;
+        if ~isempty(scandef(loop_idx_x).setchan)
+            xlab = smdata.channels(scandef(loop_idx_x).setchan(1)).name;
         else
             xlab = '';
         end
@@ -283,12 +284,13 @@ for i = 1:length(disp)
             y = 1:datadim(dc, ndim(dc)-1);
             ylab = 'n';
         else
-            % Check if the relevant loop uses setchanranges for the y-axis
-            loop_idx = dataloop(dc) - ndim(dc) + 1;
-            if isfield(scandef(loop_idx),'setchanranges') && ~isempty(scandef(loop_idx).setchanranges)
+            % For y-axis: Loop 2 corresponds to rows (first dimension)
+            % Since data is stored as [npoints(end:-1:i), ...], loop 2 is nloops-1
+            loop_idx_y = 2;  % Loop 2 for y-axis
+            if loop_idx_y <= nloops && isfield(scandef(loop_idx_y),'setchanranges') && ~isempty(scandef(loop_idx_y).setchanranges)
                 % Generate y values using the first channel's range from setchanranges
-                first_channel_range = scandef(loop_idx).setchanranges{1};
-                total_points = npoints(loop_idx);
+                first_channel_range = scandef(loop_idx_y).setchanranges{1};
+                total_points = npoints(loop_idx_y);
                 if total_points > 1
                     y = linspace(first_channel_range(1), first_channel_range(2), total_points);
                 else
@@ -296,17 +298,24 @@ for i = 1:length(disp)
                 end
             else
                 % For scans without setchanranges, use simple index-based y-axis
-                y = 1:npoints(loop_idx);
+                if loop_idx_y <= nloops
+                    y = 1:npoints(loop_idx_y);
+                else
+                    y = 1:datadim(dc, ndim(dc)-1);
+                end
             end
             
-            if ~isempty(scandef(loop_idx).setchan)
-                ylab = smdata.channels(scandef(loop_idx).setchan(1)).name;
+            if loop_idx_y <= nloops && ~isempty(scandef(loop_idx_y).setchan)
+                ylab = smdata.channels(scandef(loop_idx_y).setchan(1)).name;
             else
                 ylab = '';
             end
         end
         z = NaN(length(y),length(x));
         z(:, :) = subsref(data{dc}, s);
+        % Data is stored as [loop2, loop1, ...] which is correct for imagesc
+        % where loop2=y-axis (rows) and loop1=x-axis (columns)
+        % No transpose needed - data is already in the correct format
         disph(i) = imagesc(x, y, z);
         
         set(gca, 'ydir', 'normal');
@@ -348,9 +357,98 @@ disp_loops = [disp.loop];
 disp_channels = [disp.channel];
 disp_dims = [disp.dim];
 
+% Pre-allocate axis arrays for all loops to avoid repeated calculations
+x_axes = cell(1, nloops);
+y_axes = cell(1, nloops);
+x_labels = cell(1, nloops);
+y_labels = cell(1, nloops);
+
+for loop_idx = 1:nloops
+    % Pre-compute x-axis for this loop
+    if isfield(scandef(loop_idx),'setchanranges') && ~isempty(scandef(loop_idx).setchanranges)
+        first_channel_range = scandef(loop_idx).setchanranges{1};
+        total_points = npoints(loop_idx);
+        if total_points > 1
+            x_axes{loop_idx} = linspace(first_channel_range(1), first_channel_range(2), total_points);
+            y_axes{loop_idx} = linspace(first_channel_range(1), first_channel_range(2), total_points);
+        else
+            x_axes{loop_idx} = first_channel_range(1);
+            y_axes{loop_idx} = first_channel_range(1);
+        end
+    else
+        x_axes{loop_idx} = 1:npoints(loop_idx);
+        y_axes{loop_idx} = 1:npoints(loop_idx);
+    end
+    
+    % Pre-compute labels
+    if ~isempty(scandef(loop_idx).setchan)
+        x_labels{loop_idx} = smdata.channels(scandef(loop_idx).setchan(1)).name;
+        y_labels{loop_idx} = smdata.channels(scandef(loop_idx).setchan(1)).name;
+    else
+        x_labels{loop_idx} = '';
+        y_labels{loop_idx} = '';
+    end
+end
+
+% Cache subplot information to avoid repeated subplot() calls
+subplot_cache = containers.Map('KeyType', 'int32', 'ValueType', 'any');
+for k = 1:length(disp)
+    subplot_cache(k) = struct('row', sbpl(1), 'col', sbpl(2), 'idx', k);
+end
+
+% Pre-compute setchanranges calculations for performance
+has_setchanranges = false(1, nloops);
+channel_slopes = cell(1, nloops);
+channel_intercepts = cell(1, nloops);
+channel_single_values = cell(1, nloops);
+has_waittime = false(1, nloops);
+waittime_values = zeros(1, nloops);
+has_startwait = false(1, nloops);
+startwait_values = zeros(1, nloops);
+
+for j = 1:nloops
+    % Pre-compute setchanranges parameters
+    if isfield(scandef(j),'setchanranges') && ~isempty(scandef(j).setchanranges)
+        has_setchanranges(j) = true;
+        num_ranges = min(nsetchan(j), length(scandef(j).setchanranges));
+        channel_slopes{j} = zeros(1, num_ranges);
+        channel_intercepts{j} = zeros(1, num_ranges);
+        channel_single_values{j} = zeros(1, num_ranges);
+        
+        for k = 1:num_ranges
+            channel_range = scandef(j).setchanranges{k};
+            if npoints(j) > 1
+                channel_slopes{j}(k) = (channel_range(2) - channel_range(1)) / (npoints(j) - 1);
+                channel_intercepts{j}(k) = channel_range(1);
+            else
+                channel_single_values{j}(k) = channel_range(1);
+            end
+        end
+    end
+    
+    % Pre-compute timing parameters
+    if isfield(scandef(j),'waittime') && ~isempty(scandef(j).waittime)
+        has_waittime(j) = true;
+        waittime_values(j) = scandef(j).waittime;
+    end
+    
+    if isfield(scandef(j),'startwait') && ~isempty(scandef(j).startwait)
+        has_startwait(j) = true;
+        startwait_values(j) = scandef(j).startwait;
+    end
+end
+
+% Pre-allocate channel value arrays for maximum channels
+max_channels = max(nsetchan);
+if max_channels > 0
+    val_for_channels_buffer = zeros(1, max_channels);
+end
+
 % Cache figure handle checks
 scan_should_exit = false;
 temp_file_counter = 0;
+figure_check_counter = 0;
+figure_check_interval = 10;  % Check figure every 10 points
 
 save_operations_completed = false;
 
@@ -362,86 +460,77 @@ for i = 1:nloops
         && ~any(scan.saveloop(1) == i) && ~any([disp.loop] == i);
 end
 
-loops = 1:nloops;
-
-% main loop
+% main loop - optimized version
 for point_idx = 1:totpoints_cached    
+    % Optimized loop selection logic
     if point_idx > 1
-        loops_end_idx = 1;
-        for idx = 1:nloops_cached
-            if count(idx) > 1
-                loops_end_idx = idx;
-                break;
-            end
+        loops_end_idx = find(count > 1, 1, 'first');
+        if isempty(loops_end_idx)
+            loops_end_idx = nloops_cached;
         end
         loops = 1:loops_end_idx;
+    else
+        loops = 1:nloops_cached;
     end       
     
-    for j = fliplr(loops(~isdummy(loops) | count(loops)==1))
-        % Calculate channel values: treat all channels equally using simple index mapping
-        if isfield(scandef(j),'setchanranges') && ~isempty(scandef(j).setchanranges)
-            % Simple approach: map current point index to each channel's range
-            % count(j) goes from 1 to npoints(j) FOR EACH COMPLETE CYCLE of this loop
-            % This works correctly for multi-dimensional scans because count(j) resets to 1
-            % when outer loops increment
-            
-            val_for_channels = zeros(1, nsetchan(j));
-            current_index = count(j);        % Current point: 1, 2, 3, ..., npoints(j)
-            total_points = npoints(j);       % Total points in this loop
-            
-            for k = 1:min(nsetchan(j), length(scandef(j).setchanranges))
-                channel_range = scandef(j).setchanranges{k};  % [start, end] for this channel
-                
-                % Simple linear interpolation from index to channel value
-                % Point 1 → channel_range(1), Point npoints → channel_range(2)
-                if total_points > 1
-                    val_for_channels(k) = channel_range(1) + ...
-                        (channel_range(2) - channel_range(1)) * ...
-                        (current_index - 1) / (total_points - 1);
-                else
-                    val_for_channels(k) = channel_range(1);  % Single point case
+    % Set channels - optimized with pre-computed values
+    active_loops = loops(~isdummy(loops) | count(loops)==1);
+    for j = fliplr(active_loops)
+        % Fast channel value calculation using pre-computed parameters
+        if has_setchanranges(j)
+            if npoints(j) > 1
+                % Vectorized calculation using pre-computed slopes and intercepts
+                num_ranges = length(channel_slopes{j});
+                if nsetchan(j) > 0
+                    val_for_channels_buffer(1:num_ranges) = channel_intercepts{j} + ...
+                        channel_slopes{j} * (count(j) - 1);
+                    val_for_channels = val_for_channels_buffer(1:nsetchan(j));
                 end
+            else
+                val_for_channels = channel_single_values{j}(1:nsetchan(j));
             end
         else
-            % For scans without setchanranges, use simple sequential values
-            % This ensures all channels get the same progression: 1, 2, 3, ..., npoints
-            val_for_channels = repmat(count(j), 1, max(1, nsetchan(j)));
+            % Simple case: all channels get the same count value
+            if nsetchan(j) > 0
+                val_for_channels = repmat(count(j), 1, nsetchan(j));
+            end
         end
 
+        % Instrument communication with cached strings
         if count(j) == 1
-            if nsetchan(j) && ~isempty(setchan_strings{j})
-                % Direct instrumentRack call using pre-computed strings
+            if nsetchan(j) > 0 && ~isempty(setchan_strings{j})
                 instrumentRackGlobal.rackSet(setchan_strings{j}, val_for_channels);
                 
-                if isfield(scandef(j),'startwait')
-                    pause(scandef(j).startwait)
+                if has_startwait(j)
+                    pause(startwait_values(j));
                 end
             end
             tloop(j) = now;
         else
             if nsetchan(j) > 0 && ~isempty(setchan_strings{j})
-                % Direct instrumentRack call using pre-computed strings
                 instrumentRackGlobal.rackSet(setchan_strings{j}, val_for_channels);
             end
         end
 
-        if isfield(scandef(j),'waittime') && ~isempty(scandef(j).waittime)
-            pause(scandef(j).waittime)
+        % Optimized wait time handling
+        if has_waittime(j)
+            pause(waittime_values(j));
         end
-    end
-    loops_end_idx = nloops_cached;
-    for idx = 1:nloops_cached
-        if count(idx) < npoints(idx)
-            loops_end_idx = idx;
-            break;
-        end
-    end
-    loops = 1:loops_end_idx;
-    if loops_end_idx == nloops_cached && all(count >= npoints)
-        loops = 1:nloops_cached;
     end
     
-    for j = loops(~isdummy(loops))
+    % Optimized loop determination for reading
+    if point_idx > 1
+        loops_end_idx = find(count < npoints, 1, 'first');
+        if isempty(loops_end_idx)
+            loops = 1:nloops_cached;
+        else
+            loops = 1:loops_end_idx;
+        end
+    end
+    
+    % Read data - optimized with pre-computed offsets
+    active_read_loops = loops(~isdummy(loops));
+    for j = active_read_loops
         % Direct instrumentRack call using pre-computed strings
         if ~isempty(getchan_strings{j})
             newdata = instrumentRackGlobal.rackGet(getchan_strings{j});
@@ -465,18 +554,69 @@ for point_idx = 1:totpoints_cached
         for k = 1:length(disp)
             if disp_loops(k) == j
                 dc = disp_channels(k);
-                nind = ndim(dc)+ nloops+1-dataloop(dc)-disp_dims(k);
-                s2.subs = [num2cell([count(end:-1:max(j, end-nind+1)), ones(1, max(0, nind+j-1-nloops))]),...
-                    repmat({':'},1, disp_dims(k))];
-                    try
-                        if disp_dims(k) == 2
+                
+                % For display updates, we want to show only data collected so far
+                % Create subscript for extracting current data state
+                if disp_dims(k) == 2
+                    % For 2D displays, extract the full data array
+                    % The data will have NaN values where measurements haven't been taken yet
+                    % This matches what the initial display does
+                    s2.subs = repmat({':'}, 1, ndims(data{dc}));
+                    
+                else
+                    % For 1D displays, extract based on current loop position
+                    nind = ndim(dc) + nloops + 1 - dataloop(dc) - disp_dims(k);
+                    s2.subs = [num2cell([count(end:-1:max(j, end-nind+1)), ones(1, max(0, nind+j-1-nloops))]),...
+                        repmat({':'},1, disp_dims(k))];
+                end
+                
+                try
+                    if disp_dims(k) == 2
+                            % For 2D plots, handle 3D scan data properly
                             z_data = subsref(data{dc}, s2);
+                            
+                            % Check if this is a 3D scan (more than 2 loops) and we're updating the outermost loop
+                            if nloops > 2 && j == nloops
+                                % Reset the plot for 3D scans when outermost loop changes
+                                z_data(:) = NaN;  % Clear the plot
+                            end
+                            
+                            % Ensure z_data is 2D for imagesc
+                            if ndims(z_data) > 2
+                                % For nD scans (n>2), extract 2D slice showing loop 1 vs loop 2
+                                % Data is stored as [n_outer, ..., n3, n2, n1]
+                                % We want to fix the outermost loop and show [n2, n1]
+                                slice_indices = repmat({':'}, 1, ndims(z_data));
+                                slice_indices{1} = count(end);  % Fix outermost loop at current value
+                                
+                                % For 4D+: also fix any intermediate loops at their current values
+                                for dim_idx = 2:(ndims(z_data)-2)
+                                    loop_idx = nloops - dim_idx + 1;  % Map dimension to loop index
+                                    if loop_idx >= 3  % Only fix loops 3 and higher
+                                        slice_indices{dim_idx} = count(loop_idx);
+                                    end
+                                end
+                                
+                                z_data = z_data(slice_indices{:});
+                                z_data = squeeze(z_data); % Remove all singleton dimensions
+                            end
+                            
+                            % Data is stored as [loop2, loop1, ...] which is correct for imagesc
+                            % where loop2=y-axis (rows) and loop1=x-axis (columns)
+                            % No transpose needed - data is already in the correct format
+                            
+                            % Simple efficient update - let errors surface if there's a size mismatch
                             set(disph(k), 'cdata', z_data);
                         else                
-                            set(disph(k), 'ydata', subsref(data{dc}, s2));
+                            y_data = subsref(data{dc}, s2);
+                            % For 3D scans, reset line plots when outermost loop changes
+                            if nloops > 2 && j == nloops
+                                y_data(:) = NaN;  % Clear the plot
+                            end
+                            set(disph(k), 'ydata', y_data);
                         end
                     catch ME
-                        saveData(); % Ensure data is saved before exiting
+                        saveData();  % Ensure data is saved before exiting
                         rethrow(ME);
                     end
             end
@@ -507,25 +647,36 @@ for point_idx = 1:totpoints_cached
         end
                
     end
-    count(loops(1:end-1)) = 1;
-    count(loops(end)) =  count(loops(end)) + 1;
     
-    %% Optimized exit/pause checks with reduced figure handle calls
-    if ishandle(figurenumber)
-        current_char = get(figurenumber, 'CurrentCharacter');
-        if current_char == char(27)  % Escape key
-            set(figurenumber, 'CurrentCharacter', char(0));
-            saveData();
-            return;
-%        elseif current_char == ' '  % Space bar
-%            set(figurenumber, 'CurrentCharacter', char(0));
-%            evalin('base', 'keyboard');                
+    % Update counters properly for nested loops
+    j = 1;
+    while j <= length(loops)
+        if count(loops(j)) < npoints(loops(j))
+            count(loops(j)) = count(loops(j)) + 1;
+            break;
+        else
+            count(loops(j)) = 1;
+            j = j + 1;
         end
     end
     
-    % Check if scan should exit (e.g., figure was closed)
-    if scan_should_exit
-        return;
+    % Optimized exit/pause checks - only check periodically to reduce overhead
+    figure_check_counter = figure_check_counter + 1;
+    if figure_check_counter >= figure_check_interval
+        figure_check_counter = 0;
+        if ishandle(figurenumber)
+            current_char = get(figurenumber, 'CurrentCharacter');
+            if current_char == char(27)  % Escape key
+                set(figurenumber, 'CurrentCharacter', char(0));
+                saveData();
+                return;
+            end
+        end
+        
+        % Check if scan should exit (e.g., figure was closed)
+        if scan_should_exit
+            return;
+        end
     end
   
 end
