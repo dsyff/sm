@@ -15,6 +15,9 @@ global smscan;
 global smaux;
 global instrumentRackGlobal
 
+%flush all instrument buffers before starting scan
+instrumentRackGlobal.flush();
+
 if ~isstruct(scan) 
     filename=scan;
     scan=smscan;

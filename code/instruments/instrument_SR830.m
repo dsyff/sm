@@ -20,7 +20,6 @@ classdef instrument_SR830 < instrumentInterface
             % Create VISA connection
             handle = visadev(address);
             handle.Timeout = 1;
-            configureTerminator(handle, "LF");
 
             % Assign object properties
             obj.address = address;
@@ -50,11 +49,9 @@ classdef instrument_SR830 < instrumentInterface
             obj.addChannel("RTheta", 2);            % Channel 21: R,Theta simultaneous read
         end
 
-        function delete(obj)
-            % Gracefully close connection
-            if ~isempty(obj.communicationHandle)
-                delete(obj.communicationHandle);
-            end
+        function flush(obj)
+            % Flush communication buffer
+            flush(obj.communicationHandle);
         end
 
         function reset(obj)
@@ -73,7 +70,6 @@ classdef instrument_SR830 < instrumentInterface
             % This allows instrumentRack to minimize reading time by sending all
             % getWrite commands first, then reading all results in sequence
             handle = obj.communicationHandle;
-            flush(handle);
             switch channelIndex
                 case 1  % X
                     writeline(handle, 'OUTP? 1');

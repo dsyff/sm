@@ -409,6 +409,8 @@ if Opticool_Use
 end
 
 %% wrap up setup
+%flush all instrument buffers to remove instrument introduction messages
+rack.flush();
 disp(rack)
 bridge = smguiBridge(rack);
 bridge.initializeSmdata();
