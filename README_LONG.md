@@ -328,7 +328,7 @@ data = smrun_new(smscan, "voltage_freq_map");
 ### Measurement Optimization:
 - **Single measurements**: Use `smget("channel")` for quick interactive access
 - **Batch measurements**: Use `smget({"ch1", "ch2", "ch3"})` for multiple channels
-- **Scanning**: Always use `smrun_new()` (10-15% faster than legacy)
+- **Scanning**: Always use `smrun_new()` (faster than legacy)
 - **Batch operations**: Let instrumentRack handle getWrite/getRead separation
 - **Direct access**: Use `instrument.getChannel()` for single instrument operations
 
