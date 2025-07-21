@@ -262,8 +262,8 @@ for i = 1:length(disp)
             imagesc(x, y, z);
             set(gca, 'ydir', 'normal');
             colorbar;
-            xlabel(xlab);
-            ylabel(ylab);
+            xlabel(strrep(xlab, '_', '\_'));
+            ylabel(strrep(ylab, '_', '\_'));
         catch ME
             plot(1, 1, 'r*');
             title(sprintf('Channel %d (Plot Error)', dc));
@@ -275,7 +275,7 @@ for i = 1:length(disp)
             y = subsref(data{dc}, s);
             plot(x, y);
             xlim(sort(x([1, end])));
-            xlabel(xlab);
+            xlabel(strrep(xlab, '_', '\_'));
         catch ME
             plot(1, 1, 'r*');
             warning('Error plotting 1D data for channel %d: %s', dc, ME.message);
@@ -285,7 +285,7 @@ for i = 1:length(disp)
     % Set title (channel name if available)
     if channel_names_available && dc <= length(getch) && getch(dc) <= length(smdata.channels)
         try
-            title(smdata.channels(getch(dc)).name);
+            title(strrep(smdata.channels(getch(dc)).name, '_', '\_'));
         catch
             title(sprintf('Channel %d', dc));
         end
