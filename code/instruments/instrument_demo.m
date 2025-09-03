@@ -84,7 +84,7 @@ classdef instrument_demo < instrumentInterface
                     % Send set command to instrument, e.g.:
                     % writeline(handle, sprintf('VOLT %g', setValues));
                 otherwise
-                    error("Set action unsupported for channel %s", obj.channelTable.channels(channelIndex));
+                    setWriteChannelHelper@instrumentInterface(obj, channelIndex, setValues);
             end
         end
 
