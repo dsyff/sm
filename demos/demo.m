@@ -1,5 +1,5 @@
 %%
-global instrumentRackGlobal smscan smaux smdata bridge;
+global instrumentRackGlobal smscan smaux smdata bridge tareData;
 %% Clean up existing instruments to release serial ports
 if exist("instrumentRackGlobal", "var") && ~isempty(instrumentRackGlobal)
     % Delete each instrument individually to properly release resources
@@ -17,11 +17,10 @@ if exist("instrumentRackGlobal", "var") && ~isempty(instrumentRackGlobal)
     delete(instrumentRackGlobal);
     clear instrumentRackGlobal;
 end
-
 clear;
 %clear all;
 close all;
-global instrumentRackGlobal smscan smaux smdata bridge;
+global instrumentRackGlobal smscan smaux smdata bridge tareData;
 path(pathdef);
 username=getenv("USERNAME");
 
@@ -40,9 +39,10 @@ else
 end
 
 %% instrument addresses
-LockIn1_GPIB = 7; %sd
-LockIn2_GPIB = 8; %vxx
-LockIn3_GPIB = 9; %
+SR860_1_GPIB = 7; %sd
+SR830_1_GPIB = 7; %sd
+SR830_2_GPIB = 8; %vxx
+SR830_3_GPIB = 9; %
 
 K2450_A_GPIB = 17; %strain cell outer
 K2450_B_GPIB = 18; %strain cell inner
@@ -54,17 +54,18 @@ Montana2_IP = "136.167.55.165";
 Opticool_IP = "127.0.0.1";
 
 %% GPIB Adaptor Indices - change these to match your setup
-adaptorIndex = 0;        % Standard instruments
-adaptorIndex_strain = 2; % Strain controller instruments
+adaptorIndex = 2;        % Standard instruments
+adaptorIndex_strain = 0; % Strain controller instruments
 
 %% instrument usage flags
 counter_Use = 1;
 clock_Use = 1;
 test_Use = 0; %extra counters for testing
 
-Lockin1_Use = 0;
-Lockin2_Use = 0;
-Lockin3_Use = 0;
+SR860_1_Use = 0;
+SR830_1_Use = 1;
+SR830_2_Use = 1;
+SR830_3_Use = 0;
 
 K2450_A_Use = 0;
 K2450_B_Use = 0;
@@ -73,7 +74,7 @@ K2450_C_Use = 0;
 Montana2_Use = 0;
 Opticool_Use = 0; %Opticool
 
-strainController_Use = 0;
+strainController_Use = 1;
 
 %% Handle strain controller dependencies
 if strainController_Use
@@ -84,10 +85,9 @@ if strainController_Use
         K2450_A_Use = 0;
         K2450_B_Use = 0;
     end
-    if Montana2_Use || Opticool_Use
-        fprintf("Warning: Cryostat disabled - managed internally by strain controller.\n");
+    if Montana2_Use
+        fprintf("Warning: Montana2 disabled - managed internally by strain controller.\n");
         Montana2_Use = 0;
-        Opticool_Use = 0;
     end
 end
 
@@ -112,7 +112,7 @@ end
 % Examples:
 %   rack.addInstrument(handle_clock, "clock");
 %   rack.addInstrument(handle_K2450, "K2450_C");
-%   rack.addInstrument(handle_SR830, "LockIn1");
+%   rack.addInstrument(handle_SR830, "SR860_1");
 %
 % STEP 3: Add Channels from Instrument
 % ====================================
@@ -125,7 +125,7 @@ end
 % Examples:
 %   rack.addChannel("clock", "timeStamp", "time");
 %   rack.addChannel("K2450_C", "V_source", "V_tg", 1, 0.5);  % 1V/s rate, 0.5V threshold
-%   rack.addChannel("LockIn1", "X", "Ixx_X");
+%   rack.addChannel("SR860_1", "X", "Ixx_X");
 %
 % STEP 4: Send Custom Commands to Hardware (Optional)
 % ===================================================
@@ -178,18 +178,26 @@ rack = instrumentRack(true); % TF to skip safety dialog for setup script
 
 %% Create strain controller first (if enabled) - manages K2450s A&B and cryostat internally
 if strainController_Use
-    % Determine cryostat type (default to Montana2)
-    cryostat_type = "Montana2"; % Default - change to "Opticool" if needed
+    cryostat_string = "Opticool"; %Opticool, Montana2
     
-    handle_strainController = instrument_strainController(...
+    %handle_strainController.plotLastSession();
+
+    handle_strainController = instrument_strainController("strainControllerInstance1", ...
         address_E4980AL = gpibAddress(E4980AL_GPIB, adaptorIndex_strain), ...
         address_K2450_A = gpibAddress(K2450_A_GPIB, adaptorIndex_strain), ...
         address_K2450_B = gpibAddress(K2450_B_GPIB, adaptorIndex_strain), ...
         address_Montana2 = Montana2_IP, ...
         address_Opticool = Opticool_IP, ...
-        cryostat = cryostat_type, ...
+        cryostat = cryostat_string, ...
         strainCellNumber = 1);
     
+    if exist("tareData", "var") && isempty(tareData)
+        tareData = handle_strainController.tare();
+    else
+        % if crash, load doglog
+        handle_strainController.tare(tareData.d_0);
+    end
+
     rack.addInstrument(handle_strainController, "strain");
     rack.addChannel("strain", "del_d", "del_d");
     rack.addChannel("strain", "T", "T");
@@ -203,20 +211,12 @@ if strainController_Use
     rack.addChannel("strain", "I_str_i", "I_str_i");
     rack.addChannel("strain", "activeControl", "activeControl");
 
-    % Set initial parameters (based on legacy setup)
-    handle_strainController.setParameters(...
-        "frequency", 100e3, ...
-        "Z_short_r", 1.783, ...
-        "Z_short_theta", deg2rad(29.85), ...
-        "Z_open_r", 27.9e6, ...
-        "Z_open_theta", deg2rad(104.17));
-    
-    % Perform tare operation
-    handle_strainController.tareDisplacement(20);
+    % Parameters passed via constructor to legacy watchdog. Tare step skipped here; run your
+    % preferred tare workflow via the legacy UI/commands if needed.
     
     % Set initial voltages to zero
-    smset("strain.V_str_o", 0);
-    smset("strain.V_str_i", 0);
+    % smset("strain.V_str_o", 0);
+    % smset("strain.V_str_i", 0);
     
     fprintf("Strain controller initialized and tared.\n");
 end
@@ -274,8 +274,8 @@ if K2450_C_Use
     rack.addChannel("K2450_C", "VI", "VI_tg");
 end
 
-if Lockin1_Use
-    handle_SR860_1 = instrument_SR860(gpibAddress(LockIn1_GPIB, adaptorIndex));
+if SR860_1_Use
+    handle_SR860_1 = instrument_SR860(gpibAddress(SR860_1_GPIB, adaptorIndex));
     handle_SR860_1.requireSetCheck = false;
     
     % Configure instrument (based on legacy setup)
@@ -287,34 +287,73 @@ if Lockin1_Use
     %writeline(h, "icpl 0"); % Input coupling: 0=AC, 1=DC
 
     % Add to rack and configure channels
-    rack.addInstrument(handle_SR860_1, "LockIn1");
-    %rack.addChannel("LockIn1", "X", "Ixx_X");
-    %rack.addChannel("LockIn1", "Theta", "Ixx_Th");
-    rack.addChannel("LockIn1", "frequency", "Freq");
-    rack.addChannel("LockIn1", "amplitude", "V_exc");
-    %rack.addChannel("LockIn1", "Y", "Ixx_Y");
-    %rack.addChannel("LockIn1", "R", "Ixx_R");
-    %rack.addChannel("LockIn1", "phase", "Ixx_Phase");
-    %rack.addChannel("LockIn1", "aux_in_1", "Ixx_AuxIn1");
-    %rack.addChannel("LockIn1", "aux_in_2", "Ixx_AuxIn2");
-    %rack.addChannel("LockIn1", "aux_in_3", "Ixx_AuxIn3");
-    %rack.addChannel("LockIn1", "aux_in_4", "Ixx_AuxIn4");
-    %rack.addChannel("LockIn1", "aux_out_1", "Ixx_AuxOut1");
-    %rack.addChannel("LockIn1", "aux_out_2", "Ixx_AuxOut2");
-    %rack.addChannel("LockIn1", "aux_out_3", "Ixx_AuxOut3");
-    %rack.addChannel("LockIn1", "aux_out_4", "Ixx_AuxOut4");
-    rack.addChannel("LockIn1", "sensitivity", "Ixx_Sens"); % in volts; multiply by 1E-6 for amps
-    %rack.addChannel("LockIn1", "time_constant", "Ixx_TimeConst");
-    %rack.addChannel("LockIn1", "sync_filter", "Ixx_SyncFilter");
-    %rack.addChannel("LockIn1", "XY", "Ixx_XY");
-    rack.addChannel("LockIn1", "XTheta", "Ixx_XTheta");
-    %rack.addChannel("LockIn1", "YTheta", "Ixx_YTheta");
-    %rack.addChannel("LockIn1", "RTheta", "Ixx_RTheta");
-    %rack.addChannel("LockIn1", "dc_offset", "Ixx_dc_offset");
+    rack.addInstrument(handle_SR860_1, "SR860_1");
+    %rack.addChannel("SR860_1", "X", "Ixx_X");
+    %rack.addChannel("SR860_1", "Theta", "Ixx_Th");
+    rack.addChannel("SR860_1", "frequency", "Freq");
+    rack.addChannel("SR860_1", "amplitude", "V_exc");
+    %rack.addChannel("SR860_1", "Y", "Ixx_Y");
+    %rack.addChannel("SR860_1", "R", "Ixx_R");
+    %rack.addChannel("SR860_1", "phase", "Ixx_Phase");
+    %rack.addChannel("SR860_1", "aux_in_1", "Ixx_AuxIn1");
+    %rack.addChannel("SR860_1", "aux_in_2", "Ixx_AuxIn2");
+    %rack.addChannel("SR860_1", "aux_in_3", "Ixx_AuxIn3");
+    %rack.addChannel("SR860_1", "aux_in_4", "Ixx_AuxIn4");
+    %rack.addChannel("SR860_1", "aux_out_1", "Ixx_AuxOut1");
+    %rack.addChannel("SR860_1", "aux_out_2", "Ixx_AuxOut2");
+    %rack.addChannel("SR860_1", "aux_out_3", "Ixx_AuxOut3");
+    %rack.addChannel("SR860_1", "aux_out_4", "Ixx_AuxOut4");
+    rack.addChannel("SR860_1", "sensitivity", "Ixx_Sens"); % in volts; multiply by 1E-6 for amps
+    %rack.addChannel("SR860_1", "time_constant", "Ixx_TimeConst");
+    %rack.addChannel("SR860_1", "sync_filter", "Ixx_SyncFilter");
+    %rack.addChannel("SR860_1", "XY", "Ixx_XY");
+    rack.addChannel("SR860_1", "XTheta", "Ixx_XTheta");
+    %rack.addChannel("SR860_1", "YTheta", "Ixx_YTheta");
+    %rack.addChannel("SR860_1", "RTheta", "Ixx_RTheta");
+    %rack.addChannel("SR860_1", "dc_offset", "Ixx_dc_offset");
 end
 
-if Lockin2_Use
-    handle_SR830_2 = instrument_SR830(gpibAddress(LockIn2_GPIB, adaptorIndex));
+if SR830_1_Use
+    handle_SR830_1 = instrument_SR830(gpibAddress(SR830_1_GPIB, adaptorIndex));
+    handle_SR830_1.requireSetCheck = false;
+    
+    % Configure instrument (based on legacy setup)
+    h = handle_SR830_1.communicationHandle;
+    % Uncomment and modify settings as needed:
+    %writeline(h, "isrc 0"); % Input source: 0=A, 1=A-B
+    %writeline(h, "ivmd 0"); % Input source: 0=voltage, 1=current
+    %writeline(h, "ignd 1"); % Input grounding: 0=float, 1=ground
+    %writeline(h, "icpl 0"); % Input coupling: 0=AC, 1=DC
+
+    % Add to rack and configure channels
+    rack.addInstrument(handle_SR830_1, "SR830_1");
+    %rack.addChannel("SR830_1", "X", "Ixx_X");
+    %rack.addChannel("SR830_1", "Theta", "Ixx_Th");
+    rack.addChannel("SR830_1", "frequency", "Freq");
+    rack.addChannel("SR830_1", "amplitude", "V_exc");
+    %rack.addChannel("SR830_1", "Y", "Ixx_Y");
+    %rack.addChannel("SR830_1", "R", "Ixx_R");
+    %rack.addChannel("SR830_1", "phase", "Ixx_Phase");
+    %rack.addChannel("SR830_1", "aux_in_1", "Ixx_AuxIn1");
+    %rack.addChannel("SR830_1", "aux_in_2", "Ixx_AuxIn2");
+    %rack.addChannel("SR830_1", "aux_in_3", "Ixx_AuxIn3");
+    %rack.addChannel("SR830_1", "aux_in_4", "Ixx_AuxIn4");
+    %rack.addChannel("SR830_1", "aux_out_1", "Ixx_AuxOut1");
+    %rack.addChannel("SR830_1", "aux_out_2", "Ixx_AuxOut2");
+    %rack.addChannel("SR830_1", "aux_out_3", "Ixx_AuxOut3");
+    %rack.addChannel("SR830_1", "aux_out_4", "Ixx_AuxOut4");
+    rack.addChannel("SR830_1", "sensitivity", "Ixx_Sens"); % in volts; multiply by 1E-6 for amps
+    %rack.addChannel("SR830_1", "time_constant", "Ixx_TimeConst");
+    %rack.addChannel("SR830_1", "sync_filter", "Ixx_SyncFilter");
+    %rack.addChannel("SR830_1", "XY", "Ixx_XY");
+    rack.addChannel("SR830_1", "XTheta", "Ixx_XTheta");
+    %rack.addChannel("SR830_1", "YTheta", "Ixx_YTheta");
+    %rack.addChannel("SR830_1", "RTheta", "Ixx_RTheta");
+    %rack.addChannel("SR830_1", "dc_offset", "Ixx_dc_offset");
+end
+
+if SR830_2_Use
+    handle_SR830_2 = instrument_SR830(gpibAddress(SR830_2_GPIB, adaptorIndex));
     handle_SR830_2.requireSetCheck = false;
     
     % Configure instrument (based on legacy setup)
@@ -328,33 +367,33 @@ if Lockin2_Use
     %writeline(h, "slp 0"); % Output filter slope: 0=6dB, 1=12dB, 2=18dB, 3=24dB
     
     % Add to rack and configure channels
-    rack.addInstrument(handle_SR830_2, "LockIn2");
-    %rack.addChannel("LockIn2", "X", "Vxx1_X");
-    %rack.addChannel("LockIn2", "Theta", "Vxx1_Th");
-    %rack.addChannel("LockIn2", "Y", "Vxx1_Y");
-    %rack.addChannel("LockIn2", "R", "Vxx1_R");
-    %rack.addChannel("LockIn2", "frequency", "Vxx1_Freq");
-    %rack.addChannel("LockIn2", "amplitude", "Vxx1_Amp");
-    %rack.addChannel("LockIn2", "phase", "Vxx1_Phase");
-    %rack.addChannel("LockIn2", "aux_in_1", "Vxx1_AuxIn1");
-    %rack.addChannel("LockIn2", "aux_in_2", "Vxx1_AuxIn2");
-    %rack.addChannel("LockIn2", "aux_in_3", "Vxx1_AuxIn3");
-    %rack.addChannel("LockIn2", "aux_in_4", "Vxx1_AuxIn4");
-    %rack.addChannel("LockIn2", "aux_out_1", "Vxx1_AuxOut1");
-    %rack.addChannel("LockIn2", "aux_out_2", "Vxx1_AuxOut2");
-    %rack.addChannel("LockIn2", "aux_out_3", "Vxx1_AuxOut3");
-    %rack.addChannel("LockIn2", "aux_out_4", "Vxx1_AuxOut4");
-    rack.addChannel("LockIn2", "sensitivity", "Vxx1_Sens"); % in volts; multiply by 1E-6 for amps
-    %rack.addChannel("LockIn2", "time_constant", "Vxx1_TimeConst");
-    %rack.addChannel("LockIn2", "sync_filter", "Vxx1_SyncFilter");
-    %rack.addChannel("LockIn2", "XY", "Vxx1_XY");
-    rack.addChannel("LockIn2", "XTheta", "Vxx1_XTheta");
-    %rack.addChannel("LockIn2", "YTheta", "Vxx1_YTheta");
-    %rack.addChannel("LockIn2", "RTheta", "Vxx1_RTheta");
+    rack.addInstrument(handle_SR830_2, "SR830_2");
+    %rack.addChannel("SR830_2", "X", "Vxx1_X");
+    %rack.addChannel("SR830_2", "Theta", "Vxx1_Th");
+    %rack.addChannel("SR830_2", "Y", "Vxx1_Y");
+    %rack.addChannel("SR830_2", "R", "Vxx1_R");
+    %rack.addChannel("SR830_2", "frequency", "Vxx1_Freq");
+    %rack.addChannel("SR830_2", "amplitude", "Vxx1_Amp");
+    %rack.addChannel("SR830_2", "phase", "Vxx1_Phase");
+    %rack.addChannel("SR830_2", "aux_in_1", "Vxx1_AuxIn1");
+    %rack.addChannel("SR830_2", "aux_in_2", "Vxx1_AuxIn2");
+    %rack.addChannel("SR830_2", "aux_in_3", "Vxx1_AuxIn3");
+    %rack.addChannel("SR830_2", "aux_in_4", "Vxx1_AuxIn4");
+    %rack.addChannel("SR830_2", "aux_out_1", "Vxx1_AuxOut1");
+    %rack.addChannel("SR830_2", "aux_out_2", "Vxx1_AuxOut2");
+    %rack.addChannel("SR830_2", "aux_out_3", "Vxx1_AuxOut3");
+    %rack.addChannel("SR830_2", "aux_out_4", "Vxx1_AuxOut4");
+    rack.addChannel("SR830_2", "sensitivity", "Vxx1_Sens"); % in volts; multiply by 1E-6 for amps
+    %rack.addChannel("SR830_2", "time_constant", "Vxx1_TimeConst");
+    %rack.addChannel("SR830_2", "sync_filter", "Vxx1_SyncFilter");
+    %rack.addChannel("SR830_2", "XY", "Vxx1_XY");
+    rack.addChannel("SR830_2", "XTheta", "Vxx1_XTheta");
+    %rack.addChannel("SR830_2", "YTheta", "Vxx1_YTheta");
+    %rack.addChannel("SR830_2", "RTheta", "Vxx1_RTheta");
 end
 
-if Lockin3_Use
-    handle_SR830_3 = instrument_SR830(gpibAddress(LockIn3_GPIB, adaptorIndex));
+if SR830_3_Use
+    handle_SR830_3 = instrument_SR830(gpibAddress(SR830_3_GPIB, adaptorIndex));
     handle_SR830_3.requireSetCheck = false;
     
     % Configure instrument (based on legacy setup)
@@ -368,29 +407,29 @@ if Lockin3_Use
     %writeline(h, "slp 0"); % Output filter slope: 0=6dB, 1=12dB, 2=18dB, 3=24dB
     
     % Add to rack and configure channels
-    rack.addInstrument(handle_SR830_3, "LockIn3");
-    %rack.addChannel("LockIn3", "R", "Vxx2_R");
-    %rack.addChannel("LockIn3", "X", "Vxx2_X");
-    %rack.addChannel("LockIn3", "Theta", "Vxx2_Th");
-    %rack.addChannel("LockIn3", "Y", "Vxx2_Y");
-    %rack.addChannel("LockIn3", "frequency", "Vxx2_Freq");
-    %rack.addChannel("LockIn3", "amplitude", "Vxx2_Amp");
-    %rack.addChannel("LockIn3", "phase", "Vxx2_Phase");
-    %rack.addChannel("LockIn3", "aux_in_1", "Vxx2_AuxIn1");
-    %rack.addChannel("LockIn3", "aux_in_2", "Vxx2_AuxIn2");
-    %rack.addChannel("LockIn3", "aux_in_3", "Vxx2_AuxIn3");
-    %rack.addChannel("LockIn3", "aux_in_4", "Vxx2_AuxIn4");
-    %rack.addChannel("LockIn3", "aux_out_1", "Vxx2_AuxOut1");
-    %rack.addChannel("LockIn3", "aux_out_2", "Vxx2_AuxOut2");
-    %rack.addChannel("LockIn3", "aux_out_3", "Vxx2_AuxOut3");
-    %rack.addChannel("LockIn3", "aux_out_4", "Vxx2_AuxOut4");
-    rack.addChannel("LockIn3", "sensitivity", "Vxx2_Sens"); % in volts; multiply by 1E-6 for amps
-    %rack.addChannel("LockIn3", "time_constant", "Vxx2_TimeConst");
-    %rack.addChannel("LockIn3", "sync_filter", "Vxx2_SyncFilter");
-    %rack.addChannel("LockIn3", "XY", "Vxx2_XY");
-    rack.addChannel("LockIn3", "XTheta", "Vxx2_XTheta");
-    %rack.addChannel("LockIn3", "YTheta", "Vxx2_YTheta");
-    %rack.addChannel("LockIn3", "RTheta", "Vxx2_RTheta");
+    rack.addInstrument(handle_SR830_3, "SR830_3");
+    %rack.addChannel("SR830_3", "R", "Vxx2_R");
+    %rack.addChannel("SR830_3", "X", "Vxx2_X");
+    %rack.addChannel("SR830_3", "Theta", "Vxx2_Th");
+    %rack.addChannel("SR830_3", "Y", "Vxx2_Y");
+    %rack.addChannel("SR830_3", "frequency", "Vxx2_Freq");
+    %rack.addChannel("SR830_3", "amplitude", "Vxx2_Amp");
+    %rack.addChannel("SR830_3", "phase", "Vxx2_Phase");
+    %rack.addChannel("SR830_3", "aux_in_1", "Vxx2_AuxIn1");
+    %rack.addChannel("SR830_3", "aux_in_2", "Vxx2_AuxIn2");
+    %rack.addChannel("SR830_3", "aux_in_3", "Vxx2_AuxIn3");
+    %rack.addChannel("SR830_3", "aux_in_4", "Vxx2_AuxIn4");
+    %rack.addChannel("SR830_3", "aux_out_1", "Vxx2_AuxOut1");
+    %rack.addChannel("SR830_3", "aux_out_2", "Vxx2_AuxOut2");
+    %rack.addChannel("SR830_3", "aux_out_3", "Vxx2_AuxOut3");
+    %rack.addChannel("SR830_3", "aux_out_4", "Vxx2_AuxOut4");
+    rack.addChannel("SR830_3", "sensitivity", "Vxx2_Sens"); % in volts; multiply by 1E-6 for amps
+    %rack.addChannel("SR830_3", "time_constant", "Vxx2_TimeConst");
+    %rack.addChannel("SR830_3", "sync_filter", "Vxx2_SyncFilter");
+    %rack.addChannel("SR830_3", "XY", "Vxx2_XY");
+    rack.addChannel("SR830_3", "XTheta", "Vxx2_XTheta");
+    %rack.addChannel("SR830_3", "YTheta", "Vxx2_YTheta");
+    %rack.addChannel("SR830_3", "RTheta", "Vxx2_RTheta");
 end
 
 if Montana2_Use
@@ -404,7 +443,9 @@ if Opticool_Use
     handle_Opticool = instrument_Opticool(Opticool_IP);
     handle_Opticool.requireSetCheck = true;
     rack.addInstrument(handle_Opticool, "Opticool");
-    rack.addChannel("Opticool", "T", "T");
+    if ~strainController_Use
+        rack.addChannel("Opticool", "T", "T");
+    end
     rack.addChannel("Opticool", "B", "B");
 end
 

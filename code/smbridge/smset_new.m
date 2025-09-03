@@ -47,7 +47,7 @@ if exist("instrumentRackGlobal", "var") && ~isempty(instrumentRackGlobal)
     end
     
     % Use instrumentRack for setting (ramping removed for performance)
-    instrumentRackGlobal.rackSetWrite(channelNames, vals);
+    instrumentRackGlobal.rackSet(channelNames, vals);
     return;
 else
     error("instrumentRackGlobal is not available. Cannot set values.");

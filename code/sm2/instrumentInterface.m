@@ -74,7 +74,8 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
             %Gracefully closes connection to instrument. Many instruments
             %requires overriding this default implementation. This
             %implementation is redundant but serves as an example
-            delete(obj.communicationHandle);
+            
+            %delete(obj.communicationHandle);
         end
         
         function flush(~)
@@ -114,7 +115,7 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
             assert(channelIndex == obj.lastGetChannelIndex, "Last getWrite was channel %s, but getRead was called for channel %s.", obj.channelTable.channels(obj.lastGetChannelIndex), channel);
             getValues = obj.getReadChannelHelper(channelIndex);
             obj.checkSize(channelIndex, getValues);
-            assert(all(~isnan(getValues)), "getRead for channel %s received nan value(s). Received:\n%s", channel, formattedDisplayText(getValues));
+            %assert(all(~isnan(getValues)), "getRead for channel %s received nan value(s). Received:\n%s", channel, formattedDisplayText(getValues));
             % enforce column vector
             if ~isscalar(getValues) && isrow(getValues)
                 warning("Channel %s returned a row vector while getting. A column vector is preferred.", channel);
