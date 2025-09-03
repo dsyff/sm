@@ -121,7 +121,7 @@ classdef instrument_Opticool < instrumentInterface
             % sets temperature if current target differs from
             % targetTemperature
             currentTarget = obj.getCurrentTargetTemperature();
-            targetChanged = currentTarget ~= targetTemperature;
+            targetChanged = abs(currentTarget - targetTemperature) > 1E-3;
             if targetChanged
                 obj.setWriteChannel("T", targetTemperature);
             end
@@ -129,7 +129,7 @@ classdef instrument_Opticool < instrumentInterface
 
         function targetChanged = enforceTargetMagneticField(obj, targetMagneticField)
             currentTarget = obj.getCurrentTargetMagneticField();
-            targetChanged = currentTarget ~= targetMagneticField;
+            targetChanged = abs(currentTarget - targetMagneticField) > 1E-3;
             if targetChanged
                 obj.setWriteChannel("B", targetMagneticField);
             end
