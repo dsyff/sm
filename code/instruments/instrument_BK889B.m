@@ -14,6 +14,7 @@ classdef instrument_BK889B < instrumentInterface
         
         function obj = instrument_BK889B(address)
             % initialize
+            obj@instrumentInterface();
             handle = serialport(address, 9600, Timeout = 1);
             configureTerminator(handle, "CR/LF", "LF"); %read terminator, write terminator
             % measurement hardware settings

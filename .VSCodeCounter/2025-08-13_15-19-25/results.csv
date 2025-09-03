@@ -1,0 +1,37 @@
+"filename", "language", "JSON with Comments", "Markdown", "MATLAB", "comment", "blank", "total"
+"c:\Users\Thomas\Desktop\sm-dev\README.md", "Markdown", 0, 29, 0, 0, 7, 36
+"c:\Users\Thomas\Desktop\sm-dev\README_LONG.md", "Markdown", 0, 389, 0, 0, 95, 484
+"c:\Users\Thomas\Desktop\sm-dev\code\convenient functions\gpibAddress.m", "MATLAB", 0, 0, 8, 0, 3, 11
+"c:\Users\Thomas\Desktop\sm-dev\code\convenient functions\smplot.m", "MATLAB", 0, 0, 232, 44, 34, 310
+"c:\Users\Thomas\Desktop\sm-dev\code\instruments\instrument_BK889B.m", "MATLAB", 0, 0, 83, 12, 13, 108
+"c:\Users\Thomas\Desktop\sm-dev\code\instruments\instrument_E4980AL.m", "MATLAB", 0, 0, 44, 4, 11, 59
+"c:\Users\Thomas\Desktop\sm-dev\code\instruments\instrument_K2400.m", "MATLAB", 0, 0, 66, 8, 14, 88
+"c:\Users\Thomas\Desktop\sm-dev\code\instruments\instrument_K2450.m", "MATLAB", 0, 0, 64, 6, 15, 85
+"c:\Users\Thomas\Desktop\sm-dev\code\instruments\instrument_Montana2.m", "MATLAB", 0, 0, 117, 5, 18, 140
+"c:\Users\Thomas\Desktop\sm-dev\code\instruments\instrument_Opticool.m", "MATLAB", 0, 0, 100, 13, 26, 139
+"c:\Users\Thomas\Desktop\sm-dev\code\instruments\instrument_SR830.m", "MATLAB", 0, 0, 154, 16, 22, 192
+"c:\Users\Thomas\Desktop\sm-dev\code\instruments\instrument_SR860.m", "MATLAB", 0, 0, 223, 31, 39, 293
+"c:\Users\Thomas\Desktop\sm-dev\code\instruments\instrument_clock.m", "MATLAB", 0, 0, 19, 6, 5, 30
+"c:\Users\Thomas\Desktop\sm-dev\code\instruments\instrument_counter.m", "MATLAB", 0, 0, 22, 7, 6, 35
+"c:\Users\Thomas\Desktop\sm-dev\code\instruments\instrument_demo.m", "MATLAB", 0, 0, 49, 39, 17, 105
+"c:\Users\Thomas\Desktop\sm-dev\code\instruments\instrument_strainController.m", "MATLAB", 0, 0, 678, 117, 127, 922
+"c:\Users\Thomas\Desktop\sm-dev\code\instruments\instrument_toyA.m", "MATLAB", 0, 0, 40, 7, 6, 53
+"c:\Users\Thomas\Desktop\sm-dev\code\instruments\instrument_toyB.m", "MATLAB", 0, 0, 40, 7, 6, 53
+"c:\Users\Thomas\Desktop\sm-dev\code\sm2\instrumentInterface.m", "MATLAB", 0, 0, 222, 39, 37, 298
+"c:\Users\Thomas\Desktop\sm-dev\code\sm2\instrumentRack.m", "MATLAB", 0, 0, 449, 49, 55, 553
+"c:\Users\Thomas\Desktop\sm-dev\code\smbridge\sm.m", "MATLAB", 0, 0, 119, 249, 93, 461
+"c:\Users\Thomas\Desktop\sm-dev\code\smbridge\sm_new_Callback.m", "MATLAB", 0, 0, 473, 52, 68, 593
+"c:\Users\Thomas\Desktop\sm-dev\code\smbridge\smchanlookup_new.m", "MATLAB", 0, 0, 130, 38, 17, 185
+"c:\Users\Thomas\Desktop\sm-dev\code\smbridge\smget.m", "MATLAB", 0, 0, 3, 18, 3, 24
+"c:\Users\Thomas\Desktop\sm-dev\code\smbridge\smget_new.m", "MATLAB", 0, 0, 31, 14, 11, 56
+"c:\Users\Thomas\Desktop\sm-dev\code\smbridge\smguiBridge.m", "MATLAB", 0, 0, 168, 40, 41, 249
+"c:\Users\Thomas\Desktop\sm-dev\code\smbridge\smgui_small_new.m", "MATLAB", 0, 0, 1319, 131, 174, 1624
+"c:\Users\Thomas\Desktop\sm-dev\code\smbridge\smrun_new.m", "MATLAB", 0, 0, 564, 129, 99, 792
+"c:\Users\Thomas\Desktop\sm-dev\code\smbridge\smset.m", "MATLAB", 0, 0, 3, 23, 3, 29
+"c:\Users\Thomas\Desktop\sm-dev\code\smbridge\smset_new.m", "MATLAB", 0, 0, 33, 13, 12, 58
+"c:\Users\Thomas\Desktop\sm-dev\code\smlegacy\smchaninst.m", "MATLAB", 0, 0, 4, 3, 3, 10
+"c:\Users\Thomas\Desktop\sm-dev\code\smlegacy\smsaveppt.m", "MATLAB", 0, 0, 140, 77, 35, 252
+"c:\Users\Thomas\Desktop\sm-dev\demos\demo.m", "MATLAB", 0, 0, 184, 194, 45, 423
+"c:\Users\Thomas\Desktop\sm-dev\sm-dev.code-workspace", "JSON with Comments", 8, 0, 0, 0, 0, 8
+"c:\Users\Thomas\Desktop\sm-dev\smrun.m", "MATLAB", 0, 0, 568, 151, 109, 828
+"Total", "-", 8, 418, 6349, 1542, 1269, 9586
