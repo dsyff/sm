@@ -12,10 +12,7 @@ end
 %%
 assert(~isMATLABReleaseOlderThan("R2022a"), "Matlab version is too old");
 currentPool = (gcp('nocreate'));
-if isempty(currentPool) || currentPool.Busy
-    evalc("delete(currentPool)");
-    evalc("parpool(""Processes"", 2)");
-end
+assert(~isempty(currentPool), "No Parallel pool found. Please create one in main script");
 
 %%
 dog2Man = parallel.pool.PollableDataQueue;
