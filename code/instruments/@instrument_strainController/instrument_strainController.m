@@ -5,6 +5,7 @@ classdef instrument_strainController < instrumentInterface
             "V_str_o", "V_str_i", "I_str_o", "I_str_i", "activeControl"];
         dogGetTimeout duration = seconds(15);
         dogCheckTimeout duration = seconds(60);
+        rack_strainController;
     end
 
     properties (Access = protected)
@@ -14,7 +15,7 @@ classdef instrument_strainController < instrumentInterface
     methods
         function obj = instrument_strainController(address, options)
             arguments
-                address (1,1) string = "strainControllerInstance1"
+                address (1,1) string = "strainController_1"
                 options.address_E4980AL (1, 1) string = gpibAddress(6)
                 options.address_K2450_A (1, 1) string = gpibAddress(17)
                 options.address_K2450_B (1, 1) string = gpibAddress(18)
@@ -42,19 +43,29 @@ classdef instrument_strainController < instrumentInterface
             dogSet(obj.handle_strainWatchdog, "frequency", 100E3);
 
             if options.cryostat == "Opticool"
-                dogSet(obj.handle_strainWatchdog, "Z_short_r", 5.68);
-                dogSet(obj.handle_strainWatchdog, "Z_short_theta", deg2rad(22.2));
-                dogSet(obj.handle_strainWatchdog, "Z_open_r", 28.9E6);
-                dogSet(obj.handle_strainWatchdog, "Z_open_theta", deg2rad(106.7));
+                % dogSet(obj.handle_strainWatchdog, "Z_short_r", 5.68);
+                % dogSet(obj.handle_strainWatchdog, "Z_short_theta", deg2rad(22.2));
+                % dogSet(obj.handle_strainWatchdog, "Z_open_r", 28.9E6);
+                % dogSet(obj.handle_strainWatchdog, "Z_open_theta", deg2rad(106.7));
+                %20250904 internal calibration all on
+                dogSet(obj.handle_strainWatchdog, "Z_short_r", 5.56);
+                dogSet(obj.handle_strainWatchdog, "Z_short_theta", deg2rad(20.5));
+                dogSet(obj.handle_strainWatchdog, "Z_open_r", 27.9E6);
+                dogSet(obj.handle_strainWatchdog, "Z_open_theta", deg2rad(104.2));
             elseif options.cryostat == "Montana2"
                 %20250409
-                dogSet(obj.handle_strainWatchdog, "Z_short_r", 1.783);
-                dogSet(obj.handle_strainWatchdog, "Z_short_theta", deg2rad(29.85));
-                dogSet(obj.handle_strainWatchdog, "Z_open_r", 27.9E6);
-                dogSet(obj.handle_strainWatchdog, "Z_open_theta", deg2rad(104.17));
+                % dogSet(obj.handle_strainWatchdog, "Z_short_r", 1.783);
+                % dogSet(obj.handle_strainWatchdog, "Z_short_theta", deg2rad(29.85));
+                % dogSet(obj.handle_strainWatchdog, "Z_open_r", 27.9E6);
+                % dogSet(obj.handle_strainWatchdog, "Z_open_theta", deg2rad(104.17));
+                %20250904 new LCR meter
+                dogSet(obj.handle_strainWatchdog, "Z_short_r", 2.402);
+                dogSet(obj.handle_strainWatchdog, "Z_short_theta", deg2rad(41.89));
+                dogSet(obj.handle_strainWatchdog, "Z_open_r", 20E9);
+                dogSet(obj.handle_strainWatchdog, "Z_open_theta", deg2rad(65));
             end
 
-            obj.address = string(address);
+            obj.address = address;
             obj.communicationHandle = handle;
 
             obj.addChannel("del_d", setTolerances = 5e-9);
@@ -70,6 +81,8 @@ classdef instrument_strainController < instrumentInterface
             obj.addChannel("activeControl", setTolerances = 0.1);
 
             obj.setTimeout = hours(3);
+
+            obj.rack_strainController = dogGet(obj.handle_strainWatchdog, "rack");
         end
 
         function delete(obj)
@@ -77,9 +90,18 @@ classdef instrument_strainController < instrumentInterface
             try
                 if ~isempty(obj.handle_strainWatchdog)
                     dogSend(obj.handle_strainWatchdog, "STOP");
+                    pause(5);
                 end
             catch
                 % ignore cleanup errors
+            end
+        end
+
+        function stop(obj)
+            if ~isempty(obj.handle_strainWatchdog)
+                dogSend(obj.handle_strainWatchdog, "STOP");
+                pause(5);
+                obj.handle_strainWatchdog = [];
             end
         end
 
@@ -95,6 +117,10 @@ classdef instrument_strainController < instrumentInterface
                 dogSet(obj.handle_strainWatchdog, "d_0", d_0);
                 tareData = [];
             end
+        end
+
+        function rack_strainController = getRack(obj)
+            rack_strainController = obj.rack_strainController;
         end
 
         function plotLastSession(~, options)

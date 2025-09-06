@@ -55,7 +55,7 @@ classdef instrument_K2400 < instrumentInterface
                 case 2
                     getValues = outputValues(2);
                 case 3
-                    getValues = outputValues;
+                    getValues = outputValues(1:2);
             end
         end
 
