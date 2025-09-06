@@ -625,7 +625,9 @@ for point_idx = 1:totpoints_cached
             end
         end
         
-        drawnow limitrate;
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %drawnow limitrate;
+        drawnow;
 
         % Temporary save with proper path handling
         if j == scan.saveloop(1) && ~mod(count(j), scan.saveloop(2)) && nargin >= 2
