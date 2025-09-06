@@ -101,11 +101,11 @@ handle_K2450_A = instrument_K2450(options.address_K2450_A);
 h = handle_K2450_A.communicationHandle;
 %writeline(h,"source:voltage:read:back off"); %do not measure voltage
 
-writeline(h,":sense:current:range 1e-7"); %sets the sense current range
-writeline(h,"source:voltage:Ilimit 8e-8"); %sets a current limit protector
+%writeline(h,":sense:current:range 1e-7"); %sets the sense current range
+%writeline(h,"source:voltage:Ilimit 8e-8"); %sets a current limit protector
 
-% writeline(h,":sense:current:range 1e-6"); %sets the sense current range
-% writeline(h,"source:voltage:Ilimit 3.2e-7"); %sets a current limit protector
+writeline(h,":sense:current:range 1e-6"); %sets the sense current range
+writeline(h,"source:voltage:Ilimit 3.2e-7"); %sets a current limit protector
 
 writeline(h,":source:voltage:range 200"); %sets the source voltage range
 %writeline(h,":source:voltage:range:auto ON"); %use auto range for voltage
@@ -125,11 +125,11 @@ handle_K2450_B = instrument_K2450(options.address_K2450_B);
 h = handle_K2450_B.communicationHandle;
 %writeline(h,"source:voltage:read:back off"); %do not measure voltage
 
-writeline(h,":sense:current:range 1e-7"); %sets the sense current range
-writeline(h,"source:voltage:Ilimit 5e-8"); %sets a current limit protector
+%writeline(h,":sense:current:range 1e-7"); %sets the sense current range
+%writeline(h,"source:voltage:Ilimit 5e-8"); %sets a current limit protector
 
-% writeline(h,":sense:current:range 1e-6"); %sets the sense current range
-% writeline(h,"source:voltage:Ilimit 2e-7"); %sets a current limit protector
+writeline(h,":sense:current:range 1e-6"); %sets the sense current range
+writeline(h,"source:voltage:Ilimit 2e-7"); %sets a current limit protector
 
 writeline(h,":source:voltage:range 200"); %sets the source voltage range
 %writeline(h,":source:voltage:range:auto ON"); %use auto range for voltage
@@ -562,6 +562,7 @@ end
                     else
                         % will throw error if any parameter is nan
                         setCurrentDisplacementAsReference(command);
+                        logParameterVariables();
                     end
                 case "CHECK"
                     dogError("cannot check %s.", command, command.channel);
@@ -593,7 +594,7 @@ end
         if (datetime("now") - lastUpdate) < staleTime
             send(dog2Man, getValue);
         else
-            dogError("measurement is stale.", command);
+            error("Error: measurement is stale.");
         end
     end
 

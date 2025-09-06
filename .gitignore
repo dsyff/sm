@@ -28,6 +28,9 @@ Thumbs.db
 *.swp
 *.swo
 
+# Local code statistics reports
+.VSCodeCounter/
+
 # Compiled files
 *.mex*
 *.p

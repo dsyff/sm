@@ -1,9 +1,13 @@
 %%
 global instrumentRackGlobal smscan smaux smdata bridge tareData;
 %% Clean up existing instruments to release serial ports
+if exist("handle_strainController", "var") && ~isempty(handle_strainController)
+    handle_strainController.stop();
+end
+
 if exist("instrumentRackGlobal", "var") && ~isempty(instrumentRackGlobal)
     % Delete each instrument individually to properly release resources
-    if ~isempty(instrumentRackGlobal.instrumentTable)
+    if isfield(instrumentRackGlobal, "instrumentTable") && ~isempty(instrumentRackGlobal.instrumentTable)
         instruments = instrumentRackGlobal.instrumentTable.instruments;
         for i = 1:length(instruments)
             try
@@ -17,6 +21,8 @@ if exist("instrumentRackGlobal", "var") && ~isempty(instrumentRackGlobal)
     delete(instrumentRackGlobal);
     clear instrumentRackGlobal;
 end
+delete(visadevfind);
+delete(serialportfind);
 clear;
 %clear all;
 close all;
@@ -41,12 +47,17 @@ end
 %% instrument addresses
 SR860_1_GPIB = 7; %sd
 SR830_1_GPIB = 7; %sd
-SR830_2_GPIB = 8; %vxx
-SR830_3_GPIB = 9; %
+SR830_2_GPIB = 8; %vxx1
+SR830_3_GPIB = 9; %vxx2
+SR830_4_GPIB = 10; %vxx3
 
 K2450_A_GPIB = 17; %strain cell outer
 K2450_B_GPIB = 18; %strain cell inner
-K2450_C_GPIB = 19; %vtg
+K2450_C_GPIB = 19; 
+
+K2400_A_GPIB = 23; %sd
+K2400_B_GPIB = 24; %vtg
+K2400_C_GPIB = 19;
 
 E4980AL_GPIB = 6; %E4980AL LCR meter for strain controller
 
@@ -54,6 +65,7 @@ Montana2_IP = "136.167.55.165";
 Opticool_IP = "127.0.0.1";
 
 %% GPIB Adaptor Indices - change these to match your setup
+% use visadevlist() to find out gpib addresses
 adaptorIndex = 2;        % Standard instruments
 adaptorIndex_strain = 0; % Strain controller instruments
 
@@ -66,13 +78,18 @@ SR860_1_Use = 0;
 SR830_1_Use = 1;
 SR830_2_Use = 1;
 SR830_3_Use = 0;
+SR830_4_Use = 0;
 
 K2450_A_Use = 0;
 K2450_B_Use = 0;
 K2450_C_Use = 0;
 
+K2400_A_Use = 1;
+K2400_B_Use = 1;
+K2400_C_Use = 0;
+
 Montana2_Use = 0;
-Opticool_Use = 0; %Opticool
+Opticool_Use = 1; %Opticool
 
 strainController_Use = 1;
 
@@ -88,6 +105,14 @@ if strainController_Use
     if Montana2_Use
         fprintf("Warning: Montana2 disabled - managed internally by strain controller.\n");
         Montana2_Use = 0;
+    end
+end
+%% create new parallel pool
+if strainController_Use
+    currentPool = (gcp('nocreate'));
+    if isempty(currentPool) || currentPool.Busy
+        delete(currentPool);
+        parpool("Processes");
     end
 end
 
@@ -173,7 +198,7 @@ end
 % - Duplicate friendly names for instruments or channels
 
 %% Create instrumentRack
-rack = instrumentRack(true); % TF to skip safety dialog for setup script
+rack = instrumentRack(false); % TF to skip safety dialog for setup script
 
 
 %% Create strain controller first (if enabled) - manages K2450s A&B and cryostat internally
@@ -182,7 +207,7 @@ if strainController_Use
     
     %handle_strainController.plotLastSession();
 
-    handle_strainController = instrument_strainController("strainControllerInstance1", ...
+    handle_strainController = instrument_strainController("strainController_1", ...
         address_E4980AL = gpibAddress(E4980AL_GPIB, adaptorIndex_strain), ...
         address_K2450_A = gpibAddress(K2450_A_GPIB, adaptorIndex_strain), ...
         address_K2450_B = gpibAddress(K2450_B_GPIB, adaptorIndex_strain), ...
@@ -218,7 +243,11 @@ if strainController_Use
     % smset("strain.V_str_o", 0);
     % smset("strain.V_str_i", 0);
     
+    fprintf("Strain controller rack starts.\n");
+    disp(handle_strainController.getRack());
+    fprintf("Strain controller rack ends.\n");
     fprintf("Strain controller initialized and tared.\n");
+    
 end
 
 %% Create other instruments using new sm2
@@ -234,19 +263,61 @@ if clock_Use
     rack.addInstrument(handle_clock, "clock");
     rack.addChannel("clock", "timeStamp", "time");
 end
-if test_Use
-    handle_counter_1 = instrument_counter("counter_1");
-    rack.addInstrument(handle_counter_1, "counter_1");
-    rack.addChannel("counter_1", "count", "count_1");
 
-    handle_counter_2 = instrument_counter("counter_2");
-    rack.addInstrument(handle_counter_2, "counter_2");
-    rack.addChannel("counter_2", "count", "count_2");
+if K2450_A_Use
+    handle_K2450_A = instrument_K2450(gpibAddress(K2450_A_GPIB, adaptorIndex));
+    handle_K2450_A.requireSetCheck = false; %dose not wait for instrument to reach set value
+    %handle_K2450_A.reset(); % only reset if output ramped to zero
+    
+    % Configure instrument communication and settings
+    h = handle_K2450_A.communicationHandle;
 
-    handle_counter_3 = instrument_counter("counter_3");
-    rack.addInstrument(handle_counter_3, "counter_3");
-    rack.addChannel("counter_3", "count", "count_3");
+    %writeline(h,"source:voltage:read:back off"); %do not measure voltage
+    writeline(h,":sense:current:range 1e-7"); %sets the sense current range
+    writeline(h,"source:voltage:Ilimit 1e-7"); %sets a current limit protector
+    writeline(h,":source:voltage:range 20"); %sets the source voltage range
+    %writeline(h,":source:voltage:range:auto ON"); %use auto range for voltage
+    %writeline(h,":route:terminals rear"); %use rear terminal
+    writeline(h,"NPLcycles 0.2"); %number of power line cycles per measurement
+    writeline(h,":OUTP ON");
+    pause(2);
+    %andle_K2450_A.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
+    %handle_K2450_A.setSetTolerances("V_source", 5E-3); %used to determine if voltage has been reached
+    
+    % Add to rack and configure channels
+    rack.addInstrument(handle_K2450_A, "K2450_A");
+    rack.addChannel("K2450_A", "V_source", "V_tg0", 1, 0.5); % 1V/s ramp rate, 10mV threshold
+    rack.addChannel("K2450_A", "I_measure", "I_tg0");
+    rack.addChannel("K2450_A", "VI", "VI_tg0");
 end
+
+if K2450_B_Use
+    handle_K2450_B = instrument_K2450(gpibAddress(K2450_B_GPIB, adaptorIndex));
+    handle_K2450_B.requireSetCheck = false; %dose not wait for instrument to reach set value
+    %handle_K2450_B.reset(); % only reset if output ramped to zero
+    
+    % Configure instrument communication and settings
+    h = handle_K2450_B.communicationHandle;
+
+    %writeline(h,"source:voltage:read:back off"); %do not measure voltage
+    writeline(h,":sense:current:range 1e-7"); %sets the sense current range
+    writeline(h,"source:voltage:Ilimit 1e-7"); %sets a current limit protector
+    writeline(h,":source:voltage:range 20"); %sets the source voltage range
+    %writeline(h,":source:voltage:range:auto ON"); %use auto range for voltage
+    %writeline(h,":route:terminals rear"); %use rear terminal
+    writeline(h,"NPLcycles 0.2"); %number of power line cycles per measurement
+    writeline(h,":OUTP ON");
+    pause(2);
+    %andle_K2450_B.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
+    %handle_K2450_B.setSetTolerances("V_source", 5E-3); %used to determine if voltage has been reached
+    
+    % Add to rack and configure channels
+    rack.addInstrument(handle_K2450_B, "K2450_B");
+    rack.addChannel("K2450_B", "V_source", "V_tg1", 1, 0.5); % 1V/s ramp rate, 10mV threshold
+    rack.addChannel("K2450_B", "I_measure", "I_tg1");
+    rack.addChannel("K2450_B", "VI", "VI_tg1");
+end
+
 if K2450_C_Use
     handle_K2450_C = instrument_K2450(gpibAddress(K2450_C_GPIB, adaptorIndex));
     handle_K2450_C.requireSetCheck = false; %dose not wait for instrument to reach set value
@@ -272,6 +343,84 @@ if K2450_C_Use
     rack.addChannel("K2450_C", "V_source", "V_tg", 1, 0.5); % 1V/s ramp rate, 10mV threshold
     rack.addChannel("K2450_C", "I_measure", "I_tg");
     rack.addChannel("K2450_C", "VI", "VI_tg");
+end
+
+if K2400_A_Use
+    handle_K2400_A = instrument_K2400(gpibAddress(K2400_A_GPIB, adaptorIndex));
+    handle_K2400_A.requireSetCheck = false; %dose not wait for instrument to reach set value
+    %handle_K2400_A.reset(); % only reset if output ramped to zero
+    
+    % Configure instrument communication and settings
+    h = handle_K2400_A.communicationHandle;
+
+    writeline(h,":sense:current:range 1e-7"); %sets the sense current range
+    writeline(h,"sense:current:protection 1e-7"); %sets a current limit protector
+    writeline(h,":source:voltage:range 20"); %sets the source voltage range
+    %writeline(h,":source:voltage:range:auto 1"); %use auto range for voltage
+    %writeline(h,":rout:term rear"); %use rear terminal
+    writeline(h,":CURRent:NPLCycles 0.2"); %number of power line cycles per measurement
+    writeline(h,":output on");
+    pause(2);
+    %andle_K2400_A.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
+    %handle_K2400_A.setSetTolerances("V_source", 5E-3); %used to determine if voltage has been reached
+    
+    % Add to rack and configure channels
+    rack.addInstrument(handle_K2400_A, "K2400_A");
+    rack.addChannel("K2400_A", "V_source", "V_sd", 1, 1); % 1V/s ramp rate, 1V threshold
+    rack.addChannel("K2400_A", "I_measure", "I_sd");
+    rack.addChannel("K2400_A", "VI", "VI_sd");
+end
+
+if K2400_B_Use
+    handle_K2400_B = instrument_K2400(gpibAddress(K2400_B_GPIB, adaptorIndex));
+    handle_K2400_B.requireSetCheck = false; %dose not wait for instrument to reach set value
+    %handle_K2400_B.reset(); % only reset if output ramped to zero
+    
+    % Configure instrument communication and settings
+    h = handle_K2400_B.communicationHandle;
+
+    writeline(h,":sense:current:range 1e-7"); %sets the sense current range
+    writeline(h,"sense:current:protection 1e-7"); %sets a current limit protector
+    writeline(h,":source:voltage:range 20"); %sets the source voltage range
+    %writeline(h,":source:voltage:range:auto 1"); %use auto range for voltage
+    %writeline(h,":rout:term rear"); %use rear terminal
+    writeline(h,":CURRent:NPLCycles 0.2"); %number of power line cycles per measurement
+    writeline(h,":output on");
+    pause(2);
+    %andle_K2400_B.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
+    %handle_K2400_B.setSetTolerances("V_source", 5E-3); %used to determine if voltage has been reached
+    
+    % Add to rack and configure channels
+    rack.addInstrument(handle_K2400_B, "K2400_B");
+    rack.addChannel("K2400_B", "V_source", "V_tg", 1, 1); % 1V/s ramp rate, 1V threshold
+    rack.addChannel("K2400_B", "I_measure", "I_tg");
+    rack.addChannel("K2400_B", "VI", "VI_tg");
+end
+
+if K2400_C_Use
+    handle_K2400_C = instrument_K2400(gpibAddress(K2400_C_GPIB, adaptorIndex));
+    handle_K2400_C.requireSetCheck = false; %dose not wait for instrument to reach set value
+    %handle_K2400_C.reset(); % only reset if output ramped to zero
+    
+    % Configure instrument communication and settings
+    h = handle_K2400_C.communicationHandle;
+
+    writeline(h,":sense:current:range 1e-7"); %sets the sense current range
+    writeline(h,"sense:current:protection 1e-7"); %sets a current limit protector
+    writeline(h,":source:voltage:range 20"); %sets the source voltage range
+    %writeline(h,":source:voltage:range:auto 1"); %use auto range for voltage
+    %writeline(h,":rout:term rear"); %use rear terminal
+    writeline(h,":CURRent:NPLCycles 0.2"); %number of power line cycles per measurement
+    writeline(h,":output on");
+    pause(2);
+    %andle_K2400_C.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
+    %handle_K2400_C.setSetTolerances("V_source", 5E-3); %used to determine if voltage has been reached
+    
+    % Add to rack and configure channels
+    rack.addInstrument(handle_K2400_C, "K2400_C");
+    rack.addChannel("K2400_C", "V_source", "V_tg", 1, 1); % 1V/s ramp rate, 1V threshold
+    rack.addChannel("K2400_C", "I_measure", "I_tg");
+    rack.addChannel("K2400_C", "VI", "VI_tg");
 end
 
 if SR860_1_Use
@@ -452,7 +601,9 @@ end
 %% wrap up setup
 %flush all instrument buffers to remove instrument introduction messages
 rack.flush();
+fprintf("Main rack starts.\n");
 disp(rack)
+fprintf("Main rack ends.\n");
 bridge = smguiBridge(rack);
 bridge.initializeSmdata();
 % Make rack available globally for the new smset/smget functions
