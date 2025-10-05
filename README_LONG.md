@@ -206,6 +206,10 @@ obj.addChannel("frequency", setTolerances = 0.01);   % 10mHz tolerance
     - SR830 uses 1-based indexing (X=1, Y=2, R=3, Theta=4)
     - SR860 uses 0-based indexing (X=0, Y=1, R=2, Theta=3)
     - Optimized for single SCPI command efficiency with robust error handling
+- **K10CR1**: Thorlabs cage rotator (position control)
+  - Migrated from legacy NET-based driver with blocking move semantics
+  - Provides degree-based position channel with tolerance-aware set verification
+  - Automatically loads Kinesis assemblies and homes device on startup
 
 - **strainController**: Persistent strain control system (migrated from v1.3)
   - **Parallel processing**: Real-time PID control loop running on worker thread

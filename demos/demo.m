@@ -64,6 +64,8 @@ E4980AL_GPIB = 6; %E4980AL LCR meter for strain controller
 Montana2_IP = "136.167.55.165";
 Opticool_IP = "127.0.0.1";
 
+K10CR1_Serial = ""; % Leave blank to use the first detected device
+
 %% GPIB Adaptor Indices - change these to match your setup
 % use visadevlist() to find out gpib addresses
 adaptorIndex = 2;        % Standard instruments
@@ -75,8 +77,8 @@ clock_Use = 1;
 test_Use = 0; %extra counters for testing
 
 SR860_1_Use = 0;
-SR830_1_Use = 1;
-SR830_2_Use = 1;
+SR830_1_Use = 0;
+SR830_2_Use = 0;
 SR830_3_Use = 0;
 SR830_4_Use = 0;
 
@@ -89,9 +91,11 @@ K2400_B_Use = 1;
 K2400_C_Use = 0;
 
 Montana2_Use = 0;
-Opticool_Use = 1; %Opticool
+Opticool_Use = 0;
 
-strainController_Use = 1;
+strainController_Use = 0;
+K10CR1_Use = 0;
+AndorSDK2_Use = 0;
 
 %% Handle strain controller dependencies
 if strainController_Use
@@ -395,6 +399,21 @@ if K2400_B_Use
     rack.addChannel("K2400_B", "V_source", "V_tg", 1, 1); % 1V/s ramp rate, 1V threshold
     rack.addChannel("K2400_B", "I_measure", "I_tg");
     rack.addChannel("K2400_B", "VI", "VI_tg");
+end
+
+if K10CR1_Use
+    handle_K10CR1 = instrument_K10CR1(K10CR1_Serial);
+    rack.addInstrument(handle_K10CR1, "K10CR1");
+    rack.addChannel("K10CR1", "position_deg", "K10CR1_position_deg");
+end
+
+if AndorSDK2_Use
+    handle_AndorSDK2 = instrument_AndorSDK2("AndorSDK2_demo");
+    % check andorHandle.pixelCount for number of pixels
+    rack.addInstrument(handle_AndorSDK2, "andor");
+    rack.addChannel("andor", "pixel_index", "andor_pixel_index");
+    rack.addChannel("andor", "counts", "andor_counts");
+    rack.addChannel("andor", "exposure_time", "andor_exposure_time");
 end
 
 if K2400_C_Use

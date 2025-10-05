@@ -61,6 +61,8 @@ classdef instrument_K2450 < instrumentInterface
             switch channelIndex
                 case 1
                     writeline(handle, sprintf(":SOUR:VOLT %g", setValues));
+                otherwise
+                    setWriteChannelHelper@instrumentInterface(obj, channelIndex, setValues);
             end
         end
 
