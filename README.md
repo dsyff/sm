@@ -11,6 +11,7 @@
 - **BK889B** - LCR meter
 - **E4980AL** - Precision LCR meter  
 - **K2400, K2450** - Keithley
+- **K10CR1** - Thorlabs cage rotator
 - **Montana2, Opticool** - Cryostats
 - **SR830, SR860** - Stanford Research lock-in amplifiers
 - **strainController** - Parallel strain control system
