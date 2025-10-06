@@ -3,6 +3,7 @@ legacy/
 debug/
 tests/
 
+
 # MATLAB specific ignores
 *.asv
 *.m~
@@ -36,4 +37,6 @@ Thumbs.db
 *.mex*
 *.p
 
+# exclude llm instructions
 .github/
+docs/

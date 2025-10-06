@@ -95,7 +95,7 @@ Opticool_Use = 0;
 
 strainController_Use = 0;
 K10CR1_Use = 0;
-AndorSDK2_Use = 0;
+AndorCCD_Use = 0;
 
 %% Handle strain controller dependencies
 if strainController_Use
@@ -407,13 +407,14 @@ if K10CR1_Use
     rack.addChannel("K10CR1", "position_deg", "K10CR1_position_deg");
 end
 
-if AndorSDK2_Use
-    handle_AndorSDK2 = instrument_AndorSDK2("AndorSDK2_demo");
+if AndorCCD_Use
+    handle_AndorCCD = instrument_AndorCCD("AndorCCD_demo");
     % check andorHandle.pixelCount for number of pixels
-    rack.addInstrument(handle_AndorSDK2, "andor");
-    rack.addChannel("andor", "pixel_index", "andor_pixel_index");
-    rack.addChannel("andor", "counts", "andor_counts");
-    rack.addChannel("andor", "exposure_time", "andor_exposure_time");
+    rack.addInstrument(handle_AndorCCD, "AndorCCD");
+    rack.addChannel("AndorCCD", "temperature", "CCD_temperature");
+    rack.addChannel("AndorCCD", "exposure_time", "CCD_exposure"); % in seconds
+    rack.addChannel("AndorCCD", "pixel_index", "CCD_x_index"); % pixel index for readout
+    rack.addChannel("AndorCCD", "counts", "CCD_counts");
 end
 
 if K2400_C_Use
