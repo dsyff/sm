@@ -6,10 +6,19 @@ classdef instrument_AndorCCD < instrumentInterface
     % requests for the same index trigger a fresh acquisition.
 
     properties (Constant, Access = private)
-        DEFAULT_VSSpeed = int32(0); % default vertical shift speed, 0 = 8.25 uS per shift
-        DEFAULT_PREAMP_GAIN = int32(0);
-        DEFAULT_EXPOSURE = 10;           % seconds
+        %vertical and horizontal shift speeds. faster means better fidelity at last pixels to read. slower means lower noise
+        DEFAULT_VSSpeed = int32(0); % 0 = 8.25 uS per shift on iDus. larger is slower
+        DEFAULT_HSSPEED = int32(0); % 0 = 0.1 MHz for iDus. larger is slower
+        %amplifiers. some models only have preamp
+        DEFAULT_PREAMP_GAIN = int32(1); % 0 = low gain, 1 = high gain. more gain reduces read noise ratio but saturates earlier
+        DEFAULT_OUTAMP_TYPE = int32(0); % 0 for below 750 nm, 1 for above 750 nm
+        %more settings
+        DEFAULT_AD_CHANNEL = int32(0); % 0 is slower and better for faint signal, 1 is faster but harder to saturate
+        DEFAULT_VSAMPLITUDE = int32(0); % 0 is no overvolt. larger is higher voltage, higher noise, and risk of damage. highest speeds may require overvolting
+        DEFAULT_EXPOSURE = 10; % seconds
+        STATUS_POLL_DELAY = 0.05; % matlab pause in loop waiting for acquisition
 
+        % Andor SDK constants. do not change
         READ_MODE_FVB = int32(0);       % Full vertical binning
         READ_MODE_IMAGE = int32(4);     % Full image readout
         ACQ_MODE_SINGLE_SCAN = int32(1);
@@ -18,7 +27,6 @@ classdef instrument_AndorCCD < instrumentInterface
         TEMP_STATUS_MIN = int32(20034);
         TEMP_STATUS_MAX = int32(20042);
         DRV_IDLE = int32(20073);
-        STATUS_POLL_DELAY = 0.05;
     end
 
     properties (Access = private)
@@ -36,6 +44,12 @@ classdef instrument_AndorCCD < instrumentInterface
         xpixels (1, 1) uint32 = 0;
         ypixels (1, 1) uint32 = 0;
         pixelCount (1, 1) uint32 = 0;
+        bitDepth (1, 1) uint32 = 0; % bit depth of ADC of chosen channel
+        bitsPerPixel (1, 1) uint32 = 0; % bits per pixel in CCD
+        preAmpGainMax (1, 1) uint32 = 0;
+        vsSpeedMax (1, 1) uint32 = 0;
+        hsSpeedMax (1, 1) uint32 = 0;
+        vsAmplitudeMax (1, 1) uint32 = 0;
     end
 
     methods
@@ -73,6 +87,9 @@ classdef instrument_AndorCCD < instrumentInterface
             obj.checkStatus(handle.SetExposureTime(obj.exposureTime), "SetExposureTime");
             obj.exposureTime = instrument_AndorCCD.DEFAULT_EXPOSURE;
             obj.checkStatus(handle.SetVSSpeed(obj.DEFAULT_VSSpeed), "SetVSSpeed");
+            obj.checkStatus(handle.SetADChannel(obj.DEFAULT_AD_CHANNEL), "SetADChannel");
+            obj.checkStatus(handle.SetVSAmplitude(obj.DEFAULT_VSAMPLITUDE), "SetVSAmplitude");
+            obj.checkStatus(handle.SetHSSpeed(obj.DEFAULT_OUTAMP_TYPE, obj.DEFAULT_HSSPEED), "SetHSSpeed");
             obj.checkStatus(handle.SetPreAmpGain(obj.DEFAULT_PREAMP_GAIN), "SetPreAmpGain");
 
             xpixels = int32(0);
@@ -83,6 +100,36 @@ classdef instrument_AndorCCD < instrumentInterface
             obj.ypixels = uint32(ypixels);
             obj.pixelCount = obj.xpixels;
             assert(obj.pixelCount > 0, "instrument_AndorCCD:NoPixels", "Detector reported zero pixels.");
+
+            preAmpGainCount = int32(0);
+            [ret, preAmpGainCount] = handle.GetNumberPreAmpGains(preAmpGainCount);
+            obj.checkStatus(ret, "GetNumberPreAmpGains");
+            obj.preAmpGainMax = uint32(preAmpGainCount - 1);
+
+            vsSpeedCount = int32(0);
+            [ret, vsSpeedCount] = handle.GetNumberVSSpeeds(vsSpeedCount);
+            obj.checkStatus(ret, "GetNumberVSSpeeds");
+            obj.vsSpeedMax = uint32(vsSpeedCount - 1);
+
+            hsSpeedCount = int32(0);
+            [ret, hsSpeedCount] = handle.GetNumberHSSpeeds(obj.DEFAULT_AD_CHANNEL, obj.DEFAULT_OUTAMP_TYPE, hsSpeedCount);
+            obj.checkStatus(ret, "GetNumberHSSpeeds");
+            obj.hsSpeedMax = uint32(hsSpeedCount - 1);
+
+            vsAmplitudeCount = int32(0);
+            [ret, vsAmplitudeCount] = handle.GetNumberVSAmplitudes(vsAmplitudeCount);
+            obj.checkStatus(ret, "GetNumberVSAmplitudes");
+            obj.vsAmplitudeMax = uint32(vsAmplitudeCount - 1);
+
+            bitDepthValue = int32(0);
+            [ret, bitDepthValue] = handle.GetBitDepth(obj.DEFAULT_AD_CHANNEL, bitDepthValue);
+            obj.checkStatus(ret, "GetBitDepth");
+            obj.bitDepth = uint32(bitDepthValue);
+
+            bitsPerPixelValue = int32(0);
+            [ret, bitsPerPixelValue] = handle.GetBitsPerPixel(bitsPerPixelValue);
+            obj.checkStatus(ret, "GetBitsPerPixel");
+            obj.bitsPerPixel = uint32(bitsPerPixelValue);
 
             obj.requestedMask = true(obj.pixelCount, 1);
             obj.spectrumData = nan(obj.pixelCount, 1);
@@ -131,6 +178,8 @@ classdef instrument_AndorCCD < instrumentInterface
             obj.checkStatus(ret, "GetAcquiredDataImage");
 
             image = reshape(double(buffer), [double(obj.xpixels), double(obj.ypixels)]).';
+
+            obj.checkForSaturation(image, "Image");
 
             obj.invalidateSpectrumCache();
             clear cleanupReadMode; %#ok<CLCLR> ensures read mode reset before returning
@@ -263,6 +312,8 @@ classdef instrument_AndorCCD < instrumentInterface
             end
             obj.requestedMask = false(obj.pixelCount, 1);
 
+            obj.checkForSaturation(obj.spectrumData, "Spectrum");
+
             try
                 handle.FreeInternalMemory();
             catch
@@ -284,6 +335,19 @@ classdef instrument_AndorCCD < instrumentInterface
                 obj.requestedMask(:) = true;
             end
             obj.pendingCounts = NaN;
+        end
+
+        function checkForSaturation(obj, data, context)
+            if obj.bitDepth == 0
+                return;
+            end
+
+            saturationLevel = double(2.^double(obj.bitDepth) - 1);
+            if any(data(:) >= saturationLevel)
+                warning("instrument_AndorCCD:Saturation", ...
+                    "%s acquisition reached the ADC limit (>= %.0f). Consider reducing exposure or gain.", ...
+                    context, saturationLevel);
+            end
         end
 
     end

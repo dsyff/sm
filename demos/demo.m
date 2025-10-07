@@ -86,14 +86,15 @@ K2450_A_Use = 0;
 K2450_B_Use = 0;
 K2450_C_Use = 0;
 
-K2400_A_Use = 1;
-K2400_B_Use = 1;
+K2400_A_Use = 0;
+K2400_B_Use = 0;
 K2400_C_Use = 0;
 
 Montana2_Use = 0;
 Opticool_Use = 0;
 
 strainController_Use = 0;
+
 K10CR1_Use = 0;
 AndorCCD_Use = 0;
 
@@ -411,7 +412,7 @@ if AndorCCD_Use
     handle_AndorCCD = instrument_AndorCCD("AndorCCD_demo");
     % check andorHandle.pixelCount for number of pixels
     rack.addInstrument(handle_AndorCCD, "AndorCCD");
-    rack.addChannel("AndorCCD", "temperature", "CCD_temperature");
+    rack.addChannel("AndorCCD", "temperature", "CCD_T"); % cooler temperature in C
     rack.addChannel("AndorCCD", "exposure_time", "CCD_exposure"); % in seconds
     rack.addChannel("AndorCCD", "pixel_index", "CCD_x_index"); % pixel index for readout
     rack.addChannel("AndorCCD", "counts", "CCD_counts");
