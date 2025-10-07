@@ -23,11 +23,17 @@ classdef instrument_AndorCCD < instrumentInterface
         READ_MODE_IMAGE = int32(4);     % Full image readout
         ACQ_MODE_SINGLE_SCAN = int32(1);
         DEFAULT_TRIGGER_MODE = int32(0); % Internal trigger
-        DRV_SUCCESS = int32(20002);
-        TEMP_STATUS_MIN = int32(20034);
-        TEMP_STATUS_MAX = int32(20042);
-        DRV_IDLE = int32(20073);
-        DRV_NOT_AVAILABLE = int32(20992);
+    DRV_SUCCESS = int32(20002);
+    TEMP_STATUS_MIN = int32(20034);
+    TEMP_STATUS_MAX = int32(20042);
+    DRV_IDLE = int32(20073);
+    DRV_NOT_AVAILABLE = int32(20992);
+
+    RESOLUTION_12_BIT = uint32(1);
+    RESOLUTION_14_BIT = uint32(2);
+    RESOLUTION_16_BIT = uint32(4);
+    RESOLUTION_18_BIT = uint32(8);
+    RESOLUTION_32_BIT = uint32(16);
     end
 
     properties (Access = private)
@@ -127,10 +133,11 @@ classdef instrument_AndorCCD < instrumentInterface
             obj.checkStatus(ret, "GetBitDepth");
             obj.bitDepth = uint32(bitDepthValue);
 
-            bitsPerPixelValue = int32(0);
-            [ret, bitsPerPixelValue] = handle.GetBitsPerPixel(bitsPerPixelValue);
-            obj.checkStatus(ret, "GetBitsPerPixel");
-            obj.bitsPerPixel = uint32(bitsPerPixelValue);
+            capabilities = ATMCD64CS.AndorCapabilities();
+            capabilities.ulSize = uint32(System.Runtime.InteropServices.Marshal.SizeOf(capabilities));
+            ret = handle.GetCapabilities(capabilities);
+            obj.checkStatus(ret, "GetCapabilities");
+            obj.bitsPerPixel = obj.deriveBitsPerPixelFromCapabilities(capabilities.ulResolution);
 
             obj.requestedMask = true(obj.pixelCount, 1);
             obj.spectrumData = nan(obj.pixelCount, 1);
@@ -329,15 +336,13 @@ classdef instrument_AndorCCD < instrumentInterface
 
             if statusCode == obj.DRV_NOT_AVAILABLE
                 if strcmp(actionName, "Initialize")
-                    error("instrument_AndorCCD:DriverNotAvailable", ...
-                        "Initialize failed with DRV_NOT_AVAILABLE (20992). Close SOLIS before using this driver in MATLAB.");
+                    error("instrument_AndorCCD:DriverNotAvailable Initialize failed with DRV_NOT_AVAILABLE (20992). Close SOLIS before using this driver in MATLAB.");
                 end
-                warning("instrument_AndorCCD:DriverNotAvailable", ...
-                    "%s returned DRV_NOT_AVAILABLE (20992). This feature is not supported by the current camera configuration.", actionName);
+                fprintf("instrument_AndorCCD: %s returned DRV_NOT_AVAILABLE (20992). This feature is not supported by the current camera configuration.\n", actionName);
                 return;
             end
 
-            error("instrument_AndorCCD:%sFailed %s failed with status code %d.", actionName, actionName, statusCode);
+            error("instrument_AndorCCD: %s failed with status code %d.", actionName, statusCode);
         end
 
         function invalidateSpectrumCache(obj)
@@ -350,6 +355,30 @@ classdef instrument_AndorCCD < instrumentInterface
             obj.pendingCounts = NaN;
         end
 
+        function bits = deriveBitsPerPixelFromCapabilities(obj, resolutionBits)
+            bits = obj.bitDepth;
+            if isempty(resolutionBits)
+                return;
+            end
+
+            resolutionBits = uint32(resolutionBits);
+            masks = [
+                obj.RESOLUTION_32_BIT,
+                obj.RESOLUTION_18_BIT,
+                obj.RESOLUTION_16_BIT,
+                obj.RESOLUTION_14_BIT,
+                obj.RESOLUTION_12_BIT
+            ];
+            values = uint32([32, 18, 16, 14, 12]);
+
+            for k = 1:numel(masks)
+                if bitand(resolutionBits, masks(k)) ~= 0
+                    bits = values(k);
+                    return;
+                end
+            end
+        end
+
         function checkForSaturation(obj, data, context)
             if obj.bitDepth == 0
                 return;
@@ -357,8 +386,7 @@ classdef instrument_AndorCCD < instrumentInterface
 
             saturationLevel = double(2.^double(obj.bitDepth) - 1);
             if any(data(:) >= saturationLevel)
-                warning("instrument_AndorCCD:Saturation", ...
-                    "%s acquisition reached the ADC limit (>= %.0f). Consider reducing exposure or gain.", ...
+                fprintf("instrument_AndorCCD: %s acquisition reached the ADC limit (>= %.0f). Consider reducing exposure or gain.\n", ...
                     context, saturationLevel);
             end
         end
