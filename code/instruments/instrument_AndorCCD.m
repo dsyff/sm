@@ -414,8 +414,11 @@ classdef instrument_AndorCCD < instrumentInterface
                 return;
             end
             
+            accumulationCount = double(obj.accumulations);
+
+            dataPerAccumulation = data ./ accumulationCount;
             saturationLevel = double(2.^double(obj.bitDepth) - 1);
-            if any(data(:) >= saturationLevel)
+            if any(dataPerAccumulation(:) >= saturationLevel)
                 fprintf("instrument_AndorCCD: %s acquisition reached the ADC limit (>= %.0f). Consider reducing exposure or gain.\n", ...
                     context, saturationLevel);
             end
