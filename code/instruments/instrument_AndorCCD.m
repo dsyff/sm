@@ -27,6 +27,7 @@ classdef instrument_AndorCCD < instrumentInterface
         TEMP_STATUS_MIN = int32(20034);
         TEMP_STATUS_MAX = int32(20042);
         DRV_IDLE = int32(20073);
+        DRV_NOT_AVAILABLE = int32(20992);
     end
 
     properties (Access = private)
@@ -322,9 +323,21 @@ classdef instrument_AndorCCD < instrumentInterface
         end
 
         function checkStatus(obj, statusCode, actionName)
-            if statusCode ~= obj.DRV_SUCCESS
-                error("instrument_AndorCCD:%sFailed %s failed with status code %d.", actionName, actionName, statusCode);
+            if statusCode == obj.DRV_SUCCESS
+                return;
             end
+
+            if statusCode == obj.DRV_NOT_AVAILABLE
+                if strcmp(actionName, "Initialize")
+                    error("instrument_AndorCCD:DriverNotAvailable", ...
+                        "Initialize failed with DRV_NOT_AVAILABLE (20992). Close SOLIS before using this driver in MATLAB.");
+                end
+                warning("instrument_AndorCCD:DriverNotAvailable", ...
+                    "%s returned DRV_NOT_AVAILABLE (20992). This feature is not supported by the current camera configuration.", actionName);
+                return;
+            end
+
+            error("instrument_AndorCCD:%sFailed %s failed with status code %d.", actionName, actionName, statusCode);
         end
 
         function invalidateSpectrumCache(obj)
