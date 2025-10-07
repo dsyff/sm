@@ -4,7 +4,7 @@ classdef instrument_AndorCCD < instrumentInterface
     % Setting the "pixel_index" channel stores the requested index. Getting
     % "counts" returns the corresponding pixel counts. Repeated
     % requests for the same index trigger a fresh acquisition.
-
+    
     properties (Constant, Access = private)
         %vertical and horizontal shift speeds. faster means better fidelity at last pixels to read. slower means lower noise
         DEFAULT_VSSpeed = int32(0); % 0 = 8.25 uS per shift on iDus. larger is slower
@@ -16,28 +16,32 @@ classdef instrument_AndorCCD < instrumentInterface
         DEFAULT_AD_CHANNEL = int32(0); % 0 is slower and better for faint signal, 1 is faster but harder to saturate
         DEFAULT_VSAMPLITUDE = int32(0); % 0 is no overvolt. larger is higher voltage, higher noise, and risk of damage. highest speeds may require overvolting
         DEFAULT_EXPOSURE = 10; % seconds
+        DEFAULT_TRIGGER_MODE = int32(0); % Internal trigger
+        DEFAULT_ACCUMULATIONS = uint32(2);
+        DEFAULT_FILTER_MODE = int32(2); % Cosmic ray filter on
         STATUS_POLL_DELAY = 0.05; % matlab pause in loop waiting for acquisition
-
+        
         % Andor SDK constants. do not change
         READ_MODE_FVB = int32(0);       % Full vertical binning
         READ_MODE_IMAGE = int32(4);     % Full image readout
-        ACQ_MODE_SINGLE_SCAN = int32(1);
-        DEFAULT_TRIGGER_MODE = int32(0); % Internal trigger
-    DRV_SUCCESS = int32(20002);
-    TEMP_STATUS_MIN = int32(20034);
-    TEMP_STATUS_MAX = int32(20042);
-    DRV_IDLE = int32(20073);
-    DRV_NOT_AVAILABLE = int32(20992);
+        ACQ_MODE_ACCUMULATE = int32(2);
 
-    PIXELMODE_8_BIT = uint32(1);
-    PIXELMODE_14_BIT = uint32(2);
-    PIXELMODE_16_BIT = uint32(4);
-    PIXELMODE_32_BIT = uint32(8);
-    PIXELMODE_COLOR_SHIFT = uint32(16);
+        DRV_SUCCESS = int32(20002);
+        TEMP_STATUS_MIN = int32(20034);
+        TEMP_STATUS_MAX = int32(20042);
+        DRV_IDLE = int32(20073);
+        DRV_NOT_AVAILABLE = int32(20992);
+        
+        PIXELMODE_8_BIT = uint32(1);
+        PIXELMODE_14_BIT = uint32(2);
+        PIXELMODE_16_BIT = uint32(4);
+        PIXELMODE_32_BIT = uint32(8);
+        PIXELMODE_COLOR_SHIFT = uint32(16);
     end
-
+    
     properties (Access = private)
         exposureTime (1, 1) double = instrument_AndorCCD.DEFAULT_EXPOSURE;
+        accumulations (1, 1) uint32 = instrument_AndorCCD.DEFAULT_ACCUMULATIONS;
         initialized logical = false;
         currentIndex (1, 1) uint32 = 1;
         requestedMask logical = true;
@@ -46,7 +50,7 @@ classdef instrument_AndorCCD < instrumentInterface
         currentTemperature double = NaN;
         lastTemperatureStatus int32 = int32(0);
     end
-
+    
     properties (GetAccess = public, SetAccess = private)
         xpixels (1, 1) uint32 = 0;
         ypixels (1, 1) uint32 = 0;
@@ -59,16 +63,16 @@ classdef instrument_AndorCCD < instrumentInterface
         vsAmplitudeMax (1, 1) uint32 = 0;
         pixelModeColorValue (1, 1) uint32 = 0;
     end
-
+    
     methods
-
+        
         function obj = instrument_AndorCCD(address)
             arguments
                 address (1, 1) string = "AndorCCD";
             end
-
+            
             obj@instrumentInterface();
-
+            
             if exist("ATMCD64CS.AndorSDK", "class") ~= 8
                 try
                     assemblyPath = matlabroot + "\ATMCD64CS.dll";
@@ -77,29 +81,32 @@ classdef instrument_AndorCCD < instrumentInterface
                     error("instrument_AndorCCD:AssemblyLoadFailed", ...
                         "Failed to load ATMCD64CS assembly from matlabroot. %s", assemblyError.message);
                 end
-
+                
                 if exist("ATMCD64CS.AndorSDK", "class") ~= 8
                     error("instrument_AndorCCD:MissingClass", ...
                         "ATMCD64CS.AndorSDK class not available after loading ATMCD64CS.dll from matlabroot.");
                 end
             end
-
+            
             obj.communicationHandle = ATMCD64CS.AndorSDK();
             handle = obj.communicationHandle;
             obj.checkStatus(handle.Initialize(""), "Initialize");
             obj.initialized = true;
-
+            
             obj.checkStatus(handle.SetReadMode(obj.READ_MODE_FVB), "SetReadMode");
-            obj.checkStatus(handle.SetAcquisitionMode(obj.ACQ_MODE_SINGLE_SCAN), "SetAcquisitionMode");
+            obj.checkStatus(handle.SetAcquisitionMode(obj.ACQ_MODE_ACCUMULATE), "SetAcquisitionMode");
             obj.checkStatus(handle.SetTriggerMode(obj.DEFAULT_TRIGGER_MODE), "SetTriggerMode");
             obj.checkStatus(handle.SetExposureTime(obj.exposureTime), "SetExposureTime");
             obj.exposureTime = instrument_AndorCCD.DEFAULT_EXPOSURE;
+            obj.checkStatus(handle.SetNumberAccumulations(int32(obj.accumulations)), "SetNumberAccumulations");
+            obj.accumulations = instrument_AndorCCD.DEFAULT_ACCUMULATIONS;
             obj.checkStatus(handle.SetVSSpeed(obj.DEFAULT_VSSpeed), "SetVSSpeed");
             obj.checkStatus(handle.SetADChannel(obj.DEFAULT_AD_CHANNEL), "SetADChannel");
             obj.checkStatus(handle.SetVSAmplitude(obj.DEFAULT_VSAMPLITUDE), "SetVSAmplitude");
             obj.checkStatus(handle.SetHSSpeed(obj.DEFAULT_OUTAMP_TYPE, obj.DEFAULT_HSSPEED), "SetHSSpeed");
             obj.checkStatus(handle.SetPreAmpGain(obj.DEFAULT_PREAMP_GAIN), "SetPreAmpGain");
-
+            obj.checkStatus(handle.SetFilterMode(obj.DEFAULT_FILTER_MODE), "SetFilterMode");
+            
             xpixels = int32(0);
             ypixels = int32(0);
             [ret, xpixels, ypixels] = handle.GetDetector(xpixels, ypixels);
@@ -108,32 +115,32 @@ classdef instrument_AndorCCD < instrumentInterface
             obj.ypixels = uint32(ypixels);
             obj.pixelCount = obj.xpixels;
             assert(obj.pixelCount > 0, "instrument_AndorCCD:NoPixels", "Detector reported zero pixels.");
-
+            
             preAmpGainCount = int32(0);
             [ret, preAmpGainCount] = handle.GetNumberPreAmpGains(preAmpGainCount);
             obj.checkStatus(ret, "GetNumberPreAmpGains");
             obj.preAmpGainMax = uint32(preAmpGainCount - 1);
-
+            
             vsSpeedCount = int32(0);
             [ret, vsSpeedCount] = handle.GetNumberVSSpeeds(vsSpeedCount);
             obj.checkStatus(ret, "GetNumberVSSpeeds");
             obj.vsSpeedMax = uint32(vsSpeedCount - 1);
-
+            
             hsSpeedCount = int32(0);
             [ret, hsSpeedCount] = handle.GetNumberHSSpeeds(obj.DEFAULT_AD_CHANNEL, obj.DEFAULT_OUTAMP_TYPE, hsSpeedCount);
             obj.checkStatus(ret, "GetNumberHSSpeeds");
             obj.hsSpeedMax = uint32(hsSpeedCount - 1);
-
+            
             vsAmplitudeCount = int32(0);
             [ret, vsAmplitudeCount] = handle.GetNumberVSAmplitudes(vsAmplitudeCount);
             obj.checkStatus(ret, "GetNumberVSAmplitudes");
             obj.vsAmplitudeMax = uint32(vsAmplitudeCount - 1);
-
+            
             bitDepthValue = int32(0);
             [ret, bitDepthValue] = handle.GetBitDepth(obj.DEFAULT_AD_CHANNEL, bitDepthValue);
             obj.checkStatus(ret, "GetBitDepth");
             obj.bitDepth = uint32(bitDepthValue);
-
+            
             capabilitiesType = handle.GetType().Assembly.GetType("ATMCD64CS.AndorSDK+AndorCapabilities");
             if isempty(capabilitiesType)
                 error("instrument_AndorCCD:MissingCapabilitiesType", ...
@@ -141,7 +148,7 @@ classdef instrument_AndorCCD < instrumentInterface
             end
             capabilities = System.Activator.CreateInstance(capabilitiesType);
             capabilities.ulSize = uint32(System.Runtime.InteropServices.Marshal.SizeOf(capabilities));
-            [ret, capabilities] = handle.GetCapabilities(capabilities);
+            ret = handle.GetCapabilities(capabilities);
             obj.checkStatus(ret, "GetCapabilities");
             pixelModeBits = uint32(capabilities.ulPixelMode);
             obj.bitsPerPixel = obj.deriveBitsPerPixel(pixelModeBits);
@@ -149,23 +156,24 @@ classdef instrument_AndorCCD < instrumentInterface
             if obj.pixelModeColorValue ~= 0
                 fprintf("instrument_AndorCCD: Camera reports non-monochrome pixel mode value %u. Spectrum reads assume grayscale ordering.\n", obj.pixelModeColorValue);
             end
-
+            
             obj.requestedMask = true(obj.pixelCount, 1);
             obj.spectrumData = nan(obj.pixelCount, 1);
-
+            
             handle = obj.communicationHandle;
             obj.checkStatus(handle.SetTemperature(-90), "SetTemperature");
             obj.checkStatus(handle.CoolerON(), "CoolerON");
-
+            
             obj.address = address;
-
+            
             obj.addChannel("temperature", setTolerances = 2);
             obj.addChannel("exposure_time");
+            obj.addChannel("accumulations");
             obj.addChannel("pixel_index");
             obj.addChannel("counts");
-
+            
         end
-
+        
         function delete(obj)
             try
                 obj.shutdownCamera();
@@ -173,41 +181,41 @@ classdef instrument_AndorCCD < instrumentInterface
                 warning("instrument_AndorCCD:delete", "Failed to shutdown Andor camera cleanly: %s", cameraError.message);
             end
         end
-
+        
         function flush(~)
             % No buffered commands to flush
         end
-
+        
         function image = acquireImage(obj)
             % ACQUIREIMAGE captures a full 2D frame from the detector.
             % Returns double precision matrix sized [ypixels, xpixels].
-
+            
             handle = obj.communicationHandle;
-
+            
             obj.checkStatus(handle.SetReadMode(obj.READ_MODE_IMAGE), "SetReadModeImage");
             cleanupReadMode = onCleanup(@() obj.checkStatus(handle.SetReadMode(obj.READ_MODE_FVB), "SetReadMode"));
-
+            
             obj.checkStatus(handle.SetImage(int32(1), int32(1), int32(1), int32(obj.xpixels), int32(1), int32(obj.ypixels)), "SetImage");
             obj.checkStatus(handle.StartAcquisition(), "StartAcquisitionImage");
             obj.checkStatus(handle.WaitForAcquisition(), "WaitForAcquisitionImage");
-
+            
             totalPixels = double(obj.xpixels) * double(obj.ypixels);
             buffer = NET.createArray("System.Int32", totalPixels);
             ret = handle.GetAcquiredData(buffer, uint32(totalPixels));
             obj.checkStatus(ret, "GetAcquiredDataImage");
-
+            
             image = reshape(double(buffer), [double(obj.xpixels), double(obj.ypixels)]).';
-
+            
             obj.checkForSaturation(image, "Image");
-
+            
             obj.invalidateSpectrumCache();
             clear cleanupReadMode; %#ok<CLCLR> ensures read mode reset before returning
         end
-
+        
     end
-
+    
     methods (Access = ?instrumentInterface)
-
+        
         function getWriteChannelHelper(obj, channelIndex)
             switch channelIndex
                 case 1 % temperature
@@ -221,27 +229,31 @@ classdef instrument_AndorCCD < instrumentInterface
                     obj.currentTemperature = double(temperature);
                 case 2 % exposure_time
                     % Exposure is read directly in getReadChannelHelper
-                case 3 % pixel_index
+                case 3 % accumulations
+                    % Accumulations are read directly in getReadChannelHelper
+                case 4 % pixel_index
                     % Nothing required before returning the current index
-                case 4 % counts
+                case 5 % counts
                     obj.prepareCounts();
             end
         end
-
+        
         function getValues = getReadChannelHelper(obj, channelIndex)
             switch channelIndex
                 case 1 % temperature
                     getValues = obj.currentTemperature;
                 case 2 % exposure_time
                     getValues = obj.exposureTime;
-                case 3 % pixel_index
+                case 3 % accumulations
+                    getValues = double(obj.accumulations);
+                case 4 % pixel_index
                     getValues = double(obj.currentIndex);
-                case 4 % counts
+                case 5 % counts
                     getValues = obj.pendingCounts;
                     obj.pendingCounts = NaN;
             end
         end
-
+        
         function setWriteChannelHelper(obj, channelIndex, setValues)
             switch channelIndex
                 case 1 % temperature
@@ -261,9 +273,18 @@ classdef instrument_AndorCCD < instrumentInterface
                     handle = obj.communicationHandle;
                     obj.checkStatus(handle.SetExposureTime(obj.exposureTime), "SetExposureTime");
                     obj.invalidateSpectrumCache();
-                case 3 % pixel_index
+                case 3 % accumulations
+                    newAccumulations = double(setValues(1));
+                    assert(isfinite(newAccumulations) && newAccumulations == round(newAccumulations) && newAccumulations >= 1, ...
+                        "instrument_AndorCCD:InvalidAccumulations", ...
+                        "Number of accumulations must be a positive integer.");
+                    obj.accumulations = uint32(newAccumulations);
+                    handle = obj.communicationHandle;
+                    obj.checkStatus(handle.SetNumberAccumulations(int32(obj.accumulations)), "SetNumberAccumulations");
+                    obj.invalidateSpectrumCache();
+                case 4 % pixel_index
                     idx = double(setValues(1));
-                    assert(isfinite(idx) && idx == floor(idx), ...
+                    assert(isfinite(idx) && idx == round(idx), ...
                         "instrument_AndorCCD:InvalidIndex", ...
                         "Pixel index must be an integer value.");
                     assert(idx >= 1 && idx <= double(obj.pixelCount), ...
@@ -274,11 +295,11 @@ classdef instrument_AndorCCD < instrumentInterface
                     setWriteChannelHelper@instrumentInterface(obj, channelIndex, setValues);
             end
         end
-
+        
     end
-
+    
     methods (Access = private)
-
+        
         function shutdownCamera(obj)
             if obj.initialized
                 try
@@ -292,13 +313,13 @@ classdef instrument_AndorCCD < instrumentInterface
                 obj.initialized = false;
             end
         end
-
+        
         function prepareCounts(obj)
             idx = obj.currentIndex;
             if idx < 1 || idx > obj.pixelCount
                 error("instrument_AndorCCD:IndexOutOfRange", "Current index %d is outside detector range 1:%d.", idx, obj.pixelCount);
             end
-
+            
             needsAcquisition = false;
             if isempty(obj.spectrumData) || numel(obj.spectrumData) ~= obj.pixelCount
                 needsAcquisition = true;
@@ -307,44 +328,44 @@ classdef instrument_AndorCCD < instrumentInterface
             elseif isnan(obj.spectrumData(idx))
                 needsAcquisition = true;
             end
-
+            
             if needsAcquisition
                 obj.acquireSpectrum();
             end
-
+            
             obj.pendingCounts = obj.spectrumData(idx);
             obj.requestedMask(idx) = true;
         end
-
+        
         function acquireSpectrum(obj)
             handle = obj.communicationHandle;
             obj.checkStatus(handle.StartAcquisition(), "StartAcquisition");
             obj.checkStatus(handle.WaitForAcquisition(), "WaitForAcquisition");
-
+            
             buffer = NET.createArray("System.Int32", obj.pixelCount);
             ret = handle.GetAcquiredData(buffer, uint32(obj.pixelCount));
             obj.checkStatus(ret, "GetAcquiredData");
-
+            
             obj.spectrumData = double(buffer);
             if ~iscolumn(obj.spectrumData)
                 obj.spectrumData = reshape(obj.spectrumData, [], 1);
             end
             obj.requestedMask = false(obj.pixelCount, 1);
-
+            
             obj.checkForSaturation(obj.spectrumData, "Spectrum");
-
+            
             try
                 handle.FreeInternalMemory();
             catch
                 % Some SDK versions don"t require explicit cleanup; ignore failures.
             end
         end
-
+        
         function checkStatus(obj, statusCode, actionName)
             if statusCode == obj.DRV_SUCCESS
                 return;
             end
-
+            
             if statusCode == obj.DRV_NOT_AVAILABLE
                 if strcmp(actionName, "Initialize")
                     error("instrument_AndorCCD:DriverNotAvailable Initialize failed with DRV_NOT_AVAILABLE (20992). Close SOLIS before using this driver in MATLAB.");
@@ -352,10 +373,10 @@ classdef instrument_AndorCCD < instrumentInterface
                 fprintf("instrument_AndorCCD: %s returned DRV_NOT_AVAILABLE (20992). This feature is not supported by the current camera configuration.\n", actionName);
                 return;
             end
-
+            
             error("instrument_AndorCCD: %s failed with status code %d.", actionName, statusCode);
         end
-
+        
         function invalidateSpectrumCache(obj)
             if ~isempty(obj.spectrumData)
                 obj.spectrumData(:) = NaN;
@@ -365,10 +386,10 @@ classdef instrument_AndorCCD < instrumentInterface
             end
             obj.pendingCounts = NaN;
         end
-
+        
         function bits = deriveBitsPerPixel(obj, pixelModeBits)
             bits = obj.bitDepth;
-
+            
             if nargin >= 2 && ~isempty(pixelModeBits)
                 pixelModeBits = uint32(pixelModeBits);
                 masks = [
@@ -376,9 +397,9 @@ classdef instrument_AndorCCD < instrumentInterface
                     obj.PIXELMODE_16_BIT,
                     obj.PIXELMODE_14_BIT,
                     obj.PIXELMODE_8_BIT
-                ];
+                    ];
                 values = uint32([32, 16, 14, 8]);
-
+                
                 for k = 1:numel(masks)
                     if bitand(pixelModeBits, masks(k)) ~= 0
                         bits = values(k);
@@ -387,19 +408,19 @@ classdef instrument_AndorCCD < instrumentInterface
                 end
             end
         end
-
+        
         function checkForSaturation(obj, data, context)
             if obj.bitDepth == 0
                 return;
             end
-
+            
             saturationLevel = double(2.^double(obj.bitDepth) - 1);
             if any(data(:) >= saturationLevel)
                 fprintf("instrument_AndorCCD: %s acquisition reached the ADC limit (>= %.0f). Consider reducing exposure or gain.\n", ...
                     context, saturationLevel);
             end
         end
-
+        
     end
-
+    
 end

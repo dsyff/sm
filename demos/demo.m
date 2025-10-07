@@ -413,7 +413,8 @@ if AndorCCD_Use
     % check andorHandle.pixelCount for number of pixels
     rack.addInstrument(handle_AndorCCD, "AndorCCD");
     rack.addChannel("AndorCCD", "temperature", "CCD_T"); % cooler temperature in C
-    rack.addChannel("AndorCCD", "exposure_time", "CCD_exp"); % in seconds
+    rack.addChannel("AndorCCD", "exposure_time", "CCD_exposure"); % in seconds
+    rack.addChannel("AndorCCD", "accumulations", "CCD_accumulations"); % number of accumulations per acquisition
     rack.addChannel("AndorCCD", "pixel_index", "CCD_x_index"); % pixel index for readout
     rack.addChannel("AndorCCD", "counts", "CCD_counts");
 end
