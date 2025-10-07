@@ -29,11 +29,11 @@ classdef instrument_AndorCCD < instrumentInterface
     DRV_IDLE = int32(20073);
     DRV_NOT_AVAILABLE = int32(20992);
 
-    RESOLUTION_12_BIT = uint32(1);
-    RESOLUTION_14_BIT = uint32(2);
-    RESOLUTION_16_BIT = uint32(4);
-    RESOLUTION_18_BIT = uint32(8);
-    RESOLUTION_32_BIT = uint32(16);
+    PIXELMODE_8_BIT = uint32(1);
+    PIXELMODE_14_BIT = uint32(2);
+    PIXELMODE_16_BIT = uint32(4);
+    PIXELMODE_32_BIT = uint32(8);
+    PIXELMODE_COLOR_SHIFT = uint32(16);
     end
 
     properties (Access = private)
@@ -57,6 +57,7 @@ classdef instrument_AndorCCD < instrumentInterface
         vsSpeedMax (1, 1) uint32 = 0;
         hsSpeedMax (1, 1) uint32 = 0;
         vsAmplitudeMax (1, 1) uint32 = 0;
+        pixelModeColorValue (1, 1) uint32 = 0;
     end
 
     methods
@@ -133,11 +134,21 @@ classdef instrument_AndorCCD < instrumentInterface
             obj.checkStatus(ret, "GetBitDepth");
             obj.bitDepth = uint32(bitDepthValue);
 
-            capabilities = ATMCD64CS.AndorCapabilities();
+            capabilitiesType = handle.GetType().Assembly.GetType("ATMCD64CS.AndorSDK+AndorCapabilities");
+            if isempty(capabilitiesType)
+                error("instrument_AndorCCD:MissingCapabilitiesType", ...
+                    "ATMCD64CS.AndorSDK+AndorCapabilities type not found in loaded assembly.");
+            end
+            capabilities = System.Activator.CreateInstance(capabilitiesType);
             capabilities.ulSize = uint32(System.Runtime.InteropServices.Marshal.SizeOf(capabilities));
-            ret = handle.GetCapabilities(capabilities);
+            [ret, capabilities] = handle.GetCapabilities(capabilities);
             obj.checkStatus(ret, "GetCapabilities");
-            obj.bitsPerPixel = obj.deriveBitsPerPixelFromCapabilities(capabilities.ulResolution);
+            pixelModeBits = uint32(capabilities.ulPixelMode);
+            obj.bitsPerPixel = obj.deriveBitsPerPixel(pixelModeBits);
+            obj.pixelModeColorValue = bitshift(pixelModeBits, -double(obj.PIXELMODE_COLOR_SHIFT));
+            if obj.pixelModeColorValue ~= 0
+                fprintf("instrument_AndorCCD: Camera reports non-monochrome pixel mode value %u. Spectrum reads assume grayscale ordering.\n", obj.pixelModeColorValue);
+            end
 
             obj.requestedMask = true(obj.pixelCount, 1);
             obj.spectrumData = nan(obj.pixelCount, 1);
@@ -355,26 +366,24 @@ classdef instrument_AndorCCD < instrumentInterface
             obj.pendingCounts = NaN;
         end
 
-        function bits = deriveBitsPerPixelFromCapabilities(obj, resolutionBits)
+        function bits = deriveBitsPerPixel(obj, pixelModeBits)
             bits = obj.bitDepth;
-            if isempty(resolutionBits)
-                return;
-            end
 
-            resolutionBits = uint32(resolutionBits);
-            masks = [
-                obj.RESOLUTION_32_BIT,
-                obj.RESOLUTION_18_BIT,
-                obj.RESOLUTION_16_BIT,
-                obj.RESOLUTION_14_BIT,
-                obj.RESOLUTION_12_BIT
-            ];
-            values = uint32([32, 18, 16, 14, 12]);
+            if nargin >= 2 && ~isempty(pixelModeBits)
+                pixelModeBits = uint32(pixelModeBits);
+                masks = [
+                    obj.PIXELMODE_32_BIT,
+                    obj.PIXELMODE_16_BIT,
+                    obj.PIXELMODE_14_BIT,
+                    obj.PIXELMODE_8_BIT
+                ];
+                values = uint32([32, 16, 14, 8]);
 
-            for k = 1:numel(masks)
-                if bitand(resolutionBits, masks(k)) ~= 0
-                    bits = values(k);
-                    return;
+                for k = 1:numel(masks)
+                    if bitand(pixelModeBits, masks(k)) ~= 0
+                        bits = values(k);
+                        return;
+                    end
                 end
             end
         end
