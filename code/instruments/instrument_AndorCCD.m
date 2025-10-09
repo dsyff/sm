@@ -7,7 +7,7 @@ classdef instrument_AndorCCD < instrumentInterface
     
     properties (Constant, Access = private)
         %vertical and horizontal shift speeds. faster means better fidelity at last pixels to read. slower means lower noise
-        DEFAULT_VSSpeed = int32(0); % 0 = 8.25 uS per shift on iDus. larger is slower
+        DEFAULT_VSSpeed = int32(1); % 0 = 8.25 uS per shift on iDus. larger is slower
         DEFAULT_HSSPEED = int32(0); % 0 = 0.1 MHz for iDus. larger is slower
         %amplifiers. some models only have preamp
         DEFAULT_PREAMP_GAIN = int32(1); % 0 = low gain, 1 = high gain. more gain reduces read noise ratio but saturates earlier
