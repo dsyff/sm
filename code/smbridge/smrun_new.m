@@ -169,30 +169,15 @@ ndim = zeros(1, sum(ngetchan));
 dataloop = zeros(1, sum(ngetchan));
 disph = zeros(1, sum(ngetchan));
 
-% Pre-compute all instchan data for efficiency
-instchan_data = cell(1, nloops);
 for i = 1:nloops
-    if ~isempty(scandef(i).getchan)
-        instchan_data{i} = reshape([smdata.channels(scandef(i).getchan).instchan], 2, [])';
-    else
-        instchan_data{i} = [];
+    % Pre-size using only loop dimensions; each channel sample is scalar per point
+    baseDim = npoints(end:-1:i);
+    if isempty(baseDim)
+        baseDim = 1;
     end
-end
-
-for i = 1:nloops
-    instchan_i = instchan_data{i};
     for j = 1:ngetchan(i)
-        ind = sum(ngetchan(1:i-1))+ j;
-        dd = smdata.inst(instchan_i(j, 1)).datadim(instchan_i(j, 2), :);
-        
-        if all(dd <= 1)
-            ndim(ind) = 0;
-        else
-            ndim(ind) = find(dd > 1, 1, 'last');
-        end
-        
-        datadim(ind, 1:ndim(ind)) = dd(1:ndim(ind));
-        dim = [npoints(end:-1:i), datadim(ind, 1:ndim(ind))];
+        ind = sum(ngetchan(1:i-1)) + j;
+        dim = baseDim;
         if length(dim) == 1
             dim(2) = 1;
         end
@@ -339,10 +324,8 @@ for i = 1:length(disp)
         xlabel(strrep(xlab, '_', '\_'));
         ylabel(strrep(ylab, '_', '\_'));
     else
-        y = zeros(size(x));
-        y(:) = subsref(data{dc}, s);
-        disph(i) = plot(x, y);
-        xlim(sort(x([1, end])));
+        disph(i) = plot(nan, nan);
+        set(gca, 'XLimMode', 'auto');
         xlabel(strrep(xlab, '_', '\_'));
         if dc <= length(getch)
             ylabel(strrep(smdata.channels(getch(dc)).name, '_', '\_'));
@@ -583,53 +566,67 @@ for point_idx = 1:totpoints_cached
                 
                 try
                     if disp_dims(k) == 2
-                            % For 2D plots, handle 3D scan data properly
-                            z_data = subsref(data{dc}, s2);
-                            
-                            % Check if this is a 3D scan (more than 2 loops) and we're updating the outermost loop
-                            if nloops > 2 && j == nloops
-                                % Reset the plot for 3D scans when outermost loop changes
-                                z_data(:) = NaN;  % Clear the plot
-                            end
-                            
-                            % Ensure z_data is 2D for imagesc
-                            if ndims(z_data) > 2
-                                % For nD scans (n>2), extract 2D slice showing loop 1 vs loop 2
-                                % Data is stored as [n_outer, ..., n3, n2, n1]
-                                % We want to fix the outermost loop and show [n2, n1]
-                                slice_indices = repmat({':'}, 1, ndims(z_data));
-                                slice_indices{1} = count(end);  % Fix outermost loop at current value
-                                
-                                % For 4D+: also fix any intermediate loops at their current values
-                                for dim_idx = 2:(ndims(z_data)-2)
-                                    loop_idx = nloops - dim_idx + 1;  % Map dimension to loop index
-                                    if loop_idx >= 3  % Only fix loops 3 and higher
-                                        slice_indices{dim_idx} = count(loop_idx);
-                                    end
-                                end
-                                
-                                z_data = z_data(slice_indices{:});
-                                z_data = squeeze(z_data); % Remove all singleton dimensions
-                            end
-                            
-                            % Data is stored as [loop2, loop1, ...] which is correct for imagesc
-                            % where loop2=y-axis (rows) and loop1=x-axis (columns)
-                            % No transpose needed - data is already in the correct format
-                            
-                            % Simple efficient update - let errors surface if there's a size mismatch
-                            set(disph(k), 'cdata', z_data);
-                        else                
-                            y_data = subsref(data{dc}, s2);
-                            % For 3D scans, reset line plots when outermost loop changes
-                            if nloops > 2 && j == nloops
-                                y_data(:) = NaN;  % Clear the plot
-                            end
-                            set(disph(k), 'ydata', y_data);
+                        % For 2D plots, handle 3D scan data properly
+                        z_data = subsref(data{dc}, s2);
+
+                        % Check if this is a 3D scan (more than 2 loops) and we're updating the outermost loop
+                        if nloops > 2 && j == nloops
+                            % Reset the plot for 3D scans when outermost loop changes
+                            z_data(:) = NaN;  % Clear the plot
                         end
-                    catch ME
-                        saveData();  % Ensure data is saved before exiting
-                        rethrow(ME);
+
+                        % Ensure z_data is 2D for imagesc
+                        if ndims(z_data) > 2
+                            % For nD scans (n>2), extract 2D slice showing loop 1 vs loop 2
+                            % Data is stored as [n_outer, ..., n3, n2, n1]
+                            % We want to fix the outermost loop and show [n2, n1]
+                            slice_indices = repmat({':'}, 1, ndims(z_data));
+                            slice_indices{1} = count(end);  % Fix outermost loop at current value
+
+                            % For 4D+: also fix any intermediate loops at their current values
+                            for dim_idx = 2:(ndims(z_data)-2)
+                                loop_idx = nloops - dim_idx + 1;  % Map dimension to loop index
+                                if loop_idx >= 3  % Only fix loops 3 and higher
+                                    slice_indices{dim_idx} = count(loop_idx);
+                                end
+                            end
+
+                            z_data = z_data(slice_indices{:});
+                            z_data = squeeze(z_data); % Remove all singleton dimensions
+                        end
+
+                        % Data is stored as [loop2, loop1, ...] which is correct for imagesc
+                        % where loop2=y-axis (rows) and loop1=x-axis (columns)
+                        % No transpose needed - data is already in the correct format
+
+                        % Simple efficient update - let errors surface if there's a size mismatch
+                        set(disph(k), 'cdata', z_data);
+                    else                
+                        y_data = subsref(data{dc}, s2);
+                        % For 3D scans, reset line plots when outermost loop changes
+                        if nloops > 2 && j == nloops
+                            y_data(:) = NaN;  % Clear the plot
+                        end
+
+                        y_vec = y_data(:)';
+                        x_loop_idx = disp_loops(k);
+                        x_vec = [];
+                        if x_loop_idx >= 1 && x_loop_idx <= numel(x_axes) && ~isempty(x_axes{x_loop_idx})
+                            candidate_x = x_axes{x_loop_idx};
+                            if numel(candidate_x) == numel(y_vec)
+                                x_vec = candidate_x(:)';
+                            end
+                        end
+                        if isempty(x_vec)
+                            x_vec = 1:numel(y_vec);
+                        end
+
+                        set(disph(k), 'XData', x_vec, 'YData', y_vec);
                     end
+                catch ME
+                    saveData();  % Ensure data is saved before exiting
+                    rethrow(ME);
+                end
             end
         end
         
@@ -706,55 +703,55 @@ function saveData()
         return;
     end
 
-        prevWarningState = warning;
-        try
-            [figpath, figname] = fileparts(filename);
-            if isempty(figname)
-                figstring = filename;
-            elseif isempty(figpath)
-                figstring = figname;
-            else
-                figstring = fullfile(figpath, figname);
-            end
-            warning('off', 'all');
-            savefig(figurenumber, figstring);
-            warning(prevWarningState);
-            print(figurenumber, '-dpdf', '-bestfit', figstring);
-        catch figureSaveError
-            warning(prevWarningState);
-            fprintf("smrun_new: Failed to save figure (%s).\n", figureSaveError.message);
+    prevWarningState = warning;
+    try
+        [figpath, figname] = fileparts(filename);
+        if isempty(figname)
+            figstring = filename;
+        elseif isempty(figpath)
+            figstring = figname;
+        else
+            figstring = fullfile(figpath, figname);
         end
-        
-        % Save PowerPoint if enabled
-        try
-            if logical(get(smaux.smgui.appendppt_cbh, 'Value'))
-                % Create text structure for smsaveppt (it expects .title and .body fields)
-                text_data = struct();
-                [~, name_only, ext] = fileparts(filename);
-                text_data.title = [name_only ext]; % Use just filename without path
-                text_data.consts = smscan.consts;
+        warning('off', 'all');
+        savefig(figurenumber, figstring);
+        warning(prevWarningState);
+        print(figurenumber, '-dpdf', '-bestfit', figstring);
+    catch figureSaveError
+        warning(prevWarningState);
+        fprintf("smrun_new: Failed to save figure (%s).\n", figureSaveError.message);
+    end
 
-                % Safely handle comments for body text
-                if isfield(scan, 'comments') && ~isempty(scan.comments)
-                    if iscell(scan.comments)
-                        text_data.body = strvcat(scan.comments{:});
-                    elseif ischar(scan.comments)
-                        text_data.body = scan.comments;
-                    else
-                        text_data.body = char(scan.comments);
-                    end
+    % Save PowerPoint if enabled
+    try
+        if logical(get(smaux.smgui.appendppt_cbh, 'Value'))
+            % Create text structure for smsaveppt (it expects .title and .body fields)
+            text_data = struct();
+            [~, name_only, ext] = fileparts(filename);
+            text_data.title = [name_only ext]; % Use just filename without path
+            text_data.consts = smscan.consts;
+
+            % Safely handle comments for body text
+            if isfield(scan, 'comments') && ~isempty(scan.comments)
+                if iscell(scan.comments)
+                    text_data.body = strvcat(scan.comments{:});
+                elseif ischar(scan.comments)
+                    text_data.body = scan.comments;
                 else
-                    text_data.body = '';
+                    text_data.body = char(scan.comments);
                 end
-                
-                ppt_file = smaux.pptsavefile;
-                if ~isempty(ppt_file) && ischar(ppt_file)
-                    smsaveppt(ppt_file, text_data, '-f1000');
-                end
+            else
+                text_data.body = '';
             end
-        catch pptError
-            fprintf("smrun_new: Skipping PowerPoint append (%s).\n", pptError.message);
+
+            ppt_file = smaux.pptsavefile;
+            if ~isempty(ppt_file) && ischar(ppt_file)
+                smsaveppt(ppt_file, text_data, '-f1000');
+            end
         end
+    catch pptError
+        fprintf("smrun_new: Skipping PowerPoint append (%s).\n", pptError.message);
+    end
         
         try
             save(filename, 'data', 'scan');
