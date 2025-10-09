@@ -15,7 +15,7 @@ classdef instrument_AndorCCD < instrumentInterface
         %more settings
         DEFAULT_AD_CHANNEL = int32(0); % 0 is slower and better for faint signal, 1 is faster but harder to saturate
         DEFAULT_VSAMPLITUDE = int32(0); % 0 is no overvolt. larger is higher voltage, higher noise, and risk of damage. highest speeds may require overvolting
-        DEFAULT_EXPOSURE = 10; % seconds
+        DEFAULT_EXPOSURE = 0.1; % seconds
         DEFAULT_TRIGGER_MODE = int32(0); % Internal trigger
         DEFAULT_ACCUMULATIONS = uint32(2);
         DEFAULT_FILTER_MODE = int32(2); % Cosmic ray filter on
@@ -197,7 +197,7 @@ classdef instrument_AndorCCD < instrumentInterface
             
             obj.checkStatus(handle.SetImage(int32(1), int32(1), int32(1), int32(obj.xpixels), int32(1), int32(obj.ypixels)), "SetImage");
             obj.checkStatus(handle.StartAcquisition(), "StartAcquisitionImage");
-            obj.checkStatus(handle.WaitForAcquisition(), "WaitForAcquisitionImage");
+            obj.waitForAcquisitionCompletion(handle, "GetStatusImage");
             
             totalPixels = double(obj.xpixels) * double(obj.ypixels);
             buffer = NET.createArray("System.Int32", totalPixels);
@@ -340,7 +340,7 @@ classdef instrument_AndorCCD < instrumentInterface
         function acquireSpectrum(obj)
             handle = obj.communicationHandle;
             obj.checkStatus(handle.StartAcquisition(), "StartAcquisition");
-            obj.checkStatus(handle.WaitForAcquisition(), "WaitForAcquisition");
+            obj.waitForAcquisitionCompletion(handle, "GetStatus");
             
             buffer = NET.createArray("System.Int32", obj.pixelCount);
             ret = handle.GetAcquiredData(buffer, uint32(obj.pixelCount));
@@ -358,6 +358,27 @@ classdef instrument_AndorCCD < instrumentInterface
                 handle.FreeInternalMemory();
             catch
                 % Some SDK versions don"t require explicit cleanup; ignore failures.
+            end
+        end
+
+        function waitForAcquisitionCompletion(obj, handle, actionLabel)
+            if nargin < 3 || isempty(actionLabel)
+                actionLabel = "GetStatus";
+            end
+
+            totalDelay = obj.exposureTime * double(obj.accumulations);
+            if totalDelay > 0
+                pause(totalDelay);
+            end
+
+            while true
+                statusCode = int32(0);
+                [ret, statusCode] = handle.GetStatus(statusCode);
+                obj.checkStatus(ret, char(actionLabel));
+                if statusCode == obj.DRV_IDLE
+                    break;
+                end
+                pause(obj.STATUS_POLL_DELAY);
             end
         end
         
@@ -414,7 +435,7 @@ classdef instrument_AndorCCD < instrumentInterface
                 return;
             end
             
-            accumulationCount = double(obj.accumulations);
+            accumulationCount = max(double(obj.accumulations), 1);
 
             dataPerAccumulation = data ./ accumulationCount;
             saturationLevel = double(2.^double(obj.bitDepth) - 1);

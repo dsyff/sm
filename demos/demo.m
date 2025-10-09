@@ -1,5 +1,6 @@
 %%
 global instrumentRackGlobal smscan smaux smdata bridge tareData;
+close all;
 %% Clean up existing instruments to release serial ports
 if exist("handle_strainController", "var") && ~isempty(handle_strainController)
     handle_strainController.stop();
@@ -20,12 +21,16 @@ if exist("instrumentRackGlobal", "var") && ~isempty(instrumentRackGlobal)
     % Now delete the rack itself
     delete(instrumentRackGlobal);
     clear instrumentRackGlobal;
+    try
+        delete(rack);
+        clear rack;
+    catch
+    end
 end
 delete(visadevfind);
 delete(serialportfind);
 clear;
 %clear all;
-close all;
 global instrumentRackGlobal smscan smaux smdata bridge tareData;
 path(pathdef);
 username=getenv("USERNAME");

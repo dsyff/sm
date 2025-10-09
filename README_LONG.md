@@ -179,6 +179,7 @@ obj.addChannel("frequency", setTolerances = 0.01);   % 10mHz tolerance
 - **Batch-optimized communications** with proper getWrite/getRead separation
 - **Pre-computed variables** and cached validation for inner scan loops
 - **Optimized figure management** (reuses figure 1000, prevents accumulation)
+- **Andor CCD accumulate mode** defaults to two-frame averaging with status polling instead of blocking waits for improved robustness
 
 ### Reliability Enhancements:
 - **Unique temporary file numbering** prevents overwrites during concurrent scans
@@ -186,6 +187,8 @@ obj.addChannel("frequency", setTolerances = 0.01);   % 10mHz tolerance
 - **Robust PowerPoint integration** with ActiveX compatibility fixes
 - **Silent GUI operation** (removed console output for clean user experience)
 - **Data format compatibility** ensures existing analysis scripts work unchanged
+- **Andor CCD watchdog** replaces SDK `WaitForAcquisition` with exposure-aware polling to avoid indefinite hangs
+- **K10CR1 homing logs** print informative `fprintf` messages whenever the rotator homes
 
 ### Code Quality:
 - **Comprehensive error handling** with try-catch blocks and fallback mechanisms
@@ -210,6 +213,13 @@ obj.addChannel("frequency", setTolerances = 0.01);   % 10mHz tolerance
   - Migrated from legacy NET-based driver with blocking move semantics
   - Provides degree-based position channel with tolerance-aware set verification
   - Automatically loads Kinesis assemblies and homes device on startup
+  - Emits informative homing messages for easier lab debugging
+- **AndorCCD**: Full-vertical-binning CCD spectrometer (SDK2)
+  - Default configuration now uses accumulate mode with configurable `accumulations` channel
+  - Exposure updates automatically invalidate cached spectra and respect status polling
+  - Cosmic ray filtering enabled by default with saturation checks scaled per accumulation
+  - Exposes temperature, exposure_time, accumulations, pixel_index, and counts channels aligned with demos
+  - Provides `
 
 - **strainController**: Persistent strain control system (migrated from v1.3)
   - **Parallel processing**: Real-time PID control loop running on worker thread
