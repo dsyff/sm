@@ -18,6 +18,9 @@ global instrumentRackGlobal
 %flush all instrument buffers before starting scan
 instrumentRackGlobal.flush();
 
+% Track whether saveData has already persisted results, even if initialization aborts early
+save_operations_completed = false;
+
 if ~isstruct(scan) 
     filename=scan;
     scan=smscan;
@@ -151,7 +154,8 @@ end
 all_getchans = {scandef.getchan};
 nonempty_mask = ~cellfun(@isempty, all_getchans);
 if any(nonempty_mask)
-    getch = vertcat(all_getchans{nonempty_mask});
+    normalized_getchans = cellfun(@(chan) chan(:), all_getchans(nonempty_mask), 'UniformOutput', false);
+    getch = vertcat(normalized_getchans{:});
 else
     getch = [];
 end
@@ -251,8 +255,14 @@ for i = 1:length(disp)
     subplot(sbpl(1), sbpl(2), i);
     dc = disp(i).channel;
 
-    s.subs = num2cell(ones(1, nloops - dataloop(dc) + 1 + ndim(dc)));
-    [s.subs{end-disp(i).dim+1:end}] = deal(':');
+    baseLen = nloops - dataloop(dc) + 1 + ndim(dc);
+    s.subs = num2cell(ones(1, baseLen));
+    if disp(i).dim > numel(s.subs)
+        s.subs(end+1:disp(i).dim) = {1};
+    end
+    idx_start = numel(s.subs) - disp(i).dim + 1;
+    idx_start = max(1, idx_start);
+    [s.subs{idx_start:end}] = deal(':');
     
     if dataloop(dc) - ndim(dc) < 1 
         x = 1:datadim(dc, ndim(dc));
@@ -453,8 +463,6 @@ temp_file_counter = 0;
 figure_check_counter = 0;
 figure_check_interval = 10;  % Check figure every 10 points
 
-save_operations_completed = false;
-
 % Find dummy loops
 isdummy = false(1, nloops);
 for i = 1:nloops
@@ -640,13 +648,15 @@ for point_idx = 1:totpoints_cached
                     tempfile = sprintf('%s%s%s-temp%d%s~', p, filesep, f, temp_file_counter, e);
                 end
                 save(tempfile, 'data', 'scan');
-            catch
+            catch tempSaveError
+                fprintf("smrun_new: Failed to save temporary data to %s (%s).\n", char(tempfile), tempSaveError.message);
                 % Fallback save
                 try
                     [~,f,e] = fileparts(filename);
-                    save([f '_fallback' e], 'data', 'scan');
-                catch
-                    % Silent failure for speed
+                    fallbackFile = sprintf('%s_fallback%s', f, e);
+                    save(fallbackFile, 'data', 'scan');
+                catch fallbackSaveError
+                    fprintf("smrun_new: Fallback save failed for %s (%s).\n", char(fallbackFile), fallbackSaveError.message);
                 end
             end
         end
@@ -695,28 +705,29 @@ function saveData()
     if save_operations_completed
         return;
     end
-        
-        % Save figure if it still exists
-        % if ishandle(figurenumber)
-        %     try
-        %         if exist('filename', 'var') && ~isempty(filename)
-        %             figstring = filename(1:length(filename)-4);
-        %             % Suppress figure file size warning
-        %             warning('off', 'MATLAB:Figure:FigureSavedToMATFileFormat');
-        %             warning('off', 'MATLAB:savefig:LargeFigure');
-        %             saveas(figurenumber, figstring, 'fig');
-        %             warning('on', 'MATLAB:Figure:FigureSavedToMATFileFormat');
-        %             warning('on', 'MATLAB:savefig:LargeFigure');
-        %             print(figurenumber, '-bestfit', figstring, '-dpdf');
-        %         end
-        %     catch ME
-        %         % Figure save failed - continue silently
-        %     end
-        % end
+
+        prevWarningState = warning;
+        try
+            [figpath, figname] = fileparts(filename);
+            if isempty(figname)
+                figstring = filename;
+            elseif isempty(figpath)
+                figstring = figname;
+            else
+                figstring = fullfile(figpath, figname);
+            end
+            warning('off', 'all');
+            savefig(figurenumber, figstring);
+            warning(prevWarningState);
+            print(figurenumber, '-dpdf', '-bestfit', figstring);
+        catch figureSaveError
+            warning(prevWarningState);
+            fprintf("smrun_new: Failed to save figure (%s).\n", figureSaveError.message);
+        end
         
         % Save PowerPoint if enabled
-        if exist('smaux', 'var') && isstruct(smaux) && isfield(smaux, 'smgui') && isfield(smaux.smgui, 'appendppt_cbh') && get(smaux.smgui.appendppt_cbh,'Value')
-            try
+        try
+            if logical(get(smaux.smgui.appendppt_cbh, 'Value'))
                 % Create text structure for smsaveppt (it expects .title and .body fields)
                 text_data = struct();
                 [~, name_only, ext] = fileparts(filename);
@@ -736,45 +747,37 @@ function saveData()
                     text_data.body = '';
                 end
                 
-                % Validate PowerPoint file path and call smsaveppt correctly
-                if isfield(smaux, 'pptsavefile') && ~isempty(smaux.pptsavefile) && ischar(smaux.pptsavefile)
-                    smsaveppt(smaux.pptsavefile, text_data, '-f1000');
+                ppt_file = smaux.pptsavefile;
+                if ~isempty(ppt_file) && ischar(ppt_file)
+                    smsaveppt(ppt_file, text_data, '-f1000');
                 end
-                
-            catch pptError
-                % PowerPoint save failed - continue silently
             end
+        catch pptError
+            fprintf("smrun_new: Skipping PowerPoint append (%s).\n", pptError.message);
         end
         
-        % Save data file
-        if exist('filename', 'var') && ~isempty(filename)
+        try
+            save(filename, 'data', 'scan');
+            [p,f,e] = fileparts(filename);
             try
-                save(filename, 'data', 'scan')
-                
-                % Remove temporary files created for this scan only
-                [p,f,e] = fileparts(filename);
-                try
-                    % Create the same pattern used for temp file creation
-                    if isempty(p)
-                        temp_pattern = sprintf('%s-temp*%s~', f, e);
-                        temp_files = dir(temp_pattern);
-                        for tf = 1:length(temp_files)
-                            delete(temp_files(tf).name);
-                        end
-                    else
-                        % Use consistent path separators with creation
-                        temp_pattern = sprintf('%s%s%s-temp*%s~', p, filesep, f, e);
-                        temp_files = dir(temp_pattern);
-                        for tf = 1:length(temp_files)
-                            delete(fullfile(p, temp_files(tf).name));
-                        end
+                if isempty(p)
+                    temp_pattern = sprintf('%s-temp*%s~', f, e);
+                    temp_files = dir(temp_pattern);
+                    for tf = 1:length(temp_files)
+                        delete(temp_files(tf).name);
                     end
-                catch tempError
-                    % Silent failure - don't interrupt scanning
+                else
+                    temp_pattern = sprintf('%s%s%s-temp*%s~', p, filesep, f, e);
+                    temp_files = dir(temp_pattern);
+                    for tf = 1:length(temp_files)
+                        delete(fullfile(p, temp_files(tf).name));
+                    end
                 end
-            catch ME
-                % Silent failure - don't interrupt scanning
+            catch tempCleanupError
+                fprintf("smrun_new: Failed to remove temp files matching %s (%s).\n", char(temp_pattern), tempCleanupError.message);
             end
+        catch finalSaveError
+            fprintf("smrun_new: Failed to save final data (%s).\n", finalSaveError.message);
         end
 
         save_operations_completed = true;
@@ -783,12 +786,16 @@ end
 
 % Nested function for graceful window close
 function gracefulClose()
-    if ishandle(figurenumber)
-        % In case interrupted during or before save, ensure data is saved
-        saveData();
-        delete(figurenumber); % Close the figure
+    try
+        if ishandle(figurenumber)
+            saveData();
+        end
+        scan_should_exit = true;
+    catch closeError
+        fprintf("smrun_new: gracefulClose encountered an error (%s).\n", closeError.message);
     end
-    scan_should_exit = true;
+    delete(figurenumber);
+
 end
 
 end

@@ -5,13 +5,13 @@ classdef instrument_K10CR1 < instrumentInterface
 
     properties (Constant, Access = private)
         DEVICE_UNITS_PER_REVOLUTION = 49152000; % device encoder counts per full revolution
-        DEFAULT_MOVE_TIMEOUT_MS = uint32(60000); % 60 seconds, matches legacy driver
-        POLL_PERIOD_MS = uint32(250);
+        DEFAULT_MOVE_TIMEOUT_MS = 60000; % 60 seconds
+        POLL_PERIOD_MS = 250;
     end
 
     properties (Access = private)
         pendingPositionDegrees double = NaN;
-        moveTimeoutMs (1, 1) uint32 = instrument_K10CR1.DEFAULT_MOVE_TIMEOUT_MS;
+        moveTimeoutMs (1, 1) = instrument_K10CR1.DEFAULT_MOVE_TIMEOUT_MS;
     end
 
     methods
@@ -19,23 +19,23 @@ classdef instrument_K10CR1 < instrumentInterface
         function obj = instrument_K10CR1(serialNumber, NameValueArgs)
             arguments
                 serialNumber (1, 1) string = "";
-                NameValueArgs.MoveTimeout (1, 1) uint32 = instrument_K10CR1.DEFAULT_MOVE_TIMEOUT_MS;
+                NameValueArgs.MoveTimeout (1, 1) = instrument_K10CR1.DEFAULT_MOVE_TIMEOUT_MS;
             end
 
             obj@instrumentInterface();
             obj.requireSetCheck = true;
-            obj.setTimeout = minutes(double(NameValueArgs.MoveTimeout) / 60000); % convert ms to minutes
+            obj.setTimeout = minutes(double(NameValueArgs.MoveTimeout) * 1.1 / 60000); % convert ms to minutes
             obj.setInterval = seconds(0.25);
             obj.moveTimeoutMs = NameValueArgs.MoveTimeout;
 
             obj.loadKinesisAssemblies();
 
             % Create and connect to the hardware
-            [deviceHandle, resolvedSerial] = obj.createAndConnectDevice(serialNumber, NameValueArgs.MoveTimeout);
+            [handle, resolvedSerial] = obj.createAndConnectDevice(serialNumber, NameValueArgs.MoveTimeout);
 
             % Assign object properties
             obj.address = resolvedSerial;
-            obj.communicationHandle = deviceHandle;
+            obj.communicationHandle = handle;
 
             % Configure channel(s)
             obj.addChannel("position_deg", setTolerances = 1E-3); % 1 millidegree default tolerance when checking position
@@ -64,10 +64,15 @@ classdef instrument_K10CR1 < instrumentInterface
             % Homes the stage and waits for completion
             arguments
                 obj;
-                timeoutMs (1, 1) uint32 = instrument_K10CR1.DEFAULT_MOVE_TIMEOUT_MS;
+                timeoutMs = instrument_K10CR1.DEFAULT_MOVE_TIMEOUT_MS;
             end
             handle = obj.communicationHandle;
             obj.ensureConnected();
+            if strlength(obj.address) > 0
+                fprintf("instrument_K10CR1: Homing device %s (timeout %d ms).\n", char(obj.address), timeoutMs);
+            else
+                fprintf("instrument_K10CR1: Homing device (timeout %d ms).\n", timeoutMs);
+            end
             Home(handle, timeoutMs);
         end
 
@@ -128,7 +133,7 @@ classdef instrument_K10CR1 < instrumentInterface
             end
         end
 
-    function [deviceHandle, resolvedSerial] = createAndConnectDevice(~, serialNumber, moveTimeout)
+    function [handle, resolvedSerial] = createAndConnectDevice(~, serialNumber, moveTimeout)
             try
                 DeviceManagerCLI = Thorlabs.MotionControl.DeviceManagerCLI.DeviceManagerCLI;
                 DeviceManagerCLI.BuildDeviceList();
@@ -153,20 +158,21 @@ classdef instrument_K10CR1 < instrumentInterface
             end
 
             try
-                deviceHandle = Thorlabs.MotionControl.IntegratedStepperMotorsCLI.CageRotator.CreateCageRotator(resolvedSerial);
-                Connect(deviceHandle, resolvedSerial);
-                StartPolling(deviceHandle, instrument_K10CR1.POLL_PERIOD_MS);
-                ResetStageToDefaults(deviceHandle);
+                handle = Thorlabs.MotionControl.IntegratedStepperMotorsCLI.CageRotator.CreateCageRotator(resolvedSerial);
+                Connect(handle, resolvedSerial);
+                StartPolling(handle, instrument_K10CR1.POLL_PERIOD_MS);
+                ResetStageToDefaults(handle);
                 pause(0.5);
 
-                if ~IsSettingsInitialized(deviceHandle)
-                    WaitForSettingsInitialized(deviceHandle, moveTimeout);
+                if ~IsSettingsInitialized(handle)
+                    WaitForSettingsInitialized(handle, moveTimeout);
                 end
                 pause(0.5);
 
-                EnableDevice(deviceHandle);
+                EnableDevice(handle);
                 pause(0.5);
-                Home(deviceHandle, moveTimeout);
+                fprintf("instrument_K10CR1: Homing device %s (timeout %d ms).\n", char(resolvedSerial), moveTimeout);
+                Home(handle, moveTimeout);
                 pause(0.5);
             catch connectError
                 error("instrument_K10CR1:Connect", "Failed to initialize K10CR1 with serial %s: %s", resolvedSerial, connectError.message);
@@ -182,7 +188,7 @@ classdef instrument_K10CR1 < instrumentInterface
         function deviceUnits = degreesToDeviceUnits(~, degrees)
             turns = degrees / 360;
             deviceUnitsFloat = turns * instrument_K10CR1.DEVICE_UNITS_PER_REVOLUTION;
-            deviceUnits = uint32(round(deviceUnitsFloat));
+            deviceUnits = round(deviceUnitsFloat);
         end
 
     end
