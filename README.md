@@ -20,10 +20,12 @@
 
 ## 🔑 KEY CONCEPTS:
 - **Batch Optimization**: getWrite/getRead separation and smart ordering for performance
+- **Avoid Nested rackGet**: Never trigger a `rackGet` from inside another `rackGet` (e.g., via virtual instruments) because `getWrite`/`getRead` pairs must stay back-to-back for each channel—MATLAB will throw a descriptive error if they are interleaved
 - **Bridge System**: Seamless compatibility between old/new instruments
 - **Vector Channels**: Multi-element channels (e.g., XY, XTheta, YTheta, RTheta) supported in smgui and instruments (get only, no vector setting)
 - **Data Compatibility**: Same file format as legacy system - existing analysis code works unchanged
 - **Virtual Instruments**: Create complex scans (non-linear ramping) and parameter conversions (field→gate voltages)
+	- Base class `virtualInstrumentInterface` lives in `code/sm2`; concrete helpers in `code/instruments` should follow the layout shown in `instrument_demo.m`.
 
 ## 🔧 TROUBLESHOOTING:
 - Check instrument addresses and VISA connections

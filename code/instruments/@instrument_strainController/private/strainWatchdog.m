@@ -17,6 +17,7 @@ staleTime = seconds(2);
 dataChunkLength = 2^16;
 temperatureSafeMargin = 3; %K for determining max strain voltage
 voltageBoundFraction = 0.9; %- multiplied on computed min/max strain voltage
+targetStepVoltage = 0.5; %V step when nudging voltage targets
 
 %% pass back man2dog message channel
 % man2dog commands will only be executed after initilizations are done.
@@ -225,18 +226,18 @@ try
             rampToAnchor = false;
             if del_d_target >= activeControlVariables.del_d
                 if V_str_o_reached_max
-                    %V_str_o_target = V_str_o_max;
-                    %V_str_i_target = V_str_i_max;
-                    rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [V_str_o_max, V_str_i_max]);
+                    V_str_o_target = stepTowards(directControlVariables.V_str_o, V_str_o_max);
+                    V_str_i_target = stepTowards(directControlVariables.V_str_i, V_str_i_max);
+                    rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [V_str_o_target, V_str_i_target]);
                     branchNum = 1;
                 elseif V_str_i_reached_zero
-                    %V_str_o_target = V_str_o_max;
-                    rack_strain.rackSetWrite("V_str_o", V_str_o_max);
+                    V_str_o_target = stepTowards(directControlVariables.V_str_o, V_str_o_max);
+                    rack_strain.rackSetWrite("V_str_o", V_str_o_target);
                     branchNum = 2;
                 elseif V_str_o_reached_min
-                    %V_str_o_target = V_str_o_m;
-                    %V_str_i_target = 0;
-                    rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [V_str_o_min, 0]);
+                    V_str_o_target = stepTowards(directControlVariables.V_str_o, V_str_o_min);
+                    V_str_i_target = stepTowards(directControlVariables.V_str_i, 0);
+                    rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [V_str_o_target, V_str_i_target]);
                     branchNum = 3;
                 else
                     rampToAnchor = true;
@@ -244,15 +245,18 @@ try
                 end
             else
                 if V_str_o_reached_min
-                    rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [V_str_o_min, V_str_i_min]);
+                    V_str_o_target = stepTowards(directControlVariables.V_str_o, V_str_o_min);
+                    V_str_i_target = stepTowards(directControlVariables.V_str_i, V_str_i_min);
+                    rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [V_str_o_target, V_str_i_target]);
                     branchNum = 5;
                 elseif V_str_i_reached_zero
-                    %V_str_o_target = V_str_o_min;
-                    rack_strain.rackSetWrite("V_str_o", V_str_o_min);
+                    V_str_o_target = stepTowards(directControlVariables.V_str_o, V_str_o_min);
+                    rack_strain.rackSetWrite("V_str_o", V_str_o_target);
                     branchNum = 6;
                 elseif V_str_o_reached_max
-                    %V_str_i_target = 0;
-                    rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [V_str_o_max, 0]);
+                    V_str_o_target = stepTowards(directControlVariables.V_str_o, V_str_o_max);
+                    V_str_i_target = stepTowards(directControlVariables.V_str_i, 0);
+                    rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [V_str_o_target, V_str_i_target]);
                     branchNum = 7;
                 else
                     rampToAnchor = true;
@@ -290,10 +294,10 @@ try
                 end
                 
                 if ~isnan(V_str_o_target)
-                    rack_strain.rackSetWrite("V_str_o", V_str_o_target);
+                    rack_strain.rackSetWrite("V_str_o", stepTowards(directControlVariables.V_str_o, V_str_o_target));
                 end
                 if ~isnan(V_str_i_target)
-                    rack_strain.rackSetWrite("V_str_i", V_str_i_target);
+                    rack_strain.rackSetWrite("V_str_i", stepTowards(directControlVariables.V_str_i, V_str_i_target));
                 end
 
             end
@@ -374,6 +378,15 @@ end
                 rack_strain.rackSetWrite(channel, setValue);
             otherwise
                 dogError("Unexpected channel %s in directSet", channel);
+        end
+    end
+
+    function nextValue = stepTowards(currentValue, desiredValue)
+        delta = desiredValue - currentValue;
+        if abs(delta) <= targetStepVoltage
+            nextValue = desiredValue;
+        else
+            nextValue = currentValue + targetStepVoltage * sign(delta);
         end
     end
 

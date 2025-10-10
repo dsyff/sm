@@ -10,9 +10,9 @@ classdef (Sealed) instrumentRack < handle
         instrumentTable = table(Size = [0, 3], ...
             VariableTypes = ["instrumentInterface", "string", "string"], ...
             VariableNames = ["instruments", "instrumentFriendlyNames", "addresses"]);
-        channelTable = table(Size = [0, 8], ...
-            VariableTypes = ["instrumentInterface", "string", "string", "string", "uint64", "double", "cell", "cell"], ...
-            VariableNames = ["instruments", "instrumentFriendlyNames", "channels", "channelFriendlyNames", "channelSizes", "readDelays", "rampRates", "rampThresholds"]);
+        channelTable = table(Size = [0, 10], ...
+            VariableTypes = ["instrumentInterface", "string", "string", "string", "uint64", "double", "cell", "cell", "cell", "cell"], ...
+            VariableNames = ["instruments", "instrumentFriendlyNames", "channels", "channelFriendlyNames", "channelSizes", "readDelays", "rampRates", "rampThresholds", "softwareMins", "softwareMaxs"]);
     end
     methods
         function obj = instrumentRack(skipDialog)
@@ -45,7 +45,7 @@ classdef (Sealed) instrumentRack < handle
             obj.instrumentTable = [obj.instrumentTable; {instrumentObj, instrumentFriendlyName, instrumentObj.address}];
         end
         
-        function addChannel(obj, instrumentFriendlyName, channel, channelFriendlyName, rampRates, rampThresholds)
+        function addChannel(obj, instrumentFriendlyName, channel, channelFriendlyName, rampRates, rampThresholds, softwareMins, softwareMaxs)
             arguments
                 obj;
                 instrumentFriendlyName (1, 1) string {mustBeNonzeroLengthText};
@@ -53,6 +53,8 @@ classdef (Sealed) instrumentRack < handle
                 channelFriendlyName (1, 1) string {mustBeNonzeroLengthText};
                 rampRates double {mustBePositive} = [];
                 rampThresholds double {mustBePositive} = [];
+                softwareMins double = [];
+                softwareMaxs double = [];
             end
             
             % find instrument
@@ -85,23 +87,52 @@ classdef (Sealed) instrumentRack < handle
                     rampThresholds = rampThresholds.';
                 end
             end
-            
-            % test run to make sure channel is initialized before timing
-            % response time
-            instrument.getChannel(channel);
-            
-            % obtain response time of getRead over a few trials
-            readDelayArray = nan(5, 1);
-            trials = 5;
-            for tryIndex = 1:trials
-                instrument.getWriteChannel(channel);
-                startTime = tic;
-                instrument.getReadChannel(channel);
-                readDelayArray(tryIndex) = toc(startTime);
-            end
-            readDelay = median(readDelayArray);
 
-            newTable = [obj.channelTable; {instrument, instrumentFriendlyName, channel, channelFriendlyName, channelSize, readDelay, {rampRates}, {rampThresholds}}];
+            % validate software limits size
+            if isempty(softwareMins)
+                softwareMins = -inf(channelSize, 1);
+            elseif isscalar(softwareMins)
+                softwareMins = repmat(softwareMins, channelSize, 1);
+            else
+                assert(numel(softwareMins) == channelSize, "softwareMins must be scalar or match channel size");
+                if isrow(softwareMins)
+                    softwareMins = softwareMins.';
+                end
+            end
+
+            if isempty(softwareMaxs)
+                softwareMaxs = inf(channelSize, 1);
+            elseif isscalar(softwareMaxs)
+                softwareMaxs = repmat(softwareMaxs, channelSize, 1);
+            else
+                assert(numel(softwareMaxs) == channelSize, "softwareMaxs must be scalar or match channel size");
+                if isrow(softwareMaxs)
+                    softwareMaxs = softwareMaxs.';
+                end
+            end
+
+            assert(all(softwareMins <= softwareMaxs), "Software limits must satisfy min <= max for every element.");
+            
+            if isa(instrument, "virtualInstrumentInterface")
+                readDelay = 0;
+            else
+                % test run to make sure channel is initialized before timing
+                % response time
+                instrument.getChannel(channel);
+
+                % obtain response time of getRead over a few trials
+                readDelayArray = nan(5, 1);
+                trials = 5;
+                for tryIndex = 1:trials
+                    instrument.getWriteChannel(channel);
+                    startTime = tic;
+                    instrument.getReadChannel(channel);
+                    readDelayArray(tryIndex) = toc(startTime);
+                end
+                readDelay = median(readDelayArray);
+            end
+
+            newTable = [obj.channelTable; {instrument, instrumentFriendlyName, channel, channelFriendlyName, channelSize, readDelay, {rampRates}, {rampThresholds}, {softwareMins}, {softwareMaxs}}];
             
             % check for repetitions
             if ~isempty(obj.channelTable)
@@ -202,7 +233,10 @@ classdef (Sealed) instrumentRack < handle
             startIndex = 1;
             for i = 1:height(batchTable)
                 channelSize = batchTable.channelSizes(i);
-                batchTable.setValues{i} = values(startIndex : (startIndex + channelSize - 1));
+                rawValues = values(startIndex : (startIndex + channelSize - 1));
+                minLimits = batchTable.softwareMins{i};
+                maxLimits = batchTable.softwareMaxs{i};
+                batchTable.setValues{i} = obj.enforceSoftwareLimits(rawValues, minLimits, maxLimits);
                 startIndex = startIndex + channelSize;
             end
             
@@ -251,7 +285,10 @@ classdef (Sealed) instrumentRack < handle
             startIndex = 1;
             for i = 1:height(batchTableCopy)
                 channelSize = batchTableCopy.channelSizes(i);
-                batchTableCopy.setValues{i} = values(startIndex : (startIndex + channelSize - 1));
+                rawValues = values(startIndex : (startIndex + channelSize - 1));
+                minLimits = batchTableCopy.softwareMins{i};
+                maxLimits = batchTableCopy.softwareMaxs{i};
+                batchTableCopy.setValues{i} = obj.enforceSoftwareLimits(rawValues, minLimits, maxLimits);
                 startIndex = startIndex + channelSize;
             end
             
@@ -339,7 +376,29 @@ classdef (Sealed) instrumentRack < handle
             tempChannelTable.Properties.VariableNames(1) = "instruments";
             tempChannelTable.rampRates = cellfun(@(x) x.', tempChannelTable.rampRates, UniformOutput = false);
             tempChannelTable.rampThresholds = cellfun(@(x) x.', tempChannelTable.rampThresholds, UniformOutput = false);
+            tempChannelTable.softwareMins = cellfun(@(x) x.', tempChannelTable.softwareMins, UniformOutput = false);
+            tempChannelTable.softwareMaxs = cellfun(@(x) x.', tempChannelTable.softwareMaxs, UniformOutput = false);
             disp(tempChannelTable);
+            obj.dispLine();
+            obj.dispTime();
+            obj.dispLine();
+        end
+
+        function displayReadDelaySortedChannelTable(obj)
+            obj.dispLine();
+            obj.dispTime();
+            obj.dispLine();
+            fprintf("<strong> Channels Sorted by Read Delay: </strong>\n")
+            sortedChannelTable = obj.channelTable(:, 2:end);
+            sortedChannelTable.Properties.VariableNames(1) = "instruments";
+            sortedChannelTable.rampRates = cellfun(@(x) x.', sortedChannelTable.rampRates, UniformOutput = false);
+            sortedChannelTable.rampThresholds = cellfun(@(x) x.', sortedChannelTable.rampThresholds, UniformOutput = false);
+            sortedChannelTable.softwareMins = cellfun(@(x) x.', sortedChannelTable.softwareMins, UniformOutput = false);
+            sortedChannelTable.softwareMaxs = cellfun(@(x) x.', sortedChannelTable.softwareMaxs, UniformOutput = false);
+            if ~isempty(sortedChannelTable)
+                sortedChannelTable = sortrows(sortedChannelTable, "readDelays", "descend");
+            end
+            disp(sortedChannelTable);
             obj.dispLine();
             obj.dispTime();
             obj.dispLine();
@@ -393,11 +452,14 @@ classdef (Sealed) instrumentRack < handle
             
         end
         
-        function rackSetWriteHelperNoRamp(~, batchTable)
+        function rackSetWriteHelperNoRamp(obj, batchTable)
             for batchIndex = 1:height(batchTable)
                 instrument = batchTable.instruments(batchIndex);
                 channel = batchTable.channels(batchIndex);
                 setValues = batchTable.setValues{batchIndex};
+                minLimits = batchTable.softwareMins{batchIndex};
+                maxLimits = batchTable.softwareMaxs{batchIndex};
+                setValues = obj.enforceSoftwareLimits(setValues, minLimits, maxLimits);
                 instrument.setWriteChannel(channel, setValues);
             end
         end
@@ -434,10 +496,8 @@ classdef (Sealed) instrumentRack < handle
                 startValues = setTable.startValues{i};
                 rampThresholds = setTable.rampThresholds{i};
                 deltas = abs(setValues - startValues);
-                % Mark as reached if delta is within rampThreshold
-                setTable.reachedTargets{i} = false(size(startValues));
-                % Mark for immediate set if all elements have delta > rampThreshold
-                if all(deltas < rampThresholds)
+                setTable.reachedTargets{i} = deltas <= rampThresholds;
+                if all(setTable.reachedTargets{i})
                     isInstant(i) = true;
                 end
             end
@@ -464,6 +524,8 @@ classdef (Sealed) instrumentRack < handle
                     setValues = setTable.setValues{i};
                     rampRates = setTable.rampRates{i};
                     rampThresholds = setTable.rampThresholds{i};
+                    minLimits = setTable.softwareMins{i};
+                    maxLimits = setTable.softwareMaxs{i};
                     reachedTargets = setTable.reachedTargets{i};
                     deltas = setValues - startValues;
                     signs = sign(deltas);
@@ -476,18 +538,15 @@ classdef (Sealed) instrumentRack < handle
                         rampDistance = rampRates * totalElapsed;
                     end
                     % Calculate new step values
-                    rampStepSetValues{i} = setValues;
+                    rampStep = setValues;
                     if any(needRamp)
-                        rampStepSetValues{i}(needRamp) = startValues(needRamp) + signs(needRamp) .* rampDistance(needRamp);
+                        stepDistance = min(rampDistance(needRamp), abs(deltas(needRamp)));
+                        rampStep(needRamp) = startValues(needRamp) + signs(needRamp) .* stepDistance;
                     end
-                    % Check if step would reach or overshoot target
-                    overshoot = needRamp & (rampDistance >= abs(deltas));
-                    if any(overshoot)
-                        rampStepSetValues{i}(overshoot) = setValues(overshoot);
-                    end
-                    % Update reachedTargets flags
-                    setTable.reachedTargets{i}(overshoot) = true;
-                    % If all elements have reached target after this step, mark for removal
+                    rampStep = obj.enforceSoftwareLimits(rampStep, minLimits, maxLimits);
+                    rampStepSetValues{i} = rampStep;
+                    currentDelta = abs(rampStep - setValues);
+                    setTable.reachedTargets{i} = currentDelta <= rampThresholds;
                     if all(setTable.reachedTargets{i})
                         allReached(i) = true;
                     end
@@ -534,6 +593,25 @@ classdef (Sealed) instrumentRack < handle
             channelIndices = obj.findChannelIndices(channelFriendlyNames);
             subTable = obj.channelTable(channelIndices, :);
             % values column will be attached by caller (get/set) as needed
+        end
+
+        function limitedValues = enforceSoftwareLimits(~, values, minLimits, maxLimits)
+            limitedValues = values;
+            if isempty(limitedValues)
+                return;
+            end
+            if isrow(limitedValues)
+                limitedValues = limitedValues.';
+            end
+            if isrow(minLimits)
+                minLimits = minLimits.';
+            end
+            if isrow(maxLimits)
+                maxLimits = maxLimits.';
+            end
+            assert(numel(limitedValues) == numel(minLimits) && numel(limitedValues) == numel(maxLimits), ...
+                "Software limits must match channel size.");
+            limitedValues = min(max(limitedValues, minLimits), maxLimits);
         end
         
     end

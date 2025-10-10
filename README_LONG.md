@@ -98,6 +98,11 @@ virtualField = instrument_VirtualField(topGateKeithley, bottomGateKeithley, toph
 virtualLogRamp = instrument_VirtualLogRamp(keithley2400, startV, endV);
 ```
 
+**Implementation notes:**
+
+- The abstract base lives at `code/sm2/virtualInstrumentInterface.m`; concrete virtual instruments belong in `code/instruments/` alongside physical drivers.
+- Use `instrument_demo.m` as the formatting template—keep constructors concise, rely on default tolerances from `addChannel`, and only override `setCheckChannelHelper` when you need behaviour beyond the rack's default verification.
+
 ### 2. GETWRITE/GETREAD SEPARATION 🚀
 **The key performance optimization in SM1.5**
 
@@ -125,6 +130,13 @@ sm1.5:        [cmd1, cmd2, cmd3] → [read1, read2, read3]   (parallel)
   Order of getRead:  [K2400, SR830]  ← Read fast instrument first
   Total time: ~50ms instead of 60ms  ← 17% improvement
   ```
+
+#### ⚠️ Avoid Nested `rackGet` Calls
+- `instrumentRack` expects every `getReadChannel` to immediately follow the matching `getWriteChannel` for the same physical channel.
+- Virtual instruments that call `rackGet` (or `getChannel`) inside their own `getRead` implementation can accidentally interleave `getWrite` commands from different channels.
+- Many hardware drivers assume the last serial command they issued still matches the pending read. If another instrument sneaks in a `getWrite`, the response buffer becomes invalid.
+- `instrumentInterface` detects this mismatch and throws a descriptive error rather than failing silently; a newcomer might hit this error without understanding the root cause.
+- **Never** perform a nested `rackGet` from inside an instrument method. Instead, split complex measurements into independent channels or prefetch the required values before the outer `rackGet` begins.
 
 ### 3. SETWRITE/SETCHECK SEPARATION ⚡
 **Batch optimization for setting instrument parameters**
