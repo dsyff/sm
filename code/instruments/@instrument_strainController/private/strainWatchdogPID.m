@@ -1,4 +1,4 @@
-function strainWatchdog(dog2Man, options)
+function strainWatchdogPID(dog2Man, options)
 arguments
     dog2Man;
     options.address_E4980AL (1, 1) string;
@@ -8,6 +8,7 @@ arguments
     options.address_Opticool (1, 1) string;
     options.cryostat (1, 1) string {mustBeMember(options.cryostat, ["Montana2", "Opticool"])};
     options.strainCellNumber (2, 2) uint8 {mustBeInteger, mustBePositive};
+    options.pidSettings struct = struct();
 end
 %% settings
 % If last sampling is older than staleTime ago, and if activeControl is on,
@@ -18,6 +19,18 @@ dataChunkLength = 2^16;
 temperatureSafeMargin = 3; %K for determining max strain voltage
 voltageBoundFraction = 0.9; %- multiplied on computed min/max strain voltage
 targetStepVoltage = 0.5; %V step when nudging voltage targets
+
+pidDefaults = struct( ...
+    "enabled", false, ...
+    "Kp", 0, ...
+    "Ki", 0, ...
+    "Kd", 0, ...
+    "integralLimit", targetStepVoltage, ...
+    "outputLimit", targetStepVoltage, ...
+    "antiWindup", "clamp", ...
+    "derivativeFilter", 0);
+
+pidSettings = resolvePidSettings(options.pidSettings, pidDefaults);
 
 %% pass back man2dog message channel
 % man2dog commands will only be executed after initilizations are done.
@@ -71,6 +84,7 @@ V_str_i_max = nan;
 V_str_i_min = nan;
 justEndedActiveControl = false;
 rampToAnchor = true;
+pidState = initializePidState();
 refreshDataTimetablesAndLoopVariables(false);
 
 %% initilize instruments
@@ -198,6 +212,7 @@ try
             if newUpdate == lastUpdate
                 error("Datetime returned stale time. This is due to a bug in Matlab internal code and cannot be fixed.")
             end
+            pidDtSeconds = computePidDeltaSeconds(newUpdate);
             lastUpdate = newUpdate;
 
             del_V_str_o_max = abs(directControlVariables.V_str_o - V_str_o_max);
@@ -226,17 +241,17 @@ try
             rampToAnchor = false;
             if del_d_target >= activeControlVariables.del_d
                 if V_str_o_reached_max
-                    V_str_o_target = stepTowards(directControlVariables.V_str_o, V_str_o_max);
-                    V_str_i_target = stepTowards(directControlVariables.V_str_i, V_str_i_max);
+                    V_str_o_target = computeNextVoltage("V_str_o", V_str_o_max, pidDtSeconds);
+                    V_str_i_target = computeNextVoltage("V_str_i", V_str_i_max, pidDtSeconds);
                     rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [V_str_o_target, V_str_i_target]);
                     branchNum = 1;
                 elseif V_str_i_reached_zero
-                    V_str_o_target = stepTowards(directControlVariables.V_str_o, V_str_o_max);
+                    V_str_o_target = computeNextVoltage("V_str_o", V_str_o_max, pidDtSeconds);
                     rack_strain.rackSetWrite("V_str_o", V_str_o_target);
                     branchNum = 2;
                 elseif V_str_o_reached_min
-                    V_str_o_target = stepTowards(directControlVariables.V_str_o, V_str_o_min);
-                    V_str_i_target = stepTowards(directControlVariables.V_str_i, 0);
+                    V_str_o_target = computeNextVoltage("V_str_o", V_str_o_min, pidDtSeconds);
+                    V_str_i_target = computeNextVoltage("V_str_i", 0, pidDtSeconds);
                     rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [V_str_o_target, V_str_i_target]);
                     branchNum = 3;
                 else
@@ -245,17 +260,17 @@ try
                 end
             else
                 if V_str_o_reached_min
-                    V_str_o_target = stepTowards(directControlVariables.V_str_o, V_str_o_min);
-                    V_str_i_target = stepTowards(directControlVariables.V_str_i, V_str_i_min);
+                    V_str_o_target = computeNextVoltage("V_str_o", V_str_o_min, pidDtSeconds);
+                    V_str_i_target = computeNextVoltage("V_str_i", V_str_i_min, pidDtSeconds);
                     rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [V_str_o_target, V_str_i_target]);
                     branchNum = 5;
                 elseif V_str_i_reached_zero
-                    V_str_o_target = stepTowards(directControlVariables.V_str_o, V_str_o_min);
+                    V_str_o_target = computeNextVoltage("V_str_o", V_str_o_min, pidDtSeconds);
                     rack_strain.rackSetWrite("V_str_o", V_str_o_target);
                     branchNum = 6;
                 elseif V_str_o_reached_max
-                    V_str_o_target = stepTowards(directControlVariables.V_str_o, V_str_o_max);
-                    V_str_i_target = stepTowards(directControlVariables.V_str_i, 0);
+                    V_str_o_target = computeNextVoltage("V_str_o", V_str_o_max, pidDtSeconds);
+                    V_str_i_target = computeNextVoltage("V_str_i", 0, pidDtSeconds);
                     rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [V_str_o_target, V_str_i_target]);
                     branchNum = 7;
                 else
@@ -294,10 +309,10 @@ try
                 end
                 
                 if ~isnan(V_str_o_target)
-                    rack_strain.rackSetWrite("V_str_o", stepTowards(directControlVariables.V_str_o, V_str_o_target));
+                    rack_strain.rackSetWrite("V_str_o", computeNextVoltage("V_str_o", V_str_o_target, pidDtSeconds));
                 end
                 if ~isnan(V_str_i_target)
-                    rack_strain.rackSetWrite("V_str_i", stepTowards(directControlVariables.V_str_i, V_str_i_target));
+                    rack_strain.rackSetWrite("V_str_i", computeNextVoltage("V_str_i", V_str_i_target, pidDtSeconds));
                 end
 
             end
@@ -318,6 +333,7 @@ try
                 rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [0, 0]);
                 refreshDataTimetablesAndLoopVariables(true);
                 justEndedActiveControl = false;
+                pidState = resetPidState(pidState);
             end
         end
 
@@ -333,6 +349,21 @@ catch ME
     rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [0, 0]);
     %rack_strain.rackSet(["V_str_o", "V_str_i"], [0, 0]);
 end
+    function pidDtSeconds = computePidDeltaSeconds(newTimestamp)
+        if ~pidSettings.enabled
+            pidDtSeconds = 0;
+            return;
+        end
+        if isnat(pidState.general.prevTimestamp)
+            pidDtSeconds = 0;
+        else
+            pidDtSeconds = seconds(newTimestamp - pidState.general.prevTimestamp);
+        end
+        if pidDtSeconds <= 0
+            pidDtSeconds = eps;
+        end
+        pidState.general.prevTimestamp = newTimestamp;
+    end
     function setCurrentDisplacementAsReference(command)
         % error is allowed
 
@@ -381,18 +412,74 @@ end
         end
     end
 
-    function nextValue = stepTowards(currentValue, desiredValue)
-        delta = desiredValue - currentValue;
-        if abs(delta) <= targetStepVoltage
-            nextValue = desiredValue;
-        else
-            nextValue = currentValue + targetStepVoltage * sign(delta);
+    function nextValue = computeNextVoltage(channel, desiredValue, dtSeconds)
+        bounds = getChannelBounds(channel);
+        currentValue = directControlVariables.(channel);
+        if isnan(currentValue)
+            currentValue = 0;
+        end
+        [nextValue, pidState.(channel)] = pidControllerStep(currentValue, desiredValue, bounds, pidState.(channel), dtSeconds);
+    end
+
+    function bounds = getChannelBounds(channel)
+        switch channel
+            case "V_str_o"
+                bounds = [V_str_o_min, V_str_o_max];
+            case "V_str_i"
+                bounds = [V_str_i_min, V_str_i_max];
+            otherwise
+                bounds = [-200, 200];
+        end
+        if any(isnan(bounds))
+            bounds = [-200, 200];
+        end
+        if bounds(1) > bounds(2)
+            bounds = sort(bounds);
         end
     end
 
-    function logParameterVariables()
-        saveFilename = logFolder + filesep + string(datetime("now", Format = "yyyyMMdd_HHmmss_SSS"));
-        save(saveFilename + ".mat", "-struct", "parameterVariables");
+    function [commandValue, channelState] = pidControllerStep(currentValue, desiredValue, bounds, channelState, dtSeconds)
+        if ~pidSettings.enabled
+            commandValue = clamp(stepTowards(currentValue, desiredValue), bounds(1), bounds(2));
+            channelState = resetPidChannelState(channelState);
+            return;
+        end
+
+        if dtSeconds <= 0
+            dtSeconds = eps;
+        end
+
+        errorSignal = desiredValue - currentValue;
+        channelState.integral = channelState.integral + pidSettings.Ki * errorSignal * dtSeconds;
+        if pidSettings.antiWindup ~= "none"
+            channelState.integral = clamp(channelState.integral, -pidSettings.integralLimit, pidSettings.integralLimit);
+        end
+
+        if channelState.initialized
+            derivative = (errorSignal - channelState.prevError) / dtSeconds;
+        else
+            derivative = 0;
+        end
+        if pidSettings.derivativeFilter > 0
+            alpha = dtSeconds / (pidSettings.derivativeFilter + dtSeconds);
+            derivative = (1 - alpha) * channelState.prevFilteredDerivative + alpha * derivative;
+        end
+        channelState.prevFilteredDerivative = derivative;
+
+        proportionalTerm = pidSettings.Kp * errorSignal;
+        derivativeTerm = pidSettings.Kd * derivative;
+        output = proportionalTerm + channelState.integral + derivativeTerm;
+        output = clamp(output, -pidSettings.outputLimit, pidSettings.outputLimit);
+
+        delta = clamp(output, -targetStepVoltage, targetStepVoltage);
+        commandValue = clamp(currentValue + delta, bounds(1), bounds(2));
+
+        if (commandValue == bounds(1) || commandValue == bounds(2)) && pidSettings.antiWindup == "reset"
+            channelState.integral = 0;
+        end
+
+        channelState.prevError = errorSignal;
+        channelState.initialized = true;
     end
 
     function matched = activeControlVariableCommands(command)
@@ -401,19 +488,18 @@ end
             matched = true;
             switch command.action
                 case "GET"
-                    if activeControl
-                        freshSend(activeControlVariables.(command.channel));
-                    else
-                        send(dog2Man, directGet(command.channel));
-                    end
+                    freshSend(activeControlVariables.(command.channel));
                 case "SET"
-                    activeControlVariableSetValues.(command.channel) = command.value;
-                case "CHECK"
-                    if activeControl
-                        freshSend(atTarget.(command.channel));
+                    if ~isnumeric(command.value)
+                        dogError("command.value must be numeric.", command);
+                    elseif command.channel == "del_d" && abs(command.value) > 1E-4
+                        dogError("target del_d cannot be greater than 100 um in magnitude.", command);
                     else
-                        dogError("cannot check %s while activeControl is off.", command, command.channel);
+                        activeControlVariableSetValues.(command.channel) = command.value;
+                        atTarget.(command.channel) = false;
                     end
+                case "CHECK"
+                    send(dog2Man, atTarget.(command.channel));
             end
         else
             matched = false;
@@ -421,79 +507,61 @@ end
     end
 
     function matched = alwaysControlVariableCommands(command)
-        % error allowed
         if any(command.channel == string(fieldnames(alwaysControlVariables)).')
             matched = true;
             switch command.action
                 case "GET"
-                    if activeControl
-                        freshSend(alwaysControlVariables.(command.channel));
-                    else
-                        send(dog2Man, directGet(command.channel));
-                    end
+                    freshSend(alwaysControlVariables.(command.channel));
                 case "SET"
+                    if command.channel ~= "T"
+                        dogError("cannot set %s.", command, command.channel);
+                    end
+                    if ~isnumeric(command.value)
+                        dogError("command.value must be numeric.", command);
+                    end
                     alwaysControlVariableSetValues.(command.channel) = command.value;
-                    if ~activeControl
-                        directSet(command.channel, command.value);
-                    end
+                    atTarget.(command.channel) = false;
                 case "CHECK"
-                    if activeControl
-                        freshSend(atTarget.(command.channel));
-                    else
-                        send(dog2Man, rack_strain.rackSetCheck(command.channel));
-                    end
+                    send(dog2Man, atTarget.(command.channel));
             end
         else
             matched = false;
         end
     end
 
-
     function matched = readOnlyVariableCommands(command)
-        % error allowed
         if any(command.channel == string(fieldnames(readOnlyVariables)).')
             matched = true;
             switch command.action
                 case "GET"
-                    if activeControl
-                        freshSend(readOnlyVariables.(command.channel));
-                    else
-                        send(dog2Man, directGet(command.channel));
-                    end
+                    freshSend(readOnlyVariables.(command.channel));
                 case "SET"
-                    dogError("cannot set channel %s.", command, command.channel);
+                    dogError("cannot set %s.", command, command.channel);
                 case "CHECK"
-                    dogError("cannot check channel %s.", command, command.channel);
+                    dogError("cannot check %s.", command, command.channel);
             end
         else
             matched = false;
         end
     end
 
-
     function matched = directControlVariableCommands(command)
-        % error allowed
         if any(command.channel == string(fieldnames(directControlVariables)).')
             matched = true;
             switch command.action
                 case "GET"
-                    if activeControl
-                        freshSend(directControlVariables.(command.channel));
-                    else
-                        send(dog2Man, directGet(command.channel));
-                    end
+                    freshSend(directControlVariables.(command.channel));
                 case "SET"
                     if activeControl
                         dogError("cannot set %s while activeControl is on.", command, command.channel);
+                    elseif ~isnumeric(command.value)
+                        dogError("command.value must be numeric.", command);
                     else
+                        directControlVariables.(command.channel) = command.value;
                         directSet(command.channel, command.value);
                     end
                 case "CHECK"
-                    if activeControl
-                        dogError("cannot check %s while activeControl is on.", command, command.channel);
-                    else
-                        send(dog2Man, rack_strain.rackSetCheck(command.channel));
-                    end
+                    dogError("cannot check %s.", command, command.channel);
             end
         else
             matched = false;
@@ -501,7 +569,6 @@ end
     end
 
     function matched = parameterVariableCommands(command)
-        % error allowed
         if any(command.channel == string(fieldnames(parameterVariables)).')
             matched = true;
             switch command.action
@@ -522,7 +589,6 @@ end
     end
 
     function matched = otherVariableCommands(command)
-        % error allowed
         if command.channel == "activeControl"
             matched = true;
             switch command.action
@@ -533,13 +599,14 @@ end
                         dogError("command.value for channel ""activeControl"" must be logical, 0, or 1", command);
                     elseif command.value ~= activeControl
                         if command.value
-                            % will throw error for unset variables
                             assertReadyForActiveControl(command);
                             logParameterVariables();
+                            pidState = resetPidState(pidState);
                         else
                             justEndedActiveControl = true;
+                            pidState = resetPidState(pidState);
                         end
-                        activeControl = command.value;
+                        activeControl = logical(command.value);
                     end
                 case "CHECK"
                     send(dog2Man, true);
@@ -573,7 +640,6 @@ end
                     elseif command.value > 1E3
                         dogError("cannot measure more than 1000 times.", command);
                     else
-                        % will throw error if any parameter is nan
                         setCurrentDisplacementAsReference(command);
                         logParameterVariables();
                     end
@@ -586,15 +652,13 @@ end
     end
 
     function stringCommands(command)
-        % error allowed
         if command == "STOP"
-            % end watchdog.
             if activeControl
                 refreshDataTimetablesAndLoopVariables(true);
             end
             keepAlive = false;
         elseif command == "*IDN?"
-            send(dog2Man, "strainWatchdog 202412 Thomas");
+            send(dog2Man, "strainWatchdogPID 202412 Prototype");
         elseif command == "ERROR"
             dogError("error requested by man.", command);
         else
@@ -603,7 +667,6 @@ end
     end
 
     function freshSend(getValue)
-        % error allowed
         if (datetime("now") - lastUpdate) < staleTime
             send(dog2Man, getValue);
         else
@@ -612,8 +675,6 @@ end
     end
 
     function dogError(formatSpec, command, varargin)
-        % error allowed
-        % send(dog2Man, sprintf("Error: " + formatSpec + ".\n Command received: \n%s", varargin{:}, formattedDisplayText(command)));
         error("Error: " + formatSpec + ".\n Command received: \n%s", varargin{:}, formattedDisplayText(command));
     end
 
@@ -635,12 +696,6 @@ end
                     end
                 end
 
-                % commands that may be used in a scan come before other
-                % commands
-                % due to dogGetsCommand being used in afterEach as an
-                % interrupt, its errors do not get thrown upward. the try catch
-                % here handles any error incurred and sends them to man via
-                % dog2Man
                 switch true
                     case activeControlVariableCommands(command)
                     case alwaysControlVariableCommands(command)
@@ -671,15 +726,12 @@ end
         newTimetable = array2timetable(nanArray, RowTimes = natArray, VariableNames = recordChannels);
 
         if throwAll
-            % turning off activeControl
             saveDataTimetable(currentData);
             oldData = [];
             currentData = newTimetable;
         elseif isempty(currentData)
-            % when turning on activeControl for the first time
             currentData = newTimetable;
         else
-            % currentData is full
             saveDataTimetable(currentData);
             oldData = currentData;
             currentData = newTimetable;
@@ -693,6 +745,9 @@ end
         save(saveFilename + ".mat", "-fromstruct", parameterVariables, "-append");
         save(saveFilename + ".mat", "-fromstruct", activeControlVariableSetValues, "-append");
         save(saveFilename + ".mat", "-fromstruct", alwaysControlVariableSetValues, "-append");
+        if pidSettings.enabled
+            save(saveFilename + ".mat", "-struct", "pidSettings", "-append");
+        end
     end
 
     function assertReadyForActiveControl(command)
@@ -720,40 +775,34 @@ end
     function updateStrainVoltageBounds()
         [V_min, V_max] = strainVoltageBounds(alwaysControlVariables.T + temperatureSafeMargin);
 
-        % outer voltages are connected so that positive corresponds to
-        % stretch
-
         V_str_o_min = voltageBoundFraction * V_min;
         V_str_o_max = voltageBoundFraction * V_max;
 
-        % inner voltages are connected so that negative corresponds to
-        % stretch
         V_str_i_min = -V_str_o_max;
         V_str_i_max = -V_str_o_min;
     end
 
-    function [min, max] = strainVoltageBounds(T)
+    function [minVal, maxVal] = strainVoltageBounds(T)
         if T > 250
-            min = -20;
-            max = 120;
+            minVal = -20;
+            maxVal = 120;
         elseif T > 100
-            min = -50 + (T - 100) / 5;
-            max = 120;
+            minVal = -50 + (T - 100) / 5;
+            maxVal = 120;
         elseif T > 10
-            min = -200 + (T - 10) * 5 / 3;
-            max = 200 - (T - 10) * 8 / 9;
+            minVal = -200 + (T - 10) * 5 / 3;
+            maxVal = 200 - (T - 10) * 8 / 9;
         else
-            min = -200;
-            max = 200;
+            minVal = -200;
+            maxVal = 200;
         end
     end
 
     function displacement = C2d(capacitance)
-        % conversion from capacitance to displacement
         if options.strainCellNumber == 1
             C_0 = 0.01939E-12;
             alpha = 55.963E-18;
-        elseif options.strainCellNumber == 2
+        else
             C_0 = 0.01394E-12;
             alpha = 57.058E-18;
         end
@@ -761,13 +810,10 @@ end
     end
 
     function C_compensated = C_comp(C_p, Q)
-        % open and short compensation
         omega = parameterVariables.frequency * 2 * pi;
         Z_short = parameterVariables.Z_short_r * (cos(parameterVariables.Z_short_theta) + 1i * sin(parameterVariables.Z_short_theta));
         Z_open = parameterVariables.Z_open_r * (cos(parameterVariables.Z_open_theta) + 1i * sin(parameterVariables.Z_open_theta));
 
-        %% measured impedance
-        %Q = omega Cp Rp
         R_meas = Q ./ (omega * C_p);
         Z_meas = 1 ./ (1i * omega * C_p + 1 ./ R_meas);
 
@@ -775,4 +821,77 @@ end
         C_compensated = real(1 ./ (1i * omega * Z_corr));
     end
 
+    function settings = resolvePidSettings(customSettings, defaults)
+        settings = defaults;
+        if isempty(customSettings)
+            return;
+        end
+        if ~isstruct(customSettings)
+            error("pidSettings must be a struct.");
+        end
+        names = fieldnames(customSettings);
+        for nameIdx = 1:numel(names)
+            name = names{nameIdx};
+            if isfield(defaults, name)
+                settings.(name) = customSettings.(name);
+            end
+        end
+        settings.enabled = logical(settings.enabled);
+        settings.antiWindup = string(settings.antiWindup);
+        if settings.antiWindup == ""
+            settings.antiWindup = "clamp";
+        end
+        validAntiWindup = ["clamp", "reset", "none"];
+        if ~any(settings.antiWindup == validAntiWindup)
+            settings.antiWindup = "clamp";
+        end
+        settings.derivativeFilter = max(settings.derivativeFilter, 0);
+        settings.integralLimit = abs(settings.integralLimit);
+        settings.outputLimit = abs(settings.outputLimit);
+    end
+
+    function state = initializePidState()
+        channelTemplate = struct( ...
+            "integral", 0, ...
+            "prevError", 0, ...
+            "prevFilteredDerivative", 0, ...
+            "initialized", false);
+        state.V_str_o = channelTemplate;
+        state.V_str_i = channelTemplate;
+        state.general = struct("prevTimestamp", NaT);
+    end
+
+    function state = resetPidState(state)
+        state.V_str_o = resetPidChannelState(state.V_str_o);
+        state.V_str_i = resetPidChannelState(state.V_str_i);
+        state.general.prevTimestamp = NaT;
+    end
+
+    function channelState = resetPidChannelState(channelState)
+        channelState.integral = 0;
+        channelState.prevError = 0;
+        channelState.prevFilteredDerivative = 0;
+        channelState.initialized = false;
+    end
+
+    function nextValue = stepTowards(currentValue, desiredValue)
+        delta = desiredValue - currentValue;
+        if abs(delta) <= targetStepVoltage
+            nextValue = desiredValue;
+        else
+            nextValue = currentValue + targetStepVoltage * sign(delta);
+        end
+    end
+
+    function val = clamp(val, low, high)
+        val = min(max(val, low), high);
+    end
+
+    function logParameterVariables()
+        saveFilename = logFolder + filesep + string(datetime("now", Format = "yyyyMMdd_HHmmss_SSS"));
+        save(saveFilename + ".mat", "-struct", "parameterVariables");
+        if pidSettings.enabled
+            save(saveFilename + ".mat", "-struct", "pidSettings", "-append");
+        end
+    end
 end

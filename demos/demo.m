@@ -80,6 +80,7 @@ adaptorIndex_strain = 0; % Strain controller instruments
 counter_Use = 1;
 clock_Use = 1;
 test_Use = 0; %extra counters for testing
+virtual_del_V_Use = 1; % enable virtual V_\delta composite channel example
 
 SR860_1_Use = 0;
 SR830_1_Use = 0;
@@ -296,7 +297,7 @@ if K2450_A_Use
     
     % Add to rack and configure channels
     rack.addInstrument(handle_K2450_A, "K2450_A");
-    rack.addChannel("K2450_A", "V_source", "V_tg0", 1, 0.5); % 1V/s ramp rate, 10mV threshold
+    rack.addChannel("K2450_A", "V_source", "V_tg0", 1, 0.5, -10, 10); % 1V/s ramp rate, 10mV threshold
     rack.addChannel("K2450_A", "I_measure", "I_tg0");
     rack.addChannel("K2450_A", "VI", "VI_tg0");
 end
@@ -323,7 +324,7 @@ if K2450_B_Use
     
     % Add to rack and configure channels
     rack.addInstrument(handle_K2450_B, "K2450_B");
-    rack.addChannel("K2450_B", "V_source", "V_tg1", 1, 0.5); % 1V/s ramp rate, 10mV threshold
+    rack.addChannel("K2450_B", "V_source", "V_tg1", 1, 0.5, -10, 10); % 1V/s ramp rate, 10mV threshold
     rack.addChannel("K2450_B", "I_measure", "I_tg1");
     rack.addChannel("K2450_B", "VI", "VI_tg1");
 end
@@ -350,7 +351,7 @@ if K2450_C_Use
     
     % Add to rack and configure channels
     rack.addInstrument(handle_K2450_C, "K2450_C");
-    rack.addChannel("K2450_C", "V_source", "V_tg", 1, 0.5); % 1V/s ramp rate, 10mV threshold
+    rack.addChannel("K2450_C", "V_source", "V_tg", 1, 0.5, -10, 10); % 1V/s ramp rate, 10mV threshold
     rack.addChannel("K2450_C", "I_measure", "I_tg");
     rack.addChannel("K2450_C", "VI", "VI_tg");
 end
@@ -376,8 +377,8 @@ if K2400_A_Use
     
     % Add to rack and configure channels
     rack.addInstrument(handle_K2400_A, "K2400_A");
-    rack.addChannel("K2400_A", "V_source", "V_sd", 1, 1); % 1V/s ramp rate, 1V threshold
-    rack.addChannel("K2400_A", "I_measure", "I_sd");
+    rack.addChannel("K2400_A", "V_source", "V_tg", 1, 1, -10, 10); % 1V/s ramp rate, 1V threshold
+    rack.addChannel("K2400_A", "I_measure", "I_tg");
     rack.addChannel("K2400_A", "VI", "VI_sd");
 end
 
@@ -402,8 +403,8 @@ if K2400_B_Use
     
     % Add to rack and configure channels
     rack.addInstrument(handle_K2400_B, "K2400_B");
-    rack.addChannel("K2400_B", "V_source", "V_tg", 1, 1); % 1V/s ramp rate, 1V threshold
-    rack.addChannel("K2400_B", "I_measure", "I_tg");
+    rack.addChannel("K2400_B", "V_source", "V_bg", 1, 1, -10, 10); % 1V/s ramp rate, 1V threshold
+    rack.addChannel("K2400_B", "I_measure", "I_bg");
     rack.addChannel("K2400_B", "VI", "VI_tg");
 end
 
@@ -623,6 +624,14 @@ if Opticool_Use
         rack.addChannel("Opticool", "T", "T");
     end
     rack.addChannel("Opticool", "B", "B");
+end
+
+if virtual_del_V_Use
+    % Sets V2 according to V2 = V1 + del_V on the master instrument rack provided at construction time.
+    handle_virtual_del_V = instrument_virtual_del_V("virtual_delta", rack, ...
+        VWSe2ChannelName = "V_WSe2", VTgChannelName = "V_tg");
+    rack.addInstrument(handle_virtual_del_V, "virtual_delta");
+    rack.addChannel("virtual_delta", "del_V", "del_V", [], [], -10, 10); % No ramp rate, no threshold, limits -10V to +10V
 end
 
 %% wrap up setup
