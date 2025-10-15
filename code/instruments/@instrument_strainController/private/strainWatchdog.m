@@ -18,7 +18,7 @@ dataChunkLength = 2^16;
 temperatureSafeMargin = 3; %K for determining max strain voltage
 voltageBoundFraction = 0.9; %- multiplied on computed min/max strain voltage
 targetStepVoltage = 0.5; %V step when nudging voltage targets. the upper limit to voltage difference
-del_d_to_V_gain = 1e4; %V per meter difference for soft ramp. smaller means softer ramp when close (only matters when < 0.5V)
+del_d_to_V_gain = 1e6; %V per meter difference for soft ramp. smaller means softer ramp when close (only matters when < 0.5V)
 
 %% pass back man2dog message channel
 % man2dog commands will only be executed after initilizations are done.
@@ -206,8 +206,8 @@ try
             del_V_str_i_0 = abs(directControlVariables.V_str_i - 0);
 
             % check if voltages reached limit of previous time step
-            V_str_o_reached = abs(readOnlyVariables.I_str_o) < 1E-7;
-            V_str_i_reached = abs(readOnlyVariables.I_str_i) < 1E-7;
+            V_str_o_reached = abs(readOnlyVariables.I_str_o) < 7.5E-8;
+            V_str_i_reached = abs(readOnlyVariables.I_str_i) < 7.5E-8;
             V_str_o_reached_max = V_str_o_reached && del_V_str_o_max < 5E-3;
             V_str_i_reached_max = V_str_i_reached && abs(directControlVariables.V_str_i - V_str_i_max) < 5E-3;
             %V_str_o_reached_zero = V_str_o_reached && abs(directControlVariables.V_str_o - 0) < 5E-3;
