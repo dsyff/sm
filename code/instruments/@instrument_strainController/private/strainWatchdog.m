@@ -19,6 +19,11 @@ temperatureSafeMargin = 3; %K for determining max strain voltage
 voltageBoundFraction = 0.9; %- multiplied on computed min/max strain voltage
 targetStepVoltage = 0.5; %V step when nudging voltage targets. the upper limit to voltage difference
 del_d_to_V_gain = 1e6; %V per meter difference for soft ramp. smaller means softer ramp when close (only matters when < 0.5V)
+overloadCurrent = 5E-8; %A threshold for considering if ramping or overloading is happening
+overloadTolerance = 5E-10; %m tolerance for progress detection. allows a small regression in del_d_diff still be counted as progress
+overloadHold = seconds(5); %time watchdog waits before declaring overload
+del_d_tolerance = 5E-9; %m tolerance for determining if del_d target is reached
+V_tolerance = 2E-3; %V tolerance for determining if voltage target is reached
 
 %% pass back man2dog message channel
 % man2dog commands will only be executed after initilizations are done.
@@ -55,7 +60,8 @@ parameterVariables.Z_open_r = nan; %Ohm
 parameterVariables.Z_open_theta = nan; %rad
 parameterVariables.frequency = nan; %Hz
 % lastUpdate records last PID step timestamp.
-lastUpdate = datetime(0,1,1,0,0,0,0);
+zeroTime = datetime(0,1,1,0,0,0,0);
+lastUpdate = zeroTime;
 % when activeControl is on, dog will turn on PID control
 activeControl = false;
 % data from finding d_0
@@ -71,6 +77,8 @@ V_str_o_min = nan;
 V_str_i_max = nan;
 V_str_i_min = nan;
 justEndedActiveControl = false;
+stallStart = zeroTime;
+last_del_d_diff_abs = nan;
 rampToAnchor = true;
 refreshDataTimetablesAndLoopVariables(false);
 
@@ -116,7 +124,7 @@ writeline(h,":source:voltage:range 200"); %sets the source voltage range
 writeline(h,":OUTP ON");
 pause(2);
 handle_K2450_A.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
-handle_K2450_A.setSetTolerances("V_source", 5E-3); %used to determine if voltage has been reached
+handle_K2450_A.setSetTolerances("V_source", V_tolerance); %used to determine if voltage has been reached
 rack_strain.addInstrument(handle_K2450_A, "K2450_A");
 rack_strain.addChannel("K2450_A", "V_source", "V_str_o");
 rack_strain.addChannel("K2450_A", "I_measure", "I_str_o");
@@ -140,7 +148,7 @@ writeline(h,":source:voltage:range 200"); %sets the source voltage range
 writeline(h,":OUTP ON");
 pause(2);
 handle_K2450_B.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
-handle_K2450_B.setSetTolerances("V_source", 5E-3); %used to determine if voltage has been reached
+handle_K2450_B.setSetTolerances("V_source", V_tolerance); %used to determine if voltage has been reached
 rack_strain.addInstrument(handle_K2450_B, "K2450_B");
 rack_strain.addChannel("K2450_B", "V_source", "V_str_i");
 rack_strain.addChannel("K2450_B", "I_measure", "I_str_i");
@@ -201,31 +209,49 @@ try
             end
             lastUpdate = newUpdate;
 
+            del_d_diff_abs = abs(del_d_target - activeControlVariables.del_d);
+            currMax = max(abs(readOnlyVariables.I_str_o), abs(readOnlyVariables.I_str_i));
+            overloaded = false;
+            if ~rampToAnchor && del_d_diff_abs >= del_d_tolerance && currMax >= overloadCurrent
+                if ~isnan(last_del_d_diff_abs) && del_d_diff_abs >= last_del_d_diff_abs - overloadTolerance
+                    if stallStart == zeroTime
+                        stallStart = lastUpdate;
+                    elseif lastUpdate - stallStart > overloadHold
+                        overloaded = true;
+                    end
+                else
+                    stallStart = zeroTime;
+                end
+            else
+                stallStart = zeroTime;
+            end
+            last_del_d_diff_abs = del_d_diff_abs;
+
             del_V_str_o_max = abs(directControlVariables.V_str_o - V_str_o_max);
             del_V_str_o_min = abs(directControlVariables.V_str_o - V_str_o_min);
             del_V_str_i_0 = abs(directControlVariables.V_str_i - 0);
 
             % check if voltages reached limit of previous time step
-            V_str_o_reached = abs(readOnlyVariables.I_str_o) < 7.5E-8;
-            V_str_i_reached = abs(readOnlyVariables.I_str_i) < 7.5E-8;
-            V_str_o_reached_max = V_str_o_reached && del_V_str_o_max < 5E-3;
-            V_str_i_reached_max = V_str_i_reached && abs(directControlVariables.V_str_i - V_str_i_max) < 5E-3;
-            %V_str_o_reached_zero = V_str_o_reached && abs(directControlVariables.V_str_o - 0) < 5E-3;
-            V_str_i_reached_zero =  V_str_i_reached && del_V_str_i_0 < 5E-3;
-            V_str_o_reached_min = V_str_o_reached && del_V_str_o_min < 5E-3;
-            V_str_i_reached_min =  V_str_i_reached && abs(directControlVariables.V_str_i - V_str_i_min) < 5E-3;
+            V_str_o_reached = abs(readOnlyVariables.I_str_o) < overloadCurrent;
+            V_str_i_reached = abs(readOnlyVariables.I_str_i) < overloadCurrent;
+            V_str_o_reached_max = V_str_o_reached && del_V_str_o_max < V_tolerance;
+            V_str_i_reached_max = V_str_i_reached && abs(directControlVariables.V_str_i - V_str_i_max) < V_tolerance;
+            %V_str_o_reached_zero = V_str_o_reached && abs(directControlVariables.V_str_o - 0) < V_tolerance;
+            V_str_i_reached_zero =  V_str_i_reached && del_V_str_i_0 < V_tolerance;
+            V_str_o_reached_min = V_str_o_reached && del_V_str_o_min < V_tolerance;
+            V_str_i_reached_min =  V_str_i_reached && abs(directControlVariables.V_str_i - V_str_i_min) < V_tolerance;
 
             reachedMax = V_str_o_reached_max && V_str_i_reached_max;
             reachedMin = V_str_o_reached_min && V_str_i_reached_min;
 
-            atTarget.del_d = ~rampToAnchor && (abs(del_d_target - activeControlVariables.del_d) < 5E-9 || reachedMax || reachedMin);
+            atTarget.del_d = ~rampToAnchor && (del_d_diff_abs < del_d_tolerance || reachedMax || reachedMin || overloaded);
 
             % will enforce if T changed elsewhere
             atTarget.T = rack_strain.rackSetCheck("T");
             updateStrainVoltageBounds();
 
             rampToAnchor = false;
-            adaptiveStep = abs(del_d_target - activeControlVariables.del_d) * del_d_to_V_gain;
+            adaptiveStep = del_d_diff_abs * del_d_to_V_gain;
             if del_d_target >= activeControlVariables.del_d
                 if V_str_o_reached_max
                     V_str_o_target = stepTowards(directControlVariables.V_str_o, V_str_o_max, adaptiveStep);
@@ -321,6 +347,8 @@ try
                 refreshDataTimetablesAndLoopVariables(true);
                 justEndedActiveControl = false;
             end
+            stallStart = zeroTime;
+            last_del_d_diff_abs = nan;
         end
 
         % This pause is here to ensure this while loop can be interrupted. This

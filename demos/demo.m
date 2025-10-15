@@ -1,35 +1,16 @@
-%%
+%% initialize
 global instrumentRackGlobal smscan smaux smdata bridge tareData;
 close all;
 %% Clean up existing instruments to release serial ports
-if exist("handle_strainController", "var") && ~isempty(handle_strainController)
-    handle_strainController.stop();
-end
-
 if exist("instrumentRackGlobal", "var") && ~isempty(instrumentRackGlobal)
-    % Delete each instrument individually to properly release resources
-    if isfield(instrumentRackGlobal, "instrumentTable") && ~isempty(instrumentRackGlobal.instrumentTable)
-        instruments = instrumentRackGlobal.instrumentTable.instruments;
-        for i = 1:length(instruments)
-            try
-                delete(instruments(i));
-            catch ME
-                warning("Failed to delete instrument %d: %s", i, ME.message);
-            end
-        end
-    end
-    % Now delete the rack itself
     try
         delete(instrumentRackGlobal);
-        clear instrumentRackGlobal;
-    catch
+    catch ME
+        fprintf("demo deleteInstrumentRackGlobalFailed: %s\n", ME.message);
     end
-    try
-        delete(rack);
-        clear rack;
-    catch
-    end
+    clear instrumentRackGlobal;
 end
+
 delete(visadevfind);
 delete(serialportfind);
 clear;
@@ -76,8 +57,8 @@ K10CR1_Serial = ""; % Leave blank to use the first detected device
 
 %% GPIB Adaptor Indices - change these to match your setup
 % use visadevlist() to find out gpib addresses
-adaptorIndex = 2;        % Standard instruments
-adaptorIndex_strain = 0; % Strain controller instruments
+adaptorIndex = 0;        % Standard instruments
+adaptorIndex_strain = 2; % Strain controller instruments
 
 %% instrument usage flags
 counter_Use = 1;
