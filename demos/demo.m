@@ -19,8 +19,11 @@ if exist("instrumentRackGlobal", "var") && ~isempty(instrumentRackGlobal)
         end
     end
     % Now delete the rack itself
-    delete(instrumentRackGlobal);
-    clear instrumentRackGlobal;
+    try
+        delete(instrumentRackGlobal);
+        clear instrumentRackGlobal;
+    catch
+    end
     try
         delete(rack);
         clear rack;
