@@ -1,4 +1,4 @@
-classdef instrument_AndorCCD < instrumentInterface
+classdef instrument_AndorSpectrometer < instrumentInterface
     % Andor CCD's that are supported by Andor SDK2 in full vertical binning mode
     % Supports indexed access to the spectrum captured from the CCD.
     % Setting the "pixel_index" channel stores the requested index. Getting
@@ -7,7 +7,7 @@ classdef instrument_AndorCCD < instrumentInterface
     
     properties (Constant, Access = private)
         %vertical and horizontal shift speeds. faster means better fidelity at last pixels to read. slower means lower noise
-        DEFAULT_VSSpeed = int32(1); % 0 = 8.25 uS per shift on iDus. larger is slower
+        DEFAULT_VSSpeed = int32(0); % 0 = 8.25 uS per shift on iDus. larger is slower
         DEFAULT_HSSPEED = int32(0); % 0 = 0.1 MHz for iDus. larger is slower
         %amplifiers. some models only have preamp
         DEFAULT_PREAMP_GAIN = int32(1); % 0 = low gain, 1 = high gain. more gain reduces read noise ratio but saturates earlier
@@ -37,11 +37,12 @@ classdef instrument_AndorCCD < instrumentInterface
         PIXELMODE_16_BIT = uint32(4);
         PIXELMODE_32_BIT = uint32(8);
         PIXELMODE_COLOR_SHIFT = uint32(16);
+        ATSPECTROGRAPH_SUCCESS = int32(0);
     end
     
     properties (Access = private)
-        exposureTime (1, 1) double = instrument_AndorCCD.DEFAULT_EXPOSURE;
-        accumulations (1, 1) uint32 = instrument_AndorCCD.DEFAULT_ACCUMULATIONS;
+        exposureTime (1, 1) double = instrument_AndorSpectrometer.DEFAULT_EXPOSURE;
+        accumulations (1, 1) uint32 = instrument_AndorSpectrometer.DEFAULT_ACCUMULATIONS;
         initialized logical = false;
         currentIndex (1, 1) uint32 = 1;
         requestedMask logical = true;
@@ -49,6 +50,8 @@ classdef instrument_AndorCCD < instrumentInterface
         pendingCounts double = NaN;
         currentTemperature double = NaN;
         lastTemperatureStatus int32 = int32(0);
+        currentWavelength double = NaN;
+        spectrographDevice (1, 1) int32 = int32(0);
     end
     
     properties (GetAccess = public, SetAccess = private)
@@ -66,9 +69,9 @@ classdef instrument_AndorCCD < instrumentInterface
     
     methods
         
-        function obj = instrument_AndorCCD(address)
+        function obj = instrument_AndorSpectrometer(address)
             arguments
-                address (1, 1) string = "AndorCCD";
+                address (1, 1) string = "AndorSpectrometer";
             end
             
             obj@instrumentInterface();
@@ -78,12 +81,12 @@ classdef instrument_AndorCCD < instrumentInterface
                     assemblyPath = matlabroot + "\ATMCD64CS.dll";
                     NET.addAssembly(assemblyPath);
                 catch assemblyError
-                    error("instrument_AndorCCD:AssemblyLoadFailed", ...
+                    error("instrument_AndorSpectrometer:AssemblyLoadFailed", ...
                         "Failed to load ATMCD64CS assembly from matlabroot. %s", assemblyError.message);
                 end
                 
                 if exist("ATMCD64CS.AndorSDK", "class") ~= 8
-                    error("instrument_AndorCCD:MissingClass", ...
+                    error("instrument_AndorSpectrometer:MissingClass", ...
                         "ATMCD64CS.AndorSDK class not available after loading ATMCD64CS.dll from matlabroot.");
                 end
             end
@@ -97,9 +100,9 @@ classdef instrument_AndorCCD < instrumentInterface
             obj.checkStatus(handle.SetAcquisitionMode(obj.ACQ_MODE_ACCUMULATE), "SetAcquisitionMode");
             obj.checkStatus(handle.SetTriggerMode(obj.DEFAULT_TRIGGER_MODE), "SetTriggerMode");
             obj.checkStatus(handle.SetExposureTime(obj.exposureTime), "SetExposureTime");
-            obj.exposureTime = instrument_AndorCCD.DEFAULT_EXPOSURE;
+            obj.exposureTime = instrument_AndorSpectrometer.DEFAULT_EXPOSURE;
             obj.checkStatus(handle.SetNumberAccumulations(int32(obj.accumulations)), "SetNumberAccumulations");
-            obj.accumulations = instrument_AndorCCD.DEFAULT_ACCUMULATIONS;
+            obj.accumulations = instrument_AndorSpectrometer.DEFAULT_ACCUMULATIONS;
             obj.checkStatus(handle.SetVSSpeed(obj.DEFAULT_VSSpeed), "SetVSSpeed");
             obj.checkStatus(handle.SetADChannel(obj.DEFAULT_AD_CHANNEL), "SetADChannel");
             obj.checkStatus(handle.SetVSAmplitude(obj.DEFAULT_VSAMPLITUDE), "SetVSAmplitude");
@@ -114,7 +117,7 @@ classdef instrument_AndorCCD < instrumentInterface
             obj.xpixels = uint32(xpixels);
             obj.ypixels = uint32(ypixels);
             obj.pixelCount = obj.xpixels;
-            assert(obj.pixelCount > 0, "instrument_AndorCCD:NoPixels", "Detector reported zero pixels.");
+            assert(obj.pixelCount > 0, "instrument_AndorSpectrometer:NoPixels", "Detector reported zero pixels.");
             
             preAmpGainCount = int32(0);
             [ret, preAmpGainCount] = handle.GetNumberPreAmpGains(preAmpGainCount);
@@ -143,7 +146,7 @@ classdef instrument_AndorCCD < instrumentInterface
             
             capabilitiesType = handle.GetType().Assembly.GetType("ATMCD64CS.AndorSDK+AndorCapabilities");
             if isempty(capabilitiesType)
-                error("instrument_AndorCCD:MissingCapabilitiesType", ...
+                error("instrument_AndorSpectrometer:MissingCapabilitiesType", ...
                     "ATMCD64CS.AndorSDK+AndorCapabilities type not found in loaded assembly.");
             end
             capabilities = System.Activator.CreateInstance(capabilitiesType);
@@ -154,7 +157,7 @@ classdef instrument_AndorCCD < instrumentInterface
             obj.bitsPerPixel = obj.deriveBitsPerPixel(pixelModeBits);
             obj.pixelModeColorValue = bitshift(pixelModeBits, -double(obj.PIXELMODE_COLOR_SHIFT));
             if obj.pixelModeColorValue ~= 0
-                fprintf("instrument_AndorCCD: Camera reports non-monochrome pixel mode value %u. Spectrum reads assume grayscale ordering.\n", obj.pixelModeColorValue);
+                fprintf("instrument_AndorSpectrometer: Camera reports non-monochrome pixel mode value %u. Spectrum reads assume grayscale ordering.\n", obj.pixelModeColorValue);
             end
             
             obj.requestedMask = true(obj.pixelCount, 1);
@@ -170,6 +173,7 @@ classdef instrument_AndorCCD < instrumentInterface
             obj.addChannel("exposure_time");
             obj.addChannel("accumulations");
             obj.addChannel("pixel_index");
+            obj.addChannel("wavelength");
             obj.addChannel("counts");
             
         end
@@ -178,7 +182,7 @@ classdef instrument_AndorCCD < instrumentInterface
             try
                 obj.shutdownCamera();
             catch cameraError
-                warning("instrument_AndorCCD:delete", "Failed to shutdown Andor camera cleanly: %s", cameraError.message);
+                warning("instrument_AndorSpectrometer:delete", "Failed to shutdown Andor camera cleanly: %s", cameraError.message);
             end
         end
         
@@ -233,7 +237,9 @@ classdef instrument_AndorCCD < instrumentInterface
                     % Accumulations are read directly in getReadChannelHelper
                 case 4 % pixel_index
                     % Nothing required before returning the current index
-                case 5 % counts
+                case 5 % wavelength
+                    obj.currentWavelength = obj.querySpectrographWavelength();
+                case 6 % counts
                     obj.prepareCounts();
             end
         end
@@ -248,7 +254,9 @@ classdef instrument_AndorCCD < instrumentInterface
                     getValues = double(obj.accumulations);
                 case 4 % pixel_index
                     getValues = double(obj.currentIndex);
-                case 5 % counts
+                case 5 % wavelength
+                    getValues = obj.currentWavelength;
+                case 6 % counts
                     getValues = obj.pendingCounts;
                     obj.pendingCounts = NaN;
             end
@@ -258,7 +266,7 @@ classdef instrument_AndorCCD < instrumentInterface
             switch channelIndex
                 case 1 % temperature
                     targetTemperature = double(setValues(1));
-                    assert(isfinite(targetTemperature), "instrument_AndorCCD:InvalidTemperature", ...
+                    assert(isfinite(targetTemperature), "instrument_AndorSpectrometer:InvalidTemperature", ...
                         "Temperature setpoint must be a finite scalar.");
                     handle = obj.communicationHandle;
                     targetTemperatureInt = int32(round(targetTemperature));
@@ -267,7 +275,7 @@ classdef instrument_AndorCCD < instrumentInterface
                     obj.lastTemperatureStatus = int32(0);
                 case 2 % exposure_time
                     newExposure = double(setValues(1));
-                    assert(newExposure > 0, "instrument_AndorCCD:InvalidExposure", ...
+                    assert(newExposure > 0, "instrument_AndorSpectrometer:InvalidExposure", ...
                         "Exposure time must be positive.");
                     obj.exposureTime = newExposure;
                     handle = obj.communicationHandle;
@@ -276,7 +284,7 @@ classdef instrument_AndorCCD < instrumentInterface
                 case 3 % accumulations
                     newAccumulations = double(setValues(1));
                     assert(isfinite(newAccumulations) && newAccumulations == round(newAccumulations) && newAccumulations >= 1, ...
-                        "instrument_AndorCCD:InvalidAccumulations", ...
+                        "instrument_AndorSpectrometer:InvalidAccumulations", ...
                         "Number of accumulations must be a positive integer.");
                     obj.accumulations = uint32(newAccumulations);
                     handle = obj.communicationHandle;
@@ -285,10 +293,10 @@ classdef instrument_AndorCCD < instrumentInterface
                 case 4 % pixel_index
                     idx = double(setValues(1));
                     assert(isfinite(idx) && idx == round(idx), ...
-                        "instrument_AndorCCD:InvalidIndex", ...
+                        "instrument_AndorSpectrometer:InvalidIndex", ...
                         "Pixel index must be an integer value.");
                     assert(idx >= 1 && idx <= double(obj.pixelCount), ...
-                        "instrument_AndorCCD:InvalidIndex", ...
+                        "instrument_AndorSpectrometer:InvalidIndex", ...
                         "Pixel index must be between 1 and %d.", obj.pixelCount);
                     obj.currentIndex = uint32(idx);
                 otherwise
@@ -307,17 +315,26 @@ classdef instrument_AndorCCD < instrumentInterface
                         obj.communicationHandle.ShutDown();
                     end
                 catch shutError
-                    warning("instrument_AndorCCD:shutdown", "ShutDown raised an error: %s", shutError.message);
+                    warning("instrument_AndorSpectrometer:shutdown", "ShutDown raised an error: %s", shutError.message);
                 end
                 obj.communicationHandle = [];
                 obj.initialized = false;
             end
         end
         
+        function wavelength = querySpectrographWavelength(obj)
+            [ret, value] = ATSpectrographmex('ATSpectrographGetWavelength', obj.spectrographDevice);
+            if int32(ret) ~= obj.ATSPECTROGRAPH_SUCCESS
+                error("instrument_AndorSpectrometer:WavelengthQueryFailed", ...
+                    "ATSpectrographGetWavelength failed with status %d.", ret);
+            end
+            wavelength = double(value);
+        end
+
         function prepareCounts(obj)
             idx = obj.currentIndex;
             if idx < 1 || idx > obj.pixelCount
-                error("instrument_AndorCCD:IndexOutOfRange", "Current index %d is outside detector range 1:%d.", idx, obj.pixelCount);
+                error("instrument_AndorSpectrometer:IndexOutOfRange", "Current index %d is outside detector range 1:%d.", idx, obj.pixelCount);
             end
             
             needsAcquisition = false;
@@ -389,13 +406,13 @@ classdef instrument_AndorCCD < instrumentInterface
             
             if statusCode == obj.DRV_NOT_AVAILABLE
                 if strcmp(actionName, "Initialize")
-                    error("instrument_AndorCCD:DriverNotAvailable Initialize failed with DRV_NOT_AVAILABLE (20992). Close SOLIS before using this driver in MATLAB.");
+                    error("instrument_AndorSpectrometer:DriverNotAvailable Initialize failed with DRV_NOT_AVAILABLE (20992). Close SOLIS before using this driver in MATLAB.");
                 end
-                fprintf("instrument_AndorCCD: %s returned DRV_NOT_AVAILABLE (20992). This feature is not supported by the current camera configuration.\n", actionName);
+                fprintf("instrument_AndorSpectrometer: %s returned DRV_NOT_AVAILABLE (20992). This feature is not supported by the current camera configuration.\n", actionName);
                 return;
             end
             
-            error("instrument_AndorCCD: %s failed with status code %d.", actionName, statusCode);
+            error("instrument_AndorSpectrometer: %s failed with status code %d.", actionName, statusCode);
         end
         
         function invalidateSpectrumCache(obj)
@@ -440,7 +457,7 @@ classdef instrument_AndorCCD < instrumentInterface
             dataPerAccumulation = data ./ accumulationCount;
             saturationLevel = double(2.^double(obj.bitDepth) - 1);
             if any(dataPerAccumulation(:) >= saturationLevel)
-                fprintf("instrument_AndorCCD: %s acquisition reached the ADC limit (>= %.0f). Consider reducing exposure or gain.\n", ...
+                fprintf("instrument_AndorSpectrometer: %s acquisition reached the ADC limit (>= %.0f). Consider reducing exposure or gain.\n", ...
                     context, saturationLevel);
             end
         end

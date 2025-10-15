@@ -17,7 +17,8 @@ staleTime = seconds(2);
 dataChunkLength = 2^16;
 temperatureSafeMargin = 3; %K for determining max strain voltage
 voltageBoundFraction = 0.9; %- multiplied on computed min/max strain voltage
-targetStepVoltage = 0.5; %V step when nudging voltage targets
+targetStepVoltage = 0.5; %V step when nudging voltage targets. the upper limit to voltage difference
+del_d_to_V_gain = 1e4; %V per meter difference for soft ramp. smaller means softer ramp when close (only matters when < 0.5V)
 
 %% pass back man2dog message channel
 % man2dog commands will only be executed after initilizations are done.
@@ -224,19 +225,20 @@ try
             updateStrainVoltageBounds();
 
             rampToAnchor = false;
+            adaptiveStep = abs(del_d_target - activeControlVariables.del_d) * del_d_to_V_gain;
             if del_d_target >= activeControlVariables.del_d
                 if V_str_o_reached_max
-                    V_str_o_target = stepTowards(directControlVariables.V_str_o, V_str_o_max);
-                    V_str_i_target = stepTowards(directControlVariables.V_str_i, V_str_i_max);
+                    V_str_o_target = stepTowards(directControlVariables.V_str_o, V_str_o_max, adaptiveStep);
+                    V_str_i_target = stepTowards(directControlVariables.V_str_i, V_str_i_max, adaptiveStep);
                     rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [V_str_o_target, V_str_i_target]);
                     branchNum = 1;
                 elseif V_str_i_reached_zero
-                    V_str_o_target = stepTowards(directControlVariables.V_str_o, V_str_o_max);
+                    V_str_o_target = stepTowards(directControlVariables.V_str_o, V_str_o_max, adaptiveStep);
                     rack_strain.rackSetWrite("V_str_o", V_str_o_target);
                     branchNum = 2;
                 elseif V_str_o_reached_min
-                    V_str_o_target = stepTowards(directControlVariables.V_str_o, V_str_o_min);
-                    V_str_i_target = stepTowards(directControlVariables.V_str_i, 0);
+                    V_str_o_target = stepTowards(directControlVariables.V_str_o, V_str_o_min, adaptiveStep);
+                    V_str_i_target = stepTowards(directControlVariables.V_str_i, 0, adaptiveStep);
                     rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [V_str_o_target, V_str_i_target]);
                     branchNum = 3;
                 else
@@ -245,17 +247,17 @@ try
                 end
             else
                 if V_str_o_reached_min
-                    V_str_o_target = stepTowards(directControlVariables.V_str_o, V_str_o_min);
-                    V_str_i_target = stepTowards(directControlVariables.V_str_i, V_str_i_min);
+                    V_str_o_target = stepTowards(directControlVariables.V_str_o, V_str_o_min, adaptiveStep);
+                    V_str_i_target = stepTowards(directControlVariables.V_str_i, V_str_i_min, adaptiveStep);
                     rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [V_str_o_target, V_str_i_target]);
                     branchNum = 5;
                 elseif V_str_i_reached_zero
-                    V_str_o_target = stepTowards(directControlVariables.V_str_o, V_str_o_min);
+                    V_str_o_target = stepTowards(directControlVariables.V_str_o, V_str_o_min, adaptiveStep);
                     rack_strain.rackSetWrite("V_str_o", V_str_o_target);
                     branchNum = 6;
                 elseif V_str_o_reached_max
-                    V_str_o_target = stepTowards(directControlVariables.V_str_o, V_str_o_max);
-                    V_str_i_target = stepTowards(directControlVariables.V_str_i, 0);
+                    V_str_o_target = stepTowards(directControlVariables.V_str_o, V_str_o_max, adaptiveStep);
+                    V_str_i_target = stepTowards(directControlVariables.V_str_i, 0, adaptiveStep);
                     rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [V_str_o_target, V_str_i_target]);
                     branchNum = 7;
                 else
@@ -381,12 +383,17 @@ end
         end
     end
 
-    function nextValue = stepTowards(currentValue, desiredValue)
+    function nextValue = stepTowards(currentValue, desiredValue, step)
+        if nargin < 3 || step <= 0
+            step = targetStepVoltage;
+        else
+            step = min(targetStepVoltage, step);
+        end
         delta = desiredValue - currentValue;
-        if abs(delta) <= targetStepVoltage
+        if abs(delta) <= step
             nextValue = desiredValue;
         else
-            nextValue = currentValue + targetStepVoltage * sign(delta);
+            nextValue = currentValue + step * sign(delta);
         end
     end
 
