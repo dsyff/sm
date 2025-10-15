@@ -1,6 +1,7 @@
 # Exclude testing and legacy folders
 legacy/
 debug/
+temp/
 tests/
 
 

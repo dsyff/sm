@@ -7,7 +7,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
     
     properties (Constant, Access = private)
         %vertical and horizontal shift speeds. faster means better fidelity at last pixels to read. slower means lower noise
-        DEFAULT_VSSpeed = int32(0); % 0 = 8.25 uS per shift on iDus. larger is slower
+        DEFAULT_VSSpeed = int32(1); % 0 = 8.25 uS per shift on iDus. larger is slower
         DEFAULT_HSSPEED = int32(0); % 0 = 0.1 MHz for iDus. larger is slower
         %amplifiers. some models only have preamp
         DEFAULT_PREAMP_GAIN = int32(1); % 0 = low gain, 1 = high gain. more gain reduces read noise ratio but saturates earlier
@@ -46,11 +46,12 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         initialized logical = false;
         currentIndex (1, 1) uint32 = 1;
         requestedMask logical = true;
-        spectrumData double = [];
-        pendingCounts double = NaN;
-        currentTemperature double = NaN;
-        lastTemperatureStatus int32 = int32(0);
-        currentWavelength double = NaN;
+    spectrumData double = [];
+    wavelengthData double = [];
+    pendingCounts double = NaN;
+    pendingWavelength double = NaN;
+    currentTemperature double = NaN;
+    lastTemperatureStatus int32 = int32(0);
         spectrographDevice (1, 1) int32 = int32(0);
     end
     
@@ -237,9 +238,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     % Accumulations are read directly in getReadChannelHelper
                 case 4 % pixel_index
                     % Nothing required before returning the current index
-                case 5 % wavelength
-                    obj.currentWavelength = obj.querySpectrographWavelength();
-                case 6 % counts
+                case {5, 6} % wavelength/counts
                     obj.prepareCounts();
             end
         end
@@ -255,10 +254,12 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                 case 4 % pixel_index
                     getValues = double(obj.currentIndex);
                 case 5 % wavelength
-                    getValues = obj.currentWavelength;
+                    getValues = obj.pendingWavelength;
+                    obj.pendingWavelength = NaN;
                 case 6 % counts
                     getValues = obj.pendingCounts;
                     obj.pendingCounts = NaN;
+                    obj.pendingWavelength = NaN;
             end
         end
         
@@ -323,15 +324,22 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         end
         
         function wavelength = querySpectrographWavelength(obj)
-            [ret, value] = ATSpectrographmex('ATSpectrographGetWavelength', obj.spectrographDevice);
+            [ret, raw] = ATSpectrographmex('ATSpectrographGetWavelength', obj.spectrographDevice);
             if int32(ret) ~= obj.ATSPECTROGRAPH_SUCCESS
                 error("instrument_AndorSpectrometer:WavelengthQueryFailed", ...
                     "ATSpectrographGetWavelength failed with status %d.", ret);
             end
-            wavelength = double(value);
+            wavelength = double(raw(:));
+            if ~isempty(obj.pixelCount) && numel(wavelength) ~= double(obj.pixelCount)
+                error("instrument_AndorSpectrometer:WavelengthSizeMismatch", ...
+                    "Expected %d wavelength samples but received %d.", obj.pixelCount, numel(wavelength));
+            end
         end
 
         function prepareCounts(obj)
+            if ~isnan(obj.pendingCounts) && ~isnan(obj.pendingWavelength)
+                return;
+            end
             idx = obj.currentIndex;
             if idx < 1 || idx > obj.pixelCount
                 error("instrument_AndorSpectrometer:IndexOutOfRange", "Current index %d is outside detector range 1:%d.", idx, obj.pixelCount);
@@ -351,6 +359,13 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             end
             
             obj.pendingCounts = obj.spectrumData(idx);
+            if isempty(obj.wavelengthData) || numel(obj.wavelengthData) ~= double(obj.pixelCount)
+                obj.wavelengthData = obj.querySpectrographWavelength();
+                if ~isempty(obj.wavelengthData) && ~iscolumn(obj.wavelengthData)
+                    obj.wavelengthData = reshape(obj.wavelengthData, [], 1);
+                end
+            end
+            obj.pendingWavelength = obj.wavelengthData(idx);
             obj.requestedMask(idx) = true;
         end
         
@@ -366,6 +381,10 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             obj.spectrumData = double(buffer);
             if ~iscolumn(obj.spectrumData)
                 obj.spectrumData = reshape(obj.spectrumData, [], 1);
+            end
+            obj.wavelengthData = obj.querySpectrographWavelength();
+            if ~isempty(obj.wavelengthData) && ~iscolumn(obj.wavelengthData)
+                obj.wavelengthData = reshape(obj.wavelengthData, [], 1);
             end
             obj.requestedMask = false(obj.pixelCount, 1);
             
@@ -419,10 +438,12 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             if ~isempty(obj.spectrumData)
                 obj.spectrumData(:) = NaN;
             end
+            obj.wavelengthData = [];
             if ~isempty(obj.requestedMask)
                 obj.requestedMask(:) = true;
             end
             obj.pendingCounts = NaN;
+            obj.pendingWavelength = NaN;
         end
         
         function bits = deriveBitsPerPixel(obj, pixelModeBits)
@@ -461,7 +482,5 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     context, saturationLevel);
             end
         end
-        
     end
-    
 end
