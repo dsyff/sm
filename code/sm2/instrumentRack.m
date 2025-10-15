@@ -29,6 +29,26 @@ classdef (Sealed) instrumentRack < handle
             end
         end
         
+        function delete(obj)
+            if ~isempty(obj.instrumentTable)
+                instruments = obj.instrumentTable.instruments;
+                names = obj.instrumentTable.instrumentFriendlyNames;
+                for idx = 1:numel(instruments)
+                    instrument = instruments(idx);
+                    friendlyName = char(names(idx));
+                    if isvalid(instrument)
+                        try
+                            delete(instrument);
+                        catch ME
+                            fprintf("instrumentRack delete warning: failed to delete instrument %s: %s\n", friendlyName, ME.message);
+                        end
+                    end
+                end
+            end
+            obj.instrumentTable = obj.instrumentTable([], :);
+            obj.channelTable = obj.channelTable([], :);
+        end
+
         function addInstrument(obj, instrumentObj, instrumentFriendlyName)
             arguments
                 obj
