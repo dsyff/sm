@@ -1,38 +1,20 @@
+global instrumentRackGlobal smscan smaux smdata bridge tareData; %#ok<NUSED>
+%% code version
+version = "dev"; % "main" or "dev"
 %% initialize
-global instrumentRackGlobal smscan smaux smdata bridge tareData;
-close all;
-% Clean up existing instruments to release serial ports
-if exist("instrumentRackGlobal", "var") && ~isempty(instrumentRackGlobal)
-    try
-        delete(instrumentRackGlobal);
-    catch ME
-        fprintf("demo deleteInstrumentRackGlobalFailed: %s\n", ME.message);
-    end
-    clear instrumentRackGlobal;
-end
-
-delete(visadevfind);
-delete(serialportfind);
-clear;
-%clear all;
-global instrumentRackGlobal smscan smaux smdata bridge tareData;
 path(pathdef);
-username=getenv("USERNAME");
-
-% Check for sm-main first, then sm-dev, then report error
+username = getenv("USERNAME");
 sm_main_path = sprintf("C:\\Users\\%s\\Desktop\\sm-main", username);
 sm_dev_path = sprintf("C:\\Users\\%s\\Desktop\\sm-dev", username);
 
-if exist(sm_main_path, "dir")
+if version == "main"
     addpath(genpath(sm_main_path));
-    fprintf("Added sm-main to path: %s\n", sm_main_path);
-elseif exist(sm_dev_path, "dir")
+elseif version == "dev"
     addpath(genpath(sm_dev_path));
-    fprintf("Added sm-dev to path: %s\n", sm_dev_path);
 else
-    error("Neither sm-main nor sm-dev folders found in %s\\Desktop\\", sprintf("C:\\Users\\%s", username));
+    error("demo:InvalidVersion", "version must be 'main' or 'dev'.");
 end
-
+sminit; % shared setup script keeps demo logic concise
 %% instrument addresses
 SR860_1_GPIB = 7; %sd
 SR830_1_GPIB = 7; %sd
@@ -84,32 +66,10 @@ Montana2_Use = 0;
 Opticool_Use = 0;
 
 strainController_Use = 0;
+strain_cryostat = "Opticool"; %Opticool, Montana2
 
 K10CR1_Use = 0;
 AndorCCD_Use = 0;
-
-%% Handle strain controller dependencies
-if strainController_Use
-    % Strain controller manages K2450 A&B and cryostat internally
-    % Force these to be disabled to avoid conflicts
-    if K2450_A_Use || K2450_B_Use
-        fprintf("Warning: K2450 A&B disabled - managed internally by strain controller.\n");
-        K2450_A_Use = 0;
-        K2450_B_Use = 0;
-    end
-    if Montana2_Use
-        fprintf("Warning: Montana2 disabled - managed internally by strain controller.\n");
-        Montana2_Use = 0;
-    end
-end
-%% create new parallel pool
-if strainController_Use
-    currentPool = (gcp('nocreate'));
-    if isempty(currentPool) || currentPool.Busy
-        delete(currentPool);
-        parpool("Processes");
-    end
-end
 
 %% INSTRUMENT SETUP GUIDE
 % This section explains the standard pattern for adding instruments and channels
@@ -195,12 +155,32 @@ end
 %% Create instrumentRack
 rack = instrumentRack(false); % TF to skip safety dialog for setup script
 
-
 %% Create strain controller first (if enabled) - manages K2450s A&B and cryostat internally
 if strainController_Use
-    cryostat_string = "Opticool"; %Opticool, Montana2
-    
+    if K2450_A_Use || K2450_B_Use
+        fprintf("Warning: K2450 A&B disabled - managed internally by strain controller.\n");
+        K2450_A_Use = 0;
+        K2450_B_Use = 0;
+    end
+    if Montana2_Use
+        fprintf("Warning: Montana2 disabled - managed internally by strain controller.\n");
+        Montana2_Use = 0;
+    end
+
+    currentPool = (gcp('nocreate'));
+    if isempty(currentPool) || currentPool.Busy
+        delete(currentPool);
+        parpool("Processes");
+    end
+
     %handle_strainController.plotLastSession();
+    if strain_cryostat == "Opticool"
+        strainCellNumber_default = 1;
+    elseif strain_cryostat == "Montana2"
+        strainCellNumber_default = 2;
+    else
+        error("demo:InvalidStrainCryostat", "strain_cryostat must be either 'Opticool' or 'Montana2'");
+    end
 
     handle_strainController = instrument_strainController("strainController_1", ...
         address_E4980AL = gpibAddress(E4980AL_GPIB, adaptorIndex_strain), ...
@@ -208,8 +188,8 @@ if strainController_Use
         address_K2450_B = gpibAddress(K2450_B_GPIB, adaptorIndex_strain), ...
         address_Montana2 = Montana2_IP, ...
         address_Opticool = Opticool_IP, ...
-        cryostat = cryostat_string, ...
-        strainCellNumber = 1);
+        cryostat = strain_cryostat, ...
+        strainCellNumber = strainCellNumber_default);
     
     if exist("tareData", "var") && isempty(tareData)
         tareData = handle_strainController.tare();
@@ -619,16 +599,4 @@ if virtual_del_V_Use
 end
 
 %% wrap up setup
-%flush all instrument buffers to remove instrument introduction messages
-rack.flush();
-fprintf("Main rack starts.\n");
-disp(rack)
-fprintf("Main rack ends.\n");
-bridge = smguiBridge(rack);
-bridge.initializeSmdata();
-% Make rack available globally for the new smset/smget functions
-instrumentRackGlobal = rack;
-
-%% start GUI
-smgui_small_new();
-sm;
+smready(rack);
