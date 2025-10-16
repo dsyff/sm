@@ -1,20 +1,22 @@
 global instrumentRackGlobal smscan smaux smdata bridge tareData; %#ok<NUSED>
-%% code version
-version = "dev"; % "main" or "dev"
+
 %% initialize
 path(pathdef);
 username = getenv("USERNAME");
 sm_main_path = sprintf("C:\\Users\\%s\\Desktop\\sm-main", username);
 sm_dev_path = sprintf("C:\\Users\\%s\\Desktop\\sm-dev", username);
 
-if version == "main"
-    addpath(genpath(sm_main_path));
-elseif version == "dev"
+if exist(sm_dev_path, "dir")
     addpath(genpath(sm_dev_path));
+    fprintf("Added sm-dev to path: %s\n", sm_dev_path);
+elseif exist(sm_main_path, "dir")
+    addpath(genpath(sm_main_path));
+    fprintf("Added sm-main to path: %s\n", sm_main_path);
 else
-    error("demo:InvalidVersion", "version must be 'main' or 'dev'.");
+    error("demo:MissingCodePath", "Neither sm-dev nor sm-main directories were found on the Desktop.");
 end
 sminit; % shared setup script keeps demo logic concise
+
 %% instrument addresses
 SR860_1_GPIB = 7; %sd
 SR830_1_GPIB = 7; %sd
