@@ -48,7 +48,7 @@ adaptorIndex_strain = 2; % Strain controller instruments
 counter_Use = 1;
 clock_Use = 1;
 test_Use = 0; %extra counters for testing
-virtual_del_V_Use = 1; % enable virtual V_\delta composite channel example
+virtual_del_V_Use = 0;
 
 SR860_1_Use = 0;
 SR830_1_Use = 0;
