@@ -115,7 +115,7 @@ h = handle_K2450_A.communicationHandle;
 %writeline(h,"source:voltage:Ilimit 8e-8"); %sets a current limit protector
 
 writeline(h,":sense:current:range 1e-6"); %sets the sense current range
-writeline(h,"source:voltage:Ilimit 3.2e-7"); %sets a current limit protector
+writeline(h,"source:voltage:Ilimit 1.6e-7"); %sets a current limit protector
 
 writeline(h,":source:voltage:range 200"); %sets the source voltage range
 %writeline(h,":source:voltage:range:auto ON"); %use auto range for voltage
@@ -139,7 +139,7 @@ h = handle_K2450_B.communicationHandle;
 %writeline(h,"source:voltage:Ilimit 5e-8"); %sets a current limit protector
 
 writeline(h,":sense:current:range 1e-6"); %sets the sense current range
-writeline(h,"source:voltage:Ilimit 2e-7"); %sets a current limit protector
+writeline(h,"source:voltage:Ilimit 1e-7"); %sets a current limit protector
 
 writeline(h,":source:voltage:range 200"); %sets the source voltage range
 %writeline(h,":source:voltage:range:auto ON"); %use auto range for voltage
