@@ -1,7 +1,7 @@
 %% initialize
 global instrumentRackGlobal smscan smaux smdata bridge tareData;
 close all;
-%% Clean up existing instruments to release serial ports
+% Clean up existing instruments to release serial ports
 if exist("instrumentRackGlobal", "var") && ~isempty(instrumentRackGlobal)
     try
         delete(instrumentRackGlobal);
