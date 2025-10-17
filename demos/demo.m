@@ -212,13 +212,6 @@ if strainController_Use
     rack.addChannel("strain", "I_str_o", "I_str_o");
     rack.addChannel("strain", "I_str_i", "I_str_i");
     rack.addChannel("strain", "activeControl", "activeControl");
-
-    % Parameters passed via constructor to legacy watchdog. Tare step skipped here; run your
-    % preferred tare workflow via the legacy UI/commands if needed.
-    
-    % Set initial voltages to zero
-    % smset("strain.V_str_o", 0);
-    % smset("strain.V_str_i", 0);
     
     fprintf("Strain controller rack starts.\n");
     disp(handle_strainController.getRack());
