@@ -23,7 +23,7 @@ overloadCurrent = 1E-7; %A threshold for considering if ramping or overloading i
 overloadTolerance = 5E-10; %m tolerance for progress detection. allows a small progress (decrease) in del_d_diff to still be counted as stalling. set to larger than noise level
 overloadHold = seconds(5); %time watchdog waits before declaring overload
 del_d_tolerance = 5E-9; %m tolerance for determining if del_d target is reached
-V_tolerance = 2E-3; %V tolerance for determining if voltage target is reached
+V_tolerance = 5E-3; %V tolerance for determining if voltage target is reached
 
 %% pass back man2dog message channel
 % man2dog commands will only be executed after initilizations are done.
