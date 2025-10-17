@@ -89,7 +89,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             obj.addChannel("temperature", setTolerances = 2);
             obj.addChannel("exposure_time");
             obj.addChannel("accumulations");
-            obj.addChannel("centerWavelength");
+            obj.addChannel("center_wavelength");
             obj.addChannel("grating");
             obj.addChannel("pixel_index");
             obj.addChannel("wavelength");
@@ -159,7 +159,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     % Exposure is read directly in getReadChannelHelper
                 case 3 % accumulations
                     % Accumulations are read directly in getReadChannelHelper
-                case 4 % centerWavelength
+                case 4 % center_wavelength
                     obj.refreshSpectrographCenterWavelength();
                 case 5 % grating
                     obj.refreshSpectrographGrating();
@@ -178,7 +178,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     getValues = obj.exposureTime;
                 case 3 % accumulations
                     getValues = double(obj.accumulations);
-                case 4 % centerWavelength
+                case 4 % center_wavelength
                     getValues = obj.currentCenterWavelength;
                 case 5 % grating
                     getValues = double(obj.currentGrating);
@@ -222,7 +222,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     handle = obj.communicationHandle;
                     obj.checkStatus(handle.SetNumberAccumulations(int32(obj.accumulations)), "SetNumberAccumulations");
                     obj.invalidateSpectrumCache();
-                case 4 % centerWavelength
+                case 4 % center_wavelength
                     newCenter = double(setValues(1));
                     assert(isfinite(newCenter), ...
                         "instrument_AndorSpectrometer:InvalidCenterWavelength", ...
