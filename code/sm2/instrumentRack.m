@@ -133,24 +133,20 @@ classdef (Sealed) instrumentRack < handle
 
             assert(all(softwareMins <= softwareMaxs), "Software limits must satisfy min <= max for every element.");
             
-            if isa(instrument, "virtualInstrumentInterface")
-                readDelay = 0;
-            else
-                % test run to make sure channel is initialized before timing
-                % response time
-                instrument.getChannel(channel);
+            % test run to make sure channel is initialized before timing
+            % response time
+            instrument.getChannel(channel);
 
-                % obtain response time of getRead over a few trials
-                readDelayArray = nan(5, 1);
-                trials = 5;
-                for tryIndex = 1:trials
-                    instrument.getWriteChannel(channel);
-                    startTime = tic;
-                    instrument.getReadChannel(channel);
-                    readDelayArray(tryIndex) = toc(startTime);
-                end
-                readDelay = median(readDelayArray);
+            % obtain response time of getRead over a few trials
+            readDelayArray = nan(5, 1);
+            trials = 5;
+            for tryIndex = 1:trials
+                instrument.getWriteChannel(channel);
+                startTime = tic;
+                instrument.getReadChannel(channel);
+                readDelayArray(tryIndex) = toc(startTime);
             end
+            readDelay = median(readDelayArray);
 
             newTable = [obj.channelTable; {instrument, instrumentFriendlyName, channel, channelFriendlyName, channelSize, readDelay, {rampRates}, {rampThresholds}, {softwareMins}, {softwareMaxs}}];
             
@@ -253,10 +249,7 @@ classdef (Sealed) instrumentRack < handle
             startIndex = 1;
             for i = 1:height(batchTable)
                 channelSize = batchTable.channelSizes(i);
-                rawValues = values(startIndex : (startIndex + channelSize - 1));
-                minLimits = batchTable.softwareMins{i};
-                maxLimits = batchTable.softwareMaxs{i};
-                batchTable.setValues{i} = obj.enforceSoftwareLimits(rawValues, minLimits, maxLimits);
+                batchTable.setValues{i} = values(startIndex : (startIndex + channelSize - 1));
                 startIndex = startIndex + channelSize;
             end
             
@@ -305,10 +298,7 @@ classdef (Sealed) instrumentRack < handle
             startIndex = 1;
             for i = 1:height(batchTableCopy)
                 channelSize = batchTableCopy.channelSizes(i);
-                rawValues = values(startIndex : (startIndex + channelSize - 1));
-                minLimits = batchTableCopy.softwareMins{i};
-                maxLimits = batchTableCopy.softwareMaxs{i};
-                batchTableCopy.setValues{i} = obj.enforceSoftwareLimits(rawValues, minLimits, maxLimits);
+                batchTableCopy.setValues{i} = values(startIndex : (startIndex + channelSize - 1));
                 startIndex = startIndex + channelSize;
             end
             
@@ -516,8 +506,8 @@ classdef (Sealed) instrumentRack < handle
                 startValues = setTable.startValues{i};
                 rampThresholds = setTable.rampThresholds{i};
                 deltas = abs(setValues - startValues);
-                setTable.reachedTargets{i} = deltas <= rampThresholds;
-                if all(setTable.reachedTargets{i})
+                setTable.reachedTargets{i} = false(size(startValues));
+                if all(deltas < rampThresholds)
                     isInstant(i) = true;
                 end
             end
@@ -544,8 +534,6 @@ classdef (Sealed) instrumentRack < handle
                     setValues = setTable.setValues{i};
                     rampRates = setTable.rampRates{i};
                     rampThresholds = setTable.rampThresholds{i};
-                    minLimits = setTable.softwareMins{i};
-                    maxLimits = setTable.softwareMaxs{i};
                     reachedTargets = setTable.reachedTargets{i};
                     deltas = setValues - startValues;
                     signs = sign(deltas);
@@ -558,15 +546,17 @@ classdef (Sealed) instrumentRack < handle
                         rampDistance = rampRates * totalElapsed;
                     end
                     % Calculate new step values
-                    rampStep = setValues;
+                    rampStepSetValues{i} = setValues;
                     if any(needRamp)
-                        stepDistance = min(rampDistance(needRamp), abs(deltas(needRamp)));
-                        rampStep(needRamp) = startValues(needRamp) + signs(needRamp) .* stepDistance;
+                        rampStepSetValues{i}(needRamp) = startValues(needRamp) + signs(needRamp) .* rampDistance(needRamp);
                     end
-                    rampStep = obj.enforceSoftwareLimits(rampStep, minLimits, maxLimits);
-                    rampStepSetValues{i} = rampStep;
-                    currentDelta = abs(rampStep - setValues);
-                    setTable.reachedTargets{i} = currentDelta <= rampThresholds;
+                    % Check if step would reach or overshoot target
+                    overshoot = needRamp & (rampDistance >= abs(deltas));
+                    if any(overshoot)
+                        rampStepSetValues{i}(overshoot) = setValues(overshoot);
+                    end
+                    % Update reachedTargets flags
+                    setTable.reachedTargets{i}(overshoot) = true;
                     if all(setTable.reachedTargets{i})
                         allReached(i) = true;
                     end
