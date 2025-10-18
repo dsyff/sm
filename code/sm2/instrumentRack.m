@@ -249,7 +249,10 @@ classdef (Sealed) instrumentRack < handle
             startIndex = 1;
             for i = 1:height(batchTable)
                 channelSize = batchTable.channelSizes(i);
-                batchTable.setValues{i} = values(startIndex : (startIndex + channelSize - 1));
+                rawValues = values(startIndex : (startIndex + channelSize - 1));
+                minLimits = batchTable.softwareMins{i};
+                maxLimits = batchTable.softwareMaxs{i};
+                batchTable.setValues{i} = obj.enforceSoftwareLimits(rawValues, minLimits, maxLimits);
                 startIndex = startIndex + channelSize;
             end
             
@@ -298,7 +301,10 @@ classdef (Sealed) instrumentRack < handle
             startIndex = 1;
             for i = 1:height(batchTableCopy)
                 channelSize = batchTableCopy.channelSizes(i);
-                batchTableCopy.setValues{i} = values(startIndex : (startIndex + channelSize - 1));
+                rawValues = values(startIndex : (startIndex + channelSize - 1));
+                minLimits = batchTableCopy.softwareMins{i};
+                maxLimits = batchTableCopy.softwareMaxs{i};
+                batchTableCopy.setValues{i} = obj.enforceSoftwareLimits(rawValues, minLimits, maxLimits);
                 startIndex = startIndex + channelSize;
             end
             
@@ -462,14 +468,11 @@ classdef (Sealed) instrumentRack < handle
             
         end
         
-        function rackSetWriteHelperNoRamp(obj, batchTable)
+        function rackSetWriteHelperNoRamp(~, batchTable)
             for batchIndex = 1:height(batchTable)
                 instrument = batchTable.instruments(batchIndex);
                 channel = batchTable.channels(batchIndex);
                 setValues = batchTable.setValues{batchIndex};
-                minLimits = batchTable.softwareMins{batchIndex};
-                maxLimits = batchTable.softwareMaxs{batchIndex};
-                setValues = obj.enforceSoftwareLimits(setValues, minLimits, maxLimits);
                 instrument.setWriteChannel(channel, setValues);
             end
         end
