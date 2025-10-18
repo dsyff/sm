@@ -48,7 +48,7 @@ classdef (Sealed) instrumentRack < handle
             obj.instrumentTable = obj.instrumentTable([], :);
             obj.channelTable = obj.channelTable([], :);
         end
-
+        
         function addInstrument(obj, instrumentObj, instrumentFriendlyName)
             arguments
                 obj
@@ -107,7 +107,7 @@ classdef (Sealed) instrumentRack < handle
                     rampThresholds = rampThresholds.';
                 end
             end
-
+            
             % validate software limits size
             if isempty(softwareMins)
                 softwareMins = -inf(channelSize, 1);
@@ -119,7 +119,7 @@ classdef (Sealed) instrumentRack < handle
                     softwareMins = softwareMins.';
                 end
             end
-
+            
             if isempty(softwareMaxs)
                 softwareMaxs = inf(channelSize, 1);
             elseif isscalar(softwareMaxs)
@@ -130,13 +130,13 @@ classdef (Sealed) instrumentRack < handle
                     softwareMaxs = softwareMaxs.';
                 end
             end
-
+            
             assert(all(softwareMins <= softwareMaxs), "Software limits must satisfy min <= max for every element.");
             
             % test run to make sure channel is initialized before timing
             % response time
             instrument.getChannel(channel);
-
+            
             % obtain response time of getRead over a few trials
             readDelayArray = nan(5, 1);
             trials = 5;
@@ -147,7 +147,7 @@ classdef (Sealed) instrumentRack < handle
                 readDelayArray(tryIndex) = toc(startTime);
             end
             readDelay = median(readDelayArray);
-
+            
             newTable = [obj.channelTable; {instrument, instrumentFriendlyName, channel, channelFriendlyName, channelSize, readDelay, {rampRates}, {rampThresholds}, {softwareMins}, {softwareMaxs}}];
             
             % check for repetitions
@@ -393,7 +393,7 @@ classdef (Sealed) instrumentRack < handle
             obj.dispTime();
             obj.dispLine();
         end
-
+        
         function displayReadDelaySortedChannelTable(obj)
             obj.dispLine();
             obj.dispTime();
@@ -421,7 +421,7 @@ classdef (Sealed) instrumentRack < handle
                 instrument.flush();
             end
         end
-
+        
         function dummy(obj)
             % for copy pasting
             tries = 0;
@@ -604,7 +604,7 @@ classdef (Sealed) instrumentRack < handle
             subTable = obj.channelTable(channelIndices, :);
             % values column will be attached by caller (get/set) as needed
         end
-
+        
         function limitedValues = enforceSoftwareLimits(~, values, minLimits, maxLimits)
             limitedValues = values;
             if isempty(limitedValues)
