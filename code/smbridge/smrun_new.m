@@ -755,24 +755,40 @@ function saveData()
     end
 
     prevWarningState = warning;
+    warningCleanup = onCleanup(@() warning(prevWarningState)); %#ok<NASGU>
+    [figpath, figname] = fileparts(filename);
+    if isempty(figname)
+        figstring = filename;
+    elseif isempty(figpath)
+        figstring = figname;
+    else
+        figstring = fullfile(figpath, figname);
+    end
+    warning('off', 'all');
+    set(figHandle, 'CloseRequestFcn', 'closereq');
+
     try
-        [figpath, figname] = fileparts(filename);
-        if isempty(figname)
-            figstring = filename;
-        elseif isempty(figpath)
-            figstring = figname;
-        else
-            figstring = fullfile(figpath, figname);
+        saveScanDataToFile(filename);
+        [p,f,e] = fileparts(filename);
+        try
+            if isempty(p)
+                temp_pattern = sprintf('%s-temp*%s~', f, e);
+                temp_files = dir(temp_pattern);
+                for tf = 1:length(temp_files)
+                    delete(temp_files(tf).name);
+                end
+            else
+                temp_pattern = sprintf('%s%s%s-temp*%s~', p, filesep, f, e);
+                temp_files = dir(temp_pattern);
+                for tf = 1:length(temp_files)
+                    delete(fullfile(p, temp_files(tf).name));
+                end
+            end
+        catch tempCleanupError
+            fprintf("smrun_new: Failed to remove temp files matching %s (%s).\n", char(temp_pattern), tempCleanupError.message);
         end
-        warning('off', 'all');
-    savefig(figHandle, figstring);
-        warning(prevWarningState);
-        pdfFile = sprintf('%s.pdf', figstring);
-    exportgraphics(figHandle, pdfFile, 'ContentType', 'vector');
-    catch figureSaveError
-        warning(prevWarningState);
-        fprintf("smrun_new: Failed to save figure (%s).\n", figureSaveError.message);
-        rethrow(figureSaveError);
+    catch finalSaveError
+        fprintf("smrun_new: Failed to save final data (%s).\n", finalSaveError.message);
     end
 
     % Save PowerPoint if enabled
@@ -805,29 +821,19 @@ function saveData()
     catch pptError
         fprintf("smrun_new: Skipping PowerPoint append (%s).\n", pptError.message);
     end
-        
+
     try
-        saveScanDataToFile(filename);
-        [p,f,e] = fileparts(filename);
-        try
-            if isempty(p)
-                temp_pattern = sprintf('%s-temp*%s~', f, e);
-                temp_files = dir(temp_pattern);
-                for tf = 1:length(temp_files)
-                    delete(temp_files(tf).name);
-                end
-            else
-                temp_pattern = sprintf('%s%s%s-temp*%s~', p, filesep, f, e);
-                temp_files = dir(temp_pattern);
-                for tf = 1:length(temp_files)
-                    delete(fullfile(p, temp_files(tf).name));
-                end
-            end
-        catch tempCleanupError
-            fprintf("smrun_new: Failed to remove temp files matching %s (%s).\n", char(temp_pattern), tempCleanupError.message);
-        end
-    catch finalSaveError
-        fprintf("smrun_new: Failed to save final data (%s).\n", finalSaveError.message);
+        pdfFile = sprintf('%s.pdf', figstring);
+        exportgraphics(figHandle, pdfFile, 'ContentType', 'vector');
+    catch pdfError
+        fprintf("smrun_new: Failed to export PDF (%s).\n", pdfError.message);
+    end
+
+    try
+        savefig(figHandle, figstring);
+    catch figureSaveError
+        fprintf("smrun_new: Failed to save figure (%s).\n", figureSaveError.message);
+        rethrow(figureSaveError);
     end
 
     save_operations_completed = true;
@@ -837,12 +843,19 @@ end
 % Nested function for graceful window close
 function gracefulClose()
     try
+        if ~ishandle(figHandle)
+            return;
+        end
+        selection = questdlg("Stop the scan and close this figure?", "Closing", "Stop", "Cancel", "Cancel");
+        if selection ~= "Stop"
+            return;
+        end
         if ishandle(figHandle)
             saveData();
         end
         scan_should_exit = true;
     catch closeError
-        fprintf("smrun_new: gracefulClose encountered an error (%s).\n", closeError.message);
+        fprintf("smrun_new: gracefulClose encountered an error (%s). Once you are sure data is saved, try delete(gcf) to force close.\n", closeError.message);
     end
     if ishandle(figHandle)
         delete(figHandle);
