@@ -724,22 +724,18 @@ for point_idx = 1:totpoints_cached
     end
     
     % Optimized exit/pause checks - only check periodically to reduce overhead
-    figure_check_counter = figure_check_counter + 1;
-    if figure_check_counter >= figure_check_interval
-        figure_check_counter = 0;
-        if ishandle(figHandle)
-            current_char = get(figHandle, 'CurrentCharacter');
-            if current_char == char(27)  % Escape key
-                set(figHandle, 'CurrentCharacter', char(0));
-                saveData();
-                return;
-            end
-        end
-        
-        % Check if scan should exit (e.g., figure was closed)
-        if scan_should_exit
+    if ishandle(figHandle)
+        current_char = get(figHandle, 'CurrentCharacter');
+        if current_char == char(27)  % Escape key
+            set(figHandle, 'CurrentCharacter', char(0));
+            saveData();
             return;
         end
+    end
+    
+    % Check if scan should exit (e.g., figure was closed)
+    if scan_should_exit
+        return;
     end
   
 end
