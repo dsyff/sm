@@ -62,8 +62,8 @@ classdef instrument_AndorSpectrometer < instrumentInterface
     end
     
     properties (GetAccess = public, SetAccess = private)
-        xpixels (1, 1) uint32 = 0;
-        ypixels (1, 1) uint32 = 0;
+        xPixels (1, 1) uint32 = 0;
+        yPixels (1, 1) uint32 = 0;
         pixelCount (1, 1) uint32 = 0;
         bitDepth (1, 1) uint32 = 0; % bit depth of ADC of chosen channel
         bitsPerPixel (1, 1) uint32 = 0; % bits per pixel in CCD
@@ -72,6 +72,8 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         hsSpeedMax (1, 1) uint32 = 0;
         vsAmplitudeMax (1, 1) uint32 = 0;
         pixelModeColorValue (1, 1) uint32 = 0;
+        pixelSizeX (1, 1) double = NaN;
+        pixelSizeY (1, 1) double = NaN;
     end
     
     methods
@@ -116,23 +118,23 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         
         function image = acquireImage(obj)
             % ACQUIREIMAGE captures a full 2D frame from the detector.
-            % Returns double precision matrix sized [ypixels, xpixels].
+            % Returns double precision matrix sized [yPixels, xPixels].
             
             handle = obj.communicationHandle;
             
             obj.checkStatus(handle.SetReadMode(obj.READ_MODE_IMAGE), "SetReadModeImage");
             cleanupReadMode = onCleanup(@() obj.checkStatus(handle.SetReadMode(obj.READ_MODE_FVB), "SetReadMode"));
             
-            obj.checkStatus(handle.SetImage(int32(1), int32(1), int32(1), int32(obj.xpixels), int32(1), int32(obj.ypixels)), "SetImage");
+            obj.checkStatus(handle.SetImage(int32(1), int32(1), int32(1), int32(obj.xPixels), int32(1), int32(obj.yPixels)), "SetImage");
             obj.checkStatus(handle.StartAcquisition(), "StartAcquisitionImage");
             obj.waitForAcquisitionCompletion(handle, "GetStatusImage");
             
-            totalPixels = double(obj.xpixels) * double(obj.ypixels);
+            totalPixels = double(obj.xPixels) * double(obj.yPixels);
             buffer = NET.createArray("System.Int32", totalPixels);
             ret = handle.GetAcquiredData(buffer, uint32(totalPixels));
             obj.checkStatus(ret, "GetAcquiredDataImage");
             
-            image = reshape(double(buffer), [double(obj.xpixels), double(obj.ypixels)]).';
+            image = reshape(double(buffer), [double(obj.xPixels), double(obj.yPixels)]).';
             
             obj.checkForSaturation(image, "Image");
             
@@ -307,9 +309,9 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             detectorY = int32(0);
             [ret, detectorX, detectorY] = handle.GetDetector(detectorX, detectorY);
             obj.checkStatus(ret, "GetDetector");
-            obj.xpixels = uint32(detectorX);
-            obj.ypixels = uint32(detectorY);
-            obj.pixelCount = obj.xpixels;
+            obj.xPixels = uint32(detectorX);
+            obj.yPixels = uint32(detectorY);
+            obj.pixelCount = obj.xPixels;
             assert(obj.pixelCount > 0, "instrument_AndorSpectrometer:NoPixels", ...
                 "Detector reported zero pixels.");
 
