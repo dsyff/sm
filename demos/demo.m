@@ -375,7 +375,7 @@ end
 
 if Andor_Use
     handle_AndorSpectrometer = instrument_AndorSpectrometer("AndorSpectrometer");
-    % check handle_AndorSpectrometer.pixelCount for number of pixels
+    % check handle_AndorSpectrometer for properties
     rack.addInstrument(handle_AndorSpectrometer, "AndorSpectrometer");
     rack.addChannel("AndorSpectrometer", "temperature", "CCD_T"); % cooler temperature in C
     rack.addChannel("AndorSpectrometer", "exposure_time", "CCD_exposure"); % in seconds

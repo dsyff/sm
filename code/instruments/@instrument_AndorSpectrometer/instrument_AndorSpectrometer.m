@@ -49,6 +49,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         requestedMask logical = true;
         spectrumData double = [];
         wavelengthData double = [];
+        pixelCount (1, 1) uint32 = 0;
         pendingCounts double = NaN;
         pendingWavelength double = NaN;
         currentTemperature double = NaN;
@@ -63,7 +64,6 @@ classdef instrument_AndorSpectrometer < instrumentInterface
     properties (GetAccess = public, SetAccess = private)
         xPixels (1, 1) uint32 = 0;
         yPixels (1, 1) uint32 = 0;
-        pixelCount (1, 1) uint32 = 0;
         bitDepth (1, 1) uint32 = 0; % bit depth of ADC of chosen channel
         preAmpGainMax (1, 1) uint32 = 0;
         vsSpeedMax (1, 1) uint32 = 0;
@@ -171,7 +171,33 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             obj.invalidateSpectrumCache();
             clear cleanupReadMode; %#ok<CLCLR> ensures read mode reset before returning
         end
-        
+
+        function info = currentGratingInfo(obj)
+            libAlias = instrument_AndorSpectrometer.ATSPECTROGRAPH_LIB_ALIAS;
+            gratingIndex = obj.currentGrating;
+
+            linesPerMm = single(0);
+            blazeBuffer = blanks(64);
+            homeFlag = int32(0);
+            offsetFlag = int32(0);
+
+            [ret, linesPerMm, blazeBuffer, homeFlag, offsetFlag] = calllib(libAlias, ...
+                'ATSpectrographGetGratingInfo', obj.spectrographDevice, gratingIndex, linesPerMm, blazeBuffer, int32(numel(blazeBuffer)), homeFlag, offsetFlag);
+            obj.checkSpectrographStatus(ret, "ATSpectrographGetGratingInfo");
+
+            blazeText = strtrim(blazeBuffer(blazeBuffer ~= 0));
+
+            info = struct();
+            info.index = gratingIndex;
+            info.lines_per_mm = double(linesPerMm);
+            info.blaze = blazeText;
+            info.home = logical(homeFlag);
+            info.offset = double(offsetFlag);
+
+            fprintf("instrument_AndorSpectrometer: Grating %d -> lines/mm: %.3f, blaze: %s, home: %d, offset: %.0f\n", ...
+                info.index, info.lines_per_mm, blazeText, info.home, info.offset);
+        end
+
     end
     
     methods (Access = ?instrumentInterface)
@@ -260,7 +286,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     libAlias = instrument_AndorSpectrometer.ATSPECTROGRAPH_LIB_ALIAS;
                     obj.checkSpectrographStatus(calllib(libAlias, 'ATSpectrographSetWavelength', obj.spectrographDevice, single(newCenter)), "ATSpectrographSetWavelength");
                     obj.currentCenterWavelength = newCenter;
-                    obj.invalidateSpectrumCache(true);
+                    obj.invalidateSpectrumCache();
                     obj.updateWavelengthCache();
                 case 5 % grating
                     newGrating = double(setValues(1));
@@ -273,7 +299,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     obj.checkSpectrographStatus(calllib(libAlias, 'ATSpectrographSetGrating', obj.spectrographDevice, candidate), "ATSpectrographSetGrating");
                     obj.currentGrating = candidate;
                     obj.updateGratingIndexing(candidate);
-                    obj.invalidateSpectrumCache(true);
+                    obj.invalidateSpectrumCache();
                     obj.updateWavelengthCache();
                 case 6 % pixel_index
                     idx = double(setValues(1));
@@ -485,21 +511,18 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         function wavelength = querySpectrographWavelength(obj)
             libAlias = instrument_AndorSpectrometer.ATSPECTROGRAPH_LIB_ALIAS;
 
-            [ret, spectroPixelCount] = calllib(libAlias, 'ATSpectrographGetNumberPixels', obj.spectrographDevice, int32(0));
-            obj.checkSpectrographStatus(ret, "ATSpectrographGetNumberPixels");
-            spectroPixelCount = double(spectroPixelCount);
-            if spectroPixelCount <= 0
+            detectorPixelCount = double(obj.pixelCount);
+            if detectorPixelCount <= 0
                 error("instrument_AndorSpectrometer:WavelengthQueryFailed", ...
-                    "Spectrograph reported an invalid pixel count (%d).", spectroPixelCount);
+                    "Pixel count cache is invalid (value %d).", detectorPixelCount);
             end
 
-            requestedPixelCount = int32(min(double(obj.pixelCount), spectroPixelCount));
-            calibrationBuffer = zeros(double(requestedPixelCount), 1, 'single');
+            requestedPixelCount = int32(detectorPixelCount);
+            calibrationBuffer = zeros(detectorPixelCount, 1, 'single');
             [ret, calibrationBuffer] = calllib(libAlias, 'ATSpectrographGetCalibration', obj.spectrographDevice, calibrationBuffer, requestedPixelCount);
             obj.checkSpectrographStatus(ret, "ATSpectrographGetCalibration");
             wavelength = double(calibrationBuffer(:));
 
-            detectorPixelCount = double(obj.pixelCount);
             if detectorPixelCount > numel(wavelength)
                 wavelength = [wavelength; nan(detectorPixelCount - numel(wavelength), 1)];
             elseif detectorPixelCount < numel(wavelength)
@@ -560,7 +583,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             end
 
             error("instrument_AndorSpectrometer:SpectrographError", ...
-                "%s failed with status %s.", actionName, statusStr);
+                "%s failed with status %s.", actionName, statusCharArray);
         end
 
         function pushSpectrographPixelGeometry(obj)
@@ -652,32 +675,6 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                 error("instrument_AndorSpectrometer:InvalidGrating", ...
                     "Grating index must be between %d and %d.", int32(minIndex), int32(maxIndex));
             end
-        end
-
-        function info = currentGratingInfo(obj)
-            libAlias = instrument_AndorSpectrometer.ATSPECTROGRAPH_LIB_ALIAS;
-            gratingIndex = obj.currentGrating;
-
-            linesPerMm = single(0);
-            blazeBuffer = blanks(64);
-            homeFlag = int32(0);
-            offsetFlag = int32(0);
-
-            [ret, linesPerMm, blazeBuffer, homeFlag, offsetFlag] = calllib(libAlias, ...
-                'ATSpectrographGetGratingInfo', obj.spectrographDevice, gratingIndex, linesPerMm, blazeBuffer, int32(numel(blazeBuffer)), homeFlag, offsetFlag);
-            obj.checkSpectrographStatus(ret, "ATSpectrographGetGratingInfo");
-
-            blazeText = strtrim(blazeBuffer(blazeBuffer ~= 0));
-
-            info = struct();
-            info.index = gratingIndex;
-            info.lines_per_mm = double(linesPerMm);
-            info.blaze = blazeText;
-            info.home = logical(homeFlag);
-            info.offset = double(offsetFlag);
-
-            fprintf("instrument_AndorSpectrometer: Grating %d -> lines/mm: %.3f, blaze: %s, home: %d, offset: %.0f\n", ...
-                info.index, info.lines_per_mm, blazeText, info.home, info.offset);
         end
 
         function prepareCounts(obj)
@@ -776,15 +773,9 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                 "CCD Error: %s failed with status code %d.", actionName, statusCode);
         end
         
-        function invalidateSpectrumCache(obj, clearWavelength)
-            if nargin < 2
-                clearWavelength = false;
-            end
+        function invalidateSpectrumCache(obj)
             if ~isempty(obj.spectrumData)
                 obj.spectrumData(:) = NaN;
-            end
-            if clearWavelength
-                obj.wavelengthData = [];
             end
             if ~isempty(obj.requestedMask)
                 obj.requestedMask(:) = true;
