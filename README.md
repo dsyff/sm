@@ -1,7 +1,7 @@
 # sm 1.5 - MATLAB Measurement Automation System
 
 ## 🚀 QUICK START:
-- Download and extract `sm-main` folder to desktop
+- Clone or download the `sm-dev` repository (or the latest `sm-main` release) to your desktop
 - Run `demos/demo.m` for complete example
 - The familiar GUI interface is largely unchanged from the original system
 - Use `smget("channel")` and `smset("channel", value)` for quick access
@@ -26,6 +26,7 @@
 - **Data Compatibility**: Same file format as legacy system - existing analysis code works unchanged
 - **Virtual Instruments**: Create complex scans (non-linear ramping) and parameter conversions (field→gate voltages)
 	- Base class `virtualInstrumentInterface` lives in `code/sm2`; concrete helpers in `code/instruments` should follow the layout shown in `instrument_demo.m`.
+- **Deterministic Plot Axes**: Real-time 1D plots always use the loop where a channel is acquired for the x-axis; 2D plots demand that loop be ≤ `nloops-1` and pick a distinct remaining loop for the y-axis (raising errors when a second loop is unavailable).
 
 ## 🔧 TROUBLESHOOTING:
 - Check instrument addresses and VISA connections
@@ -36,4 +37,4 @@
 ---
 
 📖 **For complete documentation, see [README_LONG.md](README_LONG.md)**  
-📅 **Last Updated**: 2025-10-07
+📅 **Last Updated**: 2025-11-11
