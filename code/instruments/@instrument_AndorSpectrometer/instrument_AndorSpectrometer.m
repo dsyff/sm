@@ -58,7 +58,6 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         currentGrating int32 = int32(-1);
         spectrographDevice (1, 1) int32 = int32(0);
         spectrographInitialized (1, 1) logical = false;
-        spectrographGratingIsOneBased (1, 1) logical = true;
     end
     
     properties (GetAccess = public, SetAccess = private)
@@ -298,7 +297,6 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     libAlias = instrument_AndorSpectrometer.ATSPECTROGRAPH_LIB_ALIAS;
                     obj.checkSpectrographStatus(calllib(libAlias, 'ATSpectrographSetGrating', obj.spectrographDevice, candidate), "ATSpectrographSetGrating");
                     obj.currentGrating = candidate;
-                    obj.updateGratingIndexing(candidate);
                     obj.invalidateSpectrumCache();
                     obj.updateWavelengthCache();
                 case 6 % pixel_index
@@ -435,9 +433,11 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             if ~libisloaded(libAlias)
                 [notfoundSymbols, loadWarnings] = loadlibrary(dllPath, headerPath, 'alias', char(libAlias));
                 if ~isempty(loadWarnings)
-                    for warnIdx = 1:numel(loadWarnings)
+                    warnCount = size(loadWarnings, 1);
+                    for warnIdx = 1:warnCount
+                        message = strtrim(loadWarnings(warnIdx, :));
                         warning("instrument_AndorSpectrometer:SpectrographLoadWarning", ...
-                            "loadlibrary warning %d/%d: %s", warnIdx, numel(loadWarnings), loadWarnings{warnIdx});
+                            "loadlibrary warning %d/%d: %s", warnIdx, warnCount, message);
                     end
                 end
                 if ~isempty(notfoundSymbols)
@@ -554,7 +554,6 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             obj.currentCenterWavelength = NaN;
             obj.currentGrating = int32(-1);
             obj.spectrographGratingCount = int32(0);
-            obj.spectrographGratingIsOneBased = true;
         end
 
         function headerPath = getSpectrographHeaderPath(~)
@@ -608,7 +607,6 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             obj.checkSpectrographStatus(ret, "ATSpectrographGetGrating");
             current = int32(currentGrating);
             obj.currentGrating = current;
-            obj.updateGratingIndexing(current);
         end
 
         function executeSpectrographProbe(obj)
@@ -627,18 +625,6 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             [ret, gratingCount] = calllib(libAlias, 'ATSpectrographGetNumberGratings', obj.spectrographDevice, int32(0));
             obj.checkSpectrographStatus(ret, "ATSpectrographGetNumberGratings");
             obj.spectrographGratingCount = int32(gratingCount);
-        end
-
-        function updateGratingIndexing(obj, gratingIndex)
-            obj.querySpectrographGratingCount();
-            if obj.spectrographGratingCount <= 0
-                return;
-            end
-            if gratingIndex >= 1 && gratingIndex <= obj.spectrographGratingCount
-                obj.spectrographGratingIsOneBased = true;
-            elseif gratingIndex >= 0 && gratingIndex < obj.spectrographGratingCount
-                obj.spectrographGratingIsOneBased = false;
-            end
         end
 
         function updateWavelengthCache(obj)
@@ -662,13 +648,8 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     "Spectrograph reports zero available gratings.");
             end
 
-            if obj.spectrographGratingIsOneBased
-                minIndex = 1;
-                maxIndex = double(obj.spectrographGratingCount);
-            else
-                minIndex = 0;
-                maxIndex = double(obj.spectrographGratingCount) - 1;
-            end
+            minIndex = 1;
+            maxIndex = double(obj.spectrographGratingCount);
 
             candidateValue = double(candidate);
             if candidateValue < minIndex || candidateValue > maxIndex
