@@ -14,10 +14,11 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         DEFAULT_OUTAMP_TYPE = int32(0); % 0 for below 750 nm, 1 for above 750 nm
         %more settings
         DEFAULT_AD_CHANNEL = int32(0); % 0 is slower and better for faint signal, 1 is faster but harder to saturate
-        DEFAULT_VSAMPLITUDE = int32(0); % 0 is no overvolt. larger is higher voltage, higher noise, and risk of damage. highest speeds may require overvolting
+        % DEFAULT_VSAMPLITUDE retained for reference; VSAmplitude is not actively configured
+        % DEFAULT_VSAMPLITUDE = int32(0);
         DEFAULT_EXPOSURE = 0.1; % seconds
         DEFAULT_TRIGGER_MODE = int32(0); % Internal trigger
-        DEFAULT_ACCUMULATIONS = uint32(2);
+        DEFAULT_ACCUMULATIONS = double(2);
         DEFAULT_FILTER_MODE = int32(2); % Cosmic ray filter on
         STATUS_POLL_DELAY = 0.05; % matlab pause in loop waiting for acquisition
         
@@ -42,7 +43,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
     
     properties (Access = private)
         exposureTime (1, 1) double = instrument_AndorSpectrometer.DEFAULT_EXPOSURE;
-        accumulations (1, 1) uint32 = instrument_AndorSpectrometer.DEFAULT_ACCUMULATIONS;
+        accumulations (1, 1) double = instrument_AndorSpectrometer.DEFAULT_ACCUMULATIONS;
         initialized logical = false;
         currentIndex (1, 1) uint32 = 1;
         requestedMask logical = true;
@@ -56,7 +57,6 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         currentGrating int32 = int32(-1);
         spectrographDevice (1, 1) int32 = int32(0);
         spectrographInitialized (1, 1) logical = false;
-        spectrographGratingCount (1, 1) int32 = int32(0);
         spectrographGratingIsOneBased (1, 1) logical = true;
     end
     
@@ -65,14 +65,14 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         yPixels (1, 1) uint32 = 0;
         pixelCount (1, 1) uint32 = 0;
         bitDepth (1, 1) uint32 = 0; % bit depth of ADC of chosen channel
-        bitsPerPixel (1, 1) uint32 = 0; % bits per pixel in CCD
         preAmpGainMax (1, 1) uint32 = 0;
         vsSpeedMax (1, 1) uint32 = 0;
         hsSpeedMax (1, 1) uint32 = 0;
-        vsAmplitudeMax (1, 1) uint32 = 0;
+        % vsAmplitudeMax (1, 1) uint32 = 0;  % VSAmplitude limits currently unused
         pixelModeColorValue (1, 1) uint32 = 0;
         pixelSizeX (1, 1) double = NaN;
         pixelSizeY (1, 1) double = NaN;
+        spectrographGratingCount (1, 1) int32 = int32(0);
     end
     
     methods
@@ -85,23 +85,37 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             obj@instrumentInterface();
             
             obj.address = address;
-            fprintf("instrument_AndorSpectrometer: Loading Andor SDK and initializing CCD...\n");
+            fprintf("instrument_AndorSpectrometer: Initializing CCD (Andor SDK, defaults, cooling)...\n");
             try
                 obj.initializeCamera();
             catch cameraInitError
+                firstReport = getReport(cameraInitError, 'extended', 'hyperlinks', 'off');
                 warning("instrument_AndorSpectrometer:CameraInitRetry", ...
-                    "CCD initialization failed on first attempt (%s). Retrying once.", cameraInitError.message);
-                obj.initializeCamera();
+                    "CCD initialization failed on first attempt. Error details:\n%s\nRetrying once...", firstReport);
+                try
+                    obj.initializeCamera();
+                catch cameraRetryError
+                    secondReport = getReport(cameraRetryError, 'extended', 'hyperlinks', 'off');
+                    error("instrument_AndorSpectrometer:CameraInitFailed", ...
+                        "CCD initialization failed after retry.\nFirst error:\n%s\nSecond error:\n%s", ...
+                        firstReport, secondReport);
+                end
             end
-            fprintf("instrument_AndorSpectrometer: CCD ready; configuring detector geometry and defaults...\n");
-            fprintf("instrument_AndorSpectrometer: Enabling CCD cooling to -90 °C...\n");
+            fprintf("instrument_AndorSpectrometer: CCD ready; attempting spectrograph initialization...\n");
             try
-                fprintf("instrument_AndorSpectrometer: CCD configured. Attempting spectrograph initialization...\n");
                 obj.initializeSpectrograph();
             catch spectroInitError
+                firstReport = getReport(spectroInitError, 'extended', 'hyperlinks', 'off');
                 warning("instrument_AndorSpectrometer:SpectrographInitRetry", ...
-                    "Spectrograph initialization failed on first attempt (%s). Retrying once.", spectroInitError.message);
-                obj.initializeSpectrograph();
+                    "Spectrograph initialization failed on first attempt. Error details:\n%s\nRetrying once...", firstReport);
+                try
+                    obj.initializeSpectrograph();
+                catch spectroRetryError
+                    secondReport = getReport(spectroRetryError, 'extended', 'hyperlinks', 'off');
+                    error("instrument_AndorSpectrometer:SpectrographInitFailed", ...
+                        "Spectrograph initialization failed after retry.\nFirst error:\n%s\nSecond error:\n%s", ...
+                        firstReport, secondReport);
+                end
             end
             fprintf("instrument_AndorSpectrometer: Startup complete—temperature, wavelength, and grating channels ready.\n");
             obj.addChannel("temperature", setTolerances = 2);
@@ -195,7 +209,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                 case 2 % exposure_time
                     getValues = obj.exposureTime;
                 case 3 % accumulations
-                    getValues = double(obj.accumulations);
+                    getValues = obj.accumulations;
                 case 4 % center_wavelength
                     getValues = obj.currentCenterWavelength;
                 case 5 % grating
@@ -236,7 +250,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     assert(isfinite(newAccumulations) && newAccumulations == round(newAccumulations) && newAccumulations >= 1, ...
                         "instrument_AndorSpectrometer:InvalidAccumulations", ...
                         "Number of accumulations must be a positive integer.");
-                    obj.accumulations = uint32(newAccumulations);
+                    obj.accumulations = newAccumulations;
                     handle = obj.communicationHandle;
                     obj.checkCCDStatus(handle.SetNumberAccumulations(int32(obj.accumulations)), "SetNumberAccumulations");
                     obj.invalidateSpectrumCache();
@@ -249,10 +263,11 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                         error("instrument_AndorSpectrometer:SpectrographNotInitialized", ...
                             "Spectrograph not initialized.");
                     end
-                    libAlias = obj.getSpectrographLibAlias();
+                    libAlias = instrument_AndorSpectrometer.ATSPECTROGRAPH_LIB_ALIAS;
                     obj.checkSpectrographStatus(calllib(libAlias, 'ATSpectrographSetWavelength', obj.spectrographDevice, single(newCenter)), "ATSpectrographSetWavelength");
+                    obj.currentCenterWavelength = newCenter;
                     obj.invalidateSpectrumCache(true);
-                    obj.refreshSpectrographCenterWavelength();
+                    obj.updateWavelengthCache();
                 case 5 % grating
                     newGrating = double(setValues(1));
                     assert(isfinite(newGrating) && newGrating == round(newGrating), ...
@@ -264,11 +279,12 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                             "Spectrograph not initialized.");
                     end
                     obj.validateSpectrographGrating(candidate);
-                    libAlias = obj.getSpectrographLibAlias();
+                    libAlias = instrument_AndorSpectrometer.ATSPECTROGRAPH_LIB_ALIAS;
                     obj.checkSpectrographStatus(calllib(libAlias, 'ATSpectrographSetGrating', obj.spectrographDevice, candidate), "ATSpectrographSetGrating");
+                    obj.currentGrating = candidate;
+                    obj.updateGratingIndexing(candidate);
                     obj.invalidateSpectrumCache(true);
-                    obj.refreshSpectrographGrating();
-                    obj.refreshSpectrographCenterWavelength();
+                    obj.updateWavelengthCache();
                 case 6 % pixel_index
                     idx = double(setValues(1));
                     assert(isfinite(idx) && idx == round(idx), ...
@@ -316,7 +332,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             obj.accumulations = instrument_AndorSpectrometer.DEFAULT_ACCUMULATIONS;
             obj.checkCCDStatus(handle.SetVSSpeed(obj.DEFAULT_VSSpeed), "SetVSSpeed");
             obj.checkCCDStatus(handle.SetADChannel(obj.DEFAULT_AD_CHANNEL), "SetADChannel");
-            obj.checkCCDStatus(handle.SetVSAmplitude(obj.DEFAULT_VSAMPLITUDE), "SetVSAmplitude");
+            % obj.checkCCDStatus(handle.SetVSAmplitude(obj.DEFAULT_VSAMPLITUDE), "SetVSAmplitude");
             obj.checkCCDStatus(handle.SetHSSpeed(obj.DEFAULT_OUTAMP_TYPE, obj.DEFAULT_HSSPEED), "SetHSSpeed");
             obj.checkCCDStatus(handle.SetPreAmpGain(obj.DEFAULT_PREAMP_GAIN), "SetPreAmpGain");
             obj.checkCCDStatus(handle.SetFilterMode(obj.DEFAULT_FILTER_MODE), "SetFilterMode");
@@ -346,10 +362,11 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             obj.checkCCDStatus(ret, "GetNumberHSSpeeds");
             obj.hsSpeedMax = uint32(hsSpeedCount - 1);
 
-            vsAmplitudeCount = int32(0);
-            [ret, vsAmplitudeCount] = handle.GetNumberVSAmplitudes(vsAmplitudeCount);
-            obj.checkCCDStatus(ret, "GetNumberVSAmplitudes");
-            obj.vsAmplitudeMax = uint32(vsAmplitudeCount - 1);
+            % VSAmplitude queries kept for reference; currently unused
+            % vsAmplitudeCount = int32(0);
+            % [ret, vsAmplitudeCount] = handle.GetNumberVSAmplitudes(vsAmplitudeCount);
+            % obj.checkCCDStatus(ret, "GetNumberVSAmplitudes");
+            % obj.vsAmplitudeMax = uint32(vsAmplitudeCount - 1);
 
             bitDepthValue = int32(0);
             [ret, bitDepthValue] = handle.GetBitDepth(obj.DEFAULT_AD_CHANNEL, bitDepthValue);
@@ -366,7 +383,6 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             ret = handle.GetCapabilities(capabilities);
             obj.checkCCDStatus(ret, "GetCapabilities");
             pixelModeBits = uint32(capabilities.ulPixelMode);
-            obj.bitsPerPixel = obj.deriveBitsPerPixel(pixelModeBits);
             obj.pixelModeColorValue = bitshift(pixelModeBits, -double(obj.PIXELMODE_COLOR_SHIFT));
             if obj.pixelModeColorValue ~= 0
                 fprintf("instrument_AndorSpectrometer: Camera reports non-monochrome pixel mode value %u. Spectrum reads assume grayscale ordering.\n", obj.pixelModeColorValue);
@@ -391,7 +407,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         end
 
         function initializeSpectrograph(obj)
-            libAlias = obj.getSpectrographLibAlias();
+            libAlias = instrument_AndorSpectrometer.ATSPECTROGRAPH_LIB_ALIAS;
             headerPath = obj.getSpectrographHeaderPath();
             dllPath = obj.getSpectrographDllPath();
             if ~isfile(dllPath)
@@ -481,7 +497,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                 error("instrument_AndorSpectrometer:SpectrographNotInitialized", ...
                     "Spectrograph not initialized.");
             end
-            libAlias = obj.getSpectrographLibAlias();
+            libAlias = instrument_AndorSpectrometer.ATSPECTROGRAPH_LIB_ALIAS;
 
             [ret, spectroPixelCount] = calllib(libAlias, 'ATSpectrographGetNumberPixels', obj.spectrographDevice, int32(0));
             obj.checkSpectrographStatus(ret, "ATSpectrographGetNumberPixels");
@@ -514,7 +530,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             if ~obj.spectrographInitialized
                 return;
             end
-            libAlias = obj.getSpectrographLibAlias();
+            libAlias = instrument_AndorSpectrometer.ATSPECTROGRAPH_LIB_ALIAS;
             if libisloaded(libAlias)
                 try
                     status = calllib(libAlias, 'ATSpectrographClose');
@@ -533,10 +549,6 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             obj.currentGrating = int32(-1);
             obj.spectrographGratingCount = int32(0);
             obj.spectrographGratingIsOneBased = true;
-        end
-
-        function libAlias = getSpectrographLibAlias(obj)
-            libAlias = obj.ATSPECTROGRAPH_LIB_ALIAS;
         end
 
         function headerPath = getSpectrographHeaderPath(~)
@@ -594,7 +606,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             if obj.pixelCount == 0 || ~isfinite(obj.pixelSizeX) || obj.pixelSizeX <= 0
                 return;
             end
-            libAlias = obj.getSpectrographLibAlias();
+            libAlias = instrument_AndorSpectrometer.ATSPECTROGRAPH_LIB_ALIAS;
             obj.checkSpectrographStatus(calllib(libAlias, 'ATSpectrographSetPixelWidth', obj.spectrographDevice, single(obj.pixelSizeX)), "ATSpectrographSetPixelWidth");
             obj.checkSpectrographStatus(calllib(libAlias, 'ATSpectrographSetNumberPixels', obj.spectrographDevice, int32(obj.pixelCount)), "ATSpectrographSetNumberPixels");
         end
@@ -604,7 +616,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                 error("instrument_AndorSpectrometer:SpectrographNotInitialized", ...
                     "Spectrograph not initialized.");
             end
-            libAlias = obj.getSpectrographLibAlias();
+            libAlias = instrument_AndorSpectrometer.ATSPECTROGRAPH_LIB_ALIAS;
             [ret, wavelengthValue] = calllib(libAlias, 'ATSpectrographGetWavelength', obj.spectrographDevice, single(0));
             obj.checkSpectrographStatus(ret, "ATSpectrographGetWavelength");
             obj.currentCenterWavelength = double(wavelengthValue);
@@ -615,33 +627,67 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                 error("instrument_AndorSpectrometer:SpectrographNotInitialized", ...
                     "Spectrograph not initialized.");
             end
-            libAlias = obj.getSpectrographLibAlias();
-            [ret, gratingCount] = calllib(libAlias, 'ATSpectrographGetNumberGratings', obj.spectrographDevice, int32(0));
-            obj.checkSpectrographStatus(ret, "ATSpectrographGetNumberGratings");
-            obj.spectrographGratingCount = int32(gratingCount);
-
+            libAlias = instrument_AndorSpectrometer.ATSPECTROGRAPH_LIB_ALIAS;
             [ret, currentGrating] = calllib(libAlias, 'ATSpectrographGetGrating', obj.spectrographDevice, int32(0));
             obj.checkSpectrographStatus(ret, "ATSpectrographGetGrating");
             current = int32(currentGrating);
             obj.currentGrating = current;
-
-            if obj.spectrographGratingCount > 0
-                if current >= 1 && current <= obj.spectrographGratingCount
-                    obj.spectrographGratingIsOneBased = true;
-                elseif current >= 0 && current < obj.spectrographGratingCount
-                    obj.spectrographGratingIsOneBased = false;
-                end
-            end
+            obj.updateGratingIndexing(current);
         end
 
         function executeSpectrographProbe(obj)
             obj.pushSpectrographPixelGeometry();
+            obj.querySpectrographGratingCount();
             obj.refreshSpectrographGrating();
             obj.refreshSpectrographCenterWavelength();
+            obj.updateWavelengthCache();
+        end
+
+        function querySpectrographGratingCount(obj)
+            if ~obj.spectrographInitialized
+                error("instrument_AndorSpectrometer:SpectrographNotInitialized", ...
+                    "Spectrograph not initialized.");
+            end
+            if obj.spectrographGratingCount ~= 0
+                return;
+            end
+            libAlias = instrument_AndorSpectrometer.ATSPECTROGRAPH_LIB_ALIAS;
+            [ret, gratingCount] = calllib(libAlias, 'ATSpectrographGetNumberGratings', obj.spectrographDevice, int32(0));
+            obj.checkSpectrographStatus(ret, "ATSpectrographGetNumberGratings");
+            obj.spectrographGratingCount = int32(gratingCount);
+        end
+
+        function updateGratingIndexing(obj, gratingIndex)
+            obj.querySpectrographGratingCount();
+            if obj.spectrographGratingCount <= 0
+                return;
+            end
+            if gratingIndex >= 1 && gratingIndex <= obj.spectrographGratingCount
+                obj.spectrographGratingIsOneBased = true;
+            elseif gratingIndex >= 0 && gratingIndex < obj.spectrographGratingCount
+                obj.spectrographGratingIsOneBased = false;
+            end
+        end
+
+        function updateWavelengthCache(obj)
+            if ~obj.spectrographInitialized
+                return;
+            end
+            wavelengths = obj.querySpectrographWavelength();
+            if ~isempty(wavelengths) && ~iscolumn(wavelengths)
+                wavelengths = reshape(wavelengths, [], 1);
+            end
+            obj.wavelengthData = wavelengths;
+        end
+
+        function ensureWavelengthCache(obj)
+            if isempty(obj.wavelengthData) || numel(obj.wavelengthData) ~= double(obj.pixelCount)
+                obj.updateWavelengthCache();
+            end
         end
 
         function validateSpectrographGrating(obj, candidate)
-            obj.refreshSpectrographGrating();
+            obj.querySpectrographGratingCount();
             if obj.spectrographGratingCount <= 0
                 error("instrument_AndorSpectrometer:NoGratings", ...
                     "Spectrograph reports zero available gratings.");
@@ -660,6 +706,37 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                 error("instrument_AndorSpectrometer:InvalidGrating", ...
                     "Grating index must be between %d and %d.", int32(minIndex), int32(maxIndex));
             end
+        end
+
+        function info = currentGratingInfo(obj)
+            if ~obj.spectrographInitialized
+                error("instrument_AndorSpectrometer:SpectrographNotInitialized", ...
+                    "Spectrograph not initialized.");
+            end
+
+            libAlias = instrument_AndorSpectrometer.ATSPECTROGRAPH_LIB_ALIAS;
+            gratingIndex = obj.currentGrating;
+
+            linesPerMm = single(0);
+            blazeBuffer = blanks(64);
+            homeFlag = int32(0);
+            offsetFlag = int32(0);
+
+            [ret, linesPerMm, blazeBuffer, homeFlag, offsetFlag] = calllib(libAlias, ...
+                'ATSpectrographGetGratingInfo', obj.spectrographDevice, gratingIndex, linesPerMm, blazeBuffer, int32(numel(blazeBuffer)), homeFlag, offsetFlag);
+            obj.checkSpectrographStatus(ret, "ATSpectrographGetGratingInfo");
+
+            blazeText = strtrim(blazeBuffer(blazeBuffer ~= 0));
+
+            info = struct();
+            info.index = gratingIndex;
+            info.lines_per_mm = double(linesPerMm);
+            info.blaze = blazeText;
+            info.home = logical(homeFlag);
+            info.offset = double(offsetFlag);
+
+            fprintf("instrument_AndorSpectrometer: Grating %d -> lines/mm: %.3f, blaze: %s, home: %d, offset: %.0f\n", ...
+                info.index, info.lines_per_mm, blazeText, info.home, info.offset);
         end
 
         function prepareCounts(obj)
@@ -685,12 +762,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             end
             
             obj.pendingCounts = obj.spectrumData(idx);
-            if isempty(obj.wavelengthData) || numel(obj.wavelengthData) ~= double(obj.pixelCount)
-                obj.wavelengthData = obj.querySpectrographWavelength();
-                if ~isempty(obj.wavelengthData) && ~iscolumn(obj.wavelengthData)
-                    obj.wavelengthData = reshape(obj.wavelengthData, [], 1);
-                end
-            end
+            obj.ensureWavelengthCache();
             obj.pendingWavelength = obj.wavelengthData(idx);
             obj.requestedMask(idx) = true;
         end
@@ -708,10 +780,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             if ~iscolumn(obj.spectrumData)
                 obj.spectrumData = reshape(obj.spectrumData, [], 1);
             end
-            obj.wavelengthData = obj.querySpectrographWavelength();
-            if ~isempty(obj.wavelengthData) && ~iscolumn(obj.wavelengthData)
-                obj.wavelengthData = reshape(obj.wavelengthData, [], 1);
-            end
+            obj.ensureWavelengthCache();
             obj.requestedMask = false(obj.pixelCount, 1);
             
             obj.checkForSaturation(obj.spectrumData, "Spectrum");
@@ -728,7 +797,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                 actionLabel = "GetStatus";
             end
 
-            totalDelay = obj.exposureTime * double(obj.accumulations);
+            totalDelay = obj.exposureTime * obj.accumulations;
             if totalDelay > 0
                 pause(totalDelay);
             end
@@ -810,7 +879,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                 return;
             end
             
-            accumulationCount = max(double(obj.accumulations), 1);
+            accumulationCount = max(obj.accumulations, 1);
 
             dataPerAccumulation = data ./ accumulationCount;
             saturationLevel = double(2.^double(obj.bitDepth) - 1);
