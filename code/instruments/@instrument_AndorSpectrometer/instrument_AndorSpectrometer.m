@@ -429,9 +429,37 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             obj.spectrographDevice = int32(0);
             obj.spectrographInitialized = true;
 
-            obj.pushSpectrographPixelGeometry();
-            obj.refreshSpectrographGrating();
-            obj.refreshSpectrographCenterWavelength();
+            try
+                obj.executeSpectrographProbe();
+            catch firstProbeError
+                firstReport = getReport(firstProbeError, 'extended', 'hyperlinks', 'off');
+                warning("instrument_AndorSpectrometer:SpectrographInitRetry", ...
+                    "Spectrograph probe failed on first attempt. First error:\n%s\nRetrying once...", firstReport);
+
+                obj.spectrographInitialized = false;
+                status = calllib(libAlias, 'ATSpectrographInitialize', '');
+                obj.checkSpectrographStatus(status, "ATSpectrographInitialize-Retry");
+
+                [status, deviceCount] = calllib(libAlias, 'ATSpectrographGetNumberDevices', int32(0));
+                obj.checkSpectrographStatus(status, "ATSpectrographGetNumberDevices-Retry");
+                deviceCount = double(deviceCount);
+                if deviceCount <= 0
+                    error("instrument_AndorSpectrometer:SpectrographUnavailable", ...
+                        "No ATSpectrograph devices detected by the SDK after retry.");
+                end
+
+                obj.spectrographDevice = int32(0);
+                obj.spectrographInitialized = true;
+
+                try
+                    obj.executeSpectrographProbe();
+                catch secondProbeError
+                    secondReport = getReport(secondProbeError, 'extended', 'hyperlinks', 'off');
+                    error("instrument_AndorSpectrometer:SpectrographProbeFailed", ...
+                        "Spectrograph initialization failed after retry.\nFirst error:\n%s\nSecond error:\n%s", ...
+                        firstReport, secondReport);
+                end
+            end
         end
         
         function shutdownCamera(obj)
@@ -604,6 +632,12 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     obj.spectrographGratingIsOneBased = false;
                 end
             end
+        end
+
+        function executeSpectrographProbe(obj)
+            obj.pushSpectrographPixelGeometry();
+            obj.refreshSpectrographGrating();
+            obj.refreshSpectrographCenterWavelength();
         end
 
         function validateSpectrographGrating(obj, candidate)
