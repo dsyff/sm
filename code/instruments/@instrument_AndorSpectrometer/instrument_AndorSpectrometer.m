@@ -85,7 +85,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             obj@instrumentInterface();
             
             obj.address = address;
-            fprintf("AndorSpectrometer: Loading Andor SDK and initializing CCD...\n");
+            fprintf("instrument_AndorSpectrometer: Loading Andor SDK and initializing CCD...\n");
             try
                 obj.initializeCamera();
             catch cameraInitError
@@ -93,17 +93,17 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     "CCD initialization failed on first attempt (%s). Retrying once.", cameraInitError.message);
                 obj.initializeCamera();
             end
-            fprintf("AndorSpectrometer: CCD ready; configuring detector geometry and defaults...\n");
-            fprintf("AndorSpectrometer: Enabling CCD cooling to -90 °C...\n");
+            fprintf("instrument_AndorSpectrometer: CCD ready; configuring detector geometry and defaults...\n");
+            fprintf("instrument_AndorSpectrometer: Enabling CCD cooling to -90 °C...\n");
             try
-                fprintf("AndorSpectrometer: CCD configured. Attempting spectrograph initialization...\n");
+                fprintf("instrument_AndorSpectrometer: CCD configured. Attempting spectrograph initialization...\n");
                 obj.initializeSpectrograph();
             catch spectroInitError
                 warning("instrument_AndorSpectrometer:SpectrographInitRetry", ...
                     "Spectrograph initialization failed on first attempt (%s). Retrying once.", spectroInitError.message);
                 obj.initializeSpectrograph();
             end
-            fprintf("AndorSpectrometer: Startup complete—temperature, wavelength, and grating channels ready.\n");
+            fprintf("instrument_AndorSpectrometer: Startup complete—temperature, wavelength, and grating channels ready.\n");
             obj.addChannel("temperature", setTolerances = 2);
             obj.addChannel("exposure_time");
             obj.addChannel("accumulations");
@@ -399,7 +399,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     "ATSpectrograph DLL was not found at %s.", dllPath);
             end
 
-            fprintf("AndorSpectrometer: Loading ATSpectrograph DLL and probing devices...\n");
+            fprintf("instrument_AndorSpectrometer: Loading ATSpectrograph DLL and probing devices...\n");
             if ~libisloaded(libAlias)
                 [notfoundSymbols, loadWarnings] = loadlibrary(dllPath, headerPath, 'alias', char(libAlias));
                 if ~isempty(loadWarnings)
@@ -425,7 +425,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     "No ATSpectrograph devices detected by the SDK.");
             end
 
-            fprintf("AndorSpectrometer: Spectrograph online; reading grating and wavelength settings...\n");
+            fprintf("instrument_AndorSpectrometer: Spectrograph online; reading grating and wavelength settings...\n");
             obj.spectrographDevice = int32(0);
             obj.spectrographInitialized = true;
 
