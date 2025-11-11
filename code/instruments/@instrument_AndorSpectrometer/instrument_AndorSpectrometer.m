@@ -430,14 +430,14 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             fprintf("instrument_AndorSpectrometer: Loading ATSpectrograph DLL and probing devices...\n");
             if ~libisloaded(libAlias)
                 [notfoundSymbols, loadWarnings] = loadlibrary(dllPath, headerPath, 'alias', char(libAlias));
-                if ~isempty(loadWarnings)
-                    warnCount = size(loadWarnings, 1);
-                    for warnIdx = 1:warnCount
-                        message = strtrim(loadWarnings(warnIdx, :));
-                        warning("instrument_AndorSpectrometer:SpectrographLoadWarning", ...
-                            "loadlibrary warning %d/%d: %s", warnIdx, warnCount, message);
-                    end
-                end
+                % if ~isempty(loadWarnings)
+                %     warnCount = size(loadWarnings, 1);
+                %     for warnIdx = 1:warnCount
+                %         message = strtrim(loadWarnings(warnIdx, :));
+                %         warning("instrument_AndorSpectrometer:SpectrographLoadWarning", ...
+                %             "loadlibrary warning %d/%d: %s", warnIdx, warnCount, message);
+                %     end
+                % end
                 if ~isempty(notfoundSymbols)
                     warning("instrument_AndorSpectrometer:SpectrographLoadMissing", ...
                         "loadlibrary reported unresolved symbols: %s", strjoin(cellstr(notfoundSymbols), ", "));
