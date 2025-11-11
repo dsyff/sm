@@ -234,7 +234,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                             "Spectrograph not initialized.");
                     end
                     libAlias = obj.getSpectrographLibAlias();
-                    obj.checkSpectrographStatus(calllib(libAlias, 'ATSpectrographSetWavelength', obj.spectrographDevice, single(newCenter)), 'ATSpectrographSetWavelength');
+                    obj.checkSpectrographStatus(calllib(libAlias, 'ATSpectrographSetWavelength', obj.spectrographDevice, single(newCenter)), "ATSpectrographSetWavelength");
                     obj.invalidateSpectrumCache(true);
                     obj.refreshSpectrographCenterWavelength();
                 case 5 % grating
@@ -249,7 +249,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     end
                     obj.validateSpectrographGrating(candidate);
                     libAlias = obj.getSpectrographLibAlias();
-                    obj.checkSpectrographStatus(calllib(libAlias, 'ATSpectrographSetGrating', obj.spectrographDevice, candidate), 'ATSpectrographSetGrating');
+                    obj.checkSpectrographStatus(calllib(libAlias, 'ATSpectrographSetGrating', obj.spectrographDevice, candidate), "ATSpectrographSetGrating");
                     obj.invalidateSpectrumCache(true);
                     obj.refreshSpectrographGrating();
                     obj.refreshSpectrographCenterWavelength();
@@ -387,13 +387,12 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                 loadlibrary(dllPath, headerPath, 'alias', libAlias);
             end
 
-            status = calllib(libAlias, 'ATSpectrographInitialize', "");
-            obj.checkSpectrographStatus(status, 'ATSpectrographInitialize');
+            status = calllib(libAlias, 'ATSpectrographInitialize', '');
+            obj.checkSpectrographStatus(status, "ATSpectrographInitialize");
 
-            deviceCountPtr = libpointer('int32Ptr', int32(0));
-            [status, deviceCountPtr] = calllib(libAlias, 'ATSpectrographGetNumberDevices', deviceCountPtr);
-            obj.checkSpectrographStatus(status, 'ATSpectrographGetNumberDevices');
-            deviceCount = double(deviceCountPtr.Value);
+            [status, deviceCount] = calllib(libAlias, 'ATSpectrographGetNumberDevices', int32(0));
+            obj.checkSpectrographStatus(status, "ATSpectrographGetNumberDevices");
+            deviceCount = double(deviceCount);
             if deviceCount <= 0
                 error("instrument_AndorSpectrometer:SpectrographUnavailable", ...
                     "No ATSpectrograph devices detected by the SDK.");
@@ -428,20 +427,19 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             end
             libAlias = obj.getSpectrographLibAlias();
 
-            numPixelsPtr = libpointer('int32Ptr', int32(0));
-            [ret, numPixelsPtr] = calllib(libAlias, 'ATSpectrographGetNumberPixels', obj.spectrographDevice, numPixelsPtr);
-            obj.checkSpectrographStatus(ret, 'ATSpectrographGetNumberPixels');
-            spectroPixelCount = double(numPixelsPtr.Value);
+            [ret, spectroPixelCount] = calllib(libAlias, 'ATSpectrographGetNumberPixels', obj.spectrographDevice, int32(0));
+            obj.checkSpectrographStatus(ret, "ATSpectrographGetNumberPixels");
+            spectroPixelCount = double(spectroPixelCount);
             if spectroPixelCount <= 0
                 error("instrument_AndorSpectrometer:WavelengthQueryFailed", ...
                     "Spectrograph reported an invalid pixel count (%d).", spectroPixelCount);
             end
 
             requestedPixelCount = int32(min(double(obj.pixelCount), spectroPixelCount));
-            calibrationPtr = libpointer('singlePtr', zeros(double(requestedPixelCount), 1, 'single'));
-            [ret, calibrationPtr] = calllib(libAlias, 'ATSpectrographGetCalibration', obj.spectrographDevice, calibrationPtr, requestedPixelCount);
-            obj.checkSpectrographStatus(ret, 'ATSpectrographGetCalibration');
-            wavelength = double(calibrationPtr.Value(:));
+            calibrationBuffer = zeros(double(requestedPixelCount), 1, 'single');
+            [ret, calibrationBuffer] = calllib(libAlias, 'ATSpectrographGetCalibration', obj.spectrographDevice, calibrationBuffer, requestedPixelCount);
+            obj.checkSpectrographStatus(ret, "ATSpectrographGetCalibration");
+            wavelength = double(calibrationBuffer(:));
 
             detectorPixelCount = double(obj.pixelCount);
             if detectorPixelCount > numel(wavelength)
@@ -464,9 +462,10 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             if libisloaded(libAlias)
                 try
                     status = calllib(libAlias, 'ATSpectrographClose');
-                    if status ~= obj.ATSPECTROGRAPH_SUCCESS
+                    statusInt = obj.normalizeSpectrographStatus(status);
+                    if statusInt ~= obj.ATSPECTROGRAPH_SUCCESS
                         warning("instrument_AndorSpectrometer:SpectrographClose", ...
-                            "ATSpectrographClose returned status %d.", status);
+                            "ATSpectrographClose returned status %d.", statusInt);
                     end
                 catch closeError
                     warning("instrument_AndorSpectrometer:SpectrographClose", ...
@@ -502,7 +501,12 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         end
 
         function checkSpectrographStatus(obj, statusCode, actionName)
-            if int32(statusCode) == obj.ATSPECTROGRAPH_SUCCESS
+            if nargin < 3
+                actionName = "";
+            end
+            actionName = string(actionName);
+            statusInt = obj.normalizeSpectrographStatus(statusCode);
+            if statusInt == obj.ATSPECTROGRAPH_SUCCESS
                 return;
             end
 
@@ -512,7 +516,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                 bufferLength = int32(256);
                 descBuffer = repmat(char(0), 1, double(bufferLength));
                 try
-                    [~, descBuffer] = calllib(libAlias, 'ATSpectrographGetFunctionReturnDescription', int32(statusCode), descBuffer, bufferLength);
+                    [~, descBuffer] = calllib(libAlias, 'ATSpectrographGetFunctionReturnDescription', statusInt, descBuffer, bufferLength);
                     if ischar(descBuffer)
                         trimmed = descBuffer(descBuffer ~= 0);
                         description = strtrim(string(trimmed));
@@ -524,11 +528,31 @@ classdef instrument_AndorSpectrometer < instrumentInterface
 
             if strlength(description) > 0
                 error("instrument_AndorSpectrometer:SpectrographError", ...
-                    "%s failed with status code %d (%s).", actionName, int32(statusCode), description);
+                    "%s failed with status code %d (%s).", actionName, statusInt, description);
             else
                 error("instrument_AndorSpectrometer:SpectrographError", ...
-                    "%s failed with status code %d.", actionName, int32(statusCode));
+                    "%s failed with status code %d.", actionName, statusInt);
             end
+        end
+
+        function statusInt = normalizeSpectrographStatus(obj, statusCode)
+            if isstring(statusCode)
+                statusCode = strtrim(statusCode);
+                parsed = str2double(statusCode);
+            elseif ischar(statusCode)
+                parsed = str2double(strtrim(statusCode));
+            elseif isnumeric(statusCode)
+                parsed = double(statusCode);
+            else
+                parsed = NaN;
+            end
+
+            if isnan(parsed)
+                error("instrument_AndorSpectrometer:SpectrographStatusParse", ...
+                    "Spectrograph returned an unexpected status value of type %s.", class(statusCode));
+            end
+
+            statusInt = int32(parsed);
         end
 
         function pushSpectrographPixelGeometry(obj)
@@ -540,8 +564,8 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                 return;
             end
             libAlias = obj.getSpectrographLibAlias();
-            obj.checkSpectrographStatus(calllib(libAlias, 'ATSpectrographSetPixelWidth', obj.spectrographDevice, single(obj.pixelSizeX)), 'ATSpectrographSetPixelWidth');
-            obj.checkSpectrographStatus(calllib(libAlias, 'ATSpectrographSetNumberPixels', obj.spectrographDevice, int32(obj.pixelCount)), 'ATSpectrographSetNumberPixels');
+            obj.checkSpectrographStatus(calllib(libAlias, 'ATSpectrographSetPixelWidth', obj.spectrographDevice, single(obj.pixelSizeX)), "ATSpectrographSetPixelWidth");
+            obj.checkSpectrographStatus(calllib(libAlias, 'ATSpectrographSetNumberPixels', obj.spectrographDevice, int32(obj.pixelCount)), "ATSpectrographSetNumberPixels");
         end
 
         function refreshSpectrographCenterWavelength(obj)
@@ -550,10 +574,9 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     "Spectrograph not initialized.");
             end
             libAlias = obj.getSpectrographLibAlias();
-            wavelengthPtr = libpointer('singlePtr', single(0));
-            [ret, wavelengthPtr] = calllib(libAlias, 'ATSpectrographGetWavelength', obj.spectrographDevice, wavelengthPtr);
-            obj.checkSpectrographStatus(ret, 'ATSpectrographGetWavelength');
-            obj.currentCenterWavelength = double(wavelengthPtr.Value);
+            [ret, wavelengthValue] = calllib(libAlias, 'ATSpectrographGetWavelength', obj.spectrographDevice, single(0));
+            obj.checkSpectrographStatus(ret, "ATSpectrographGetWavelength");
+            obj.currentCenterWavelength = double(wavelengthValue);
         end
 
         function refreshSpectrographGrating(obj)
@@ -562,15 +585,13 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     "Spectrograph not initialized.");
             end
             libAlias = obj.getSpectrographLibAlias();
-            countPtr = libpointer('int32Ptr', int32(0));
-            [ret, countPtr] = calllib(libAlias, 'ATSpectrographGetNumberGratings', obj.spectrographDevice, countPtr);
-            obj.checkSpectrographStatus(ret, 'ATSpectrographGetNumberGratings');
-            obj.spectrographGratingCount = int32(countPtr.Value);
+            [ret, gratingCount] = calllib(libAlias, 'ATSpectrographGetNumberGratings', obj.spectrographDevice, int32(0));
+            obj.checkSpectrographStatus(ret, "ATSpectrographGetNumberGratings");
+            obj.spectrographGratingCount = int32(gratingCount);
 
-            gratingPtr = libpointer('int32Ptr', int32(0));
-            [ret, gratingPtr] = calllib(libAlias, 'ATSpectrographGetGrating', obj.spectrographDevice, gratingPtr);
-            obj.checkSpectrographStatus(ret, 'ATSpectrographGetGrating');
-            current = int32(gratingPtr.Value);
+            [ret, currentGrating] = calllib(libAlias, 'ATSpectrographGetGrating', obj.spectrographDevice, int32(0));
+            obj.checkSpectrographStatus(ret, "ATSpectrographGetGrating");
+            current = int32(currentGrating);
             obj.currentGrating = current;
 
             if obj.spectrographGratingCount > 0
