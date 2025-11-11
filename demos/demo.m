@@ -378,12 +378,12 @@ if Andor_Use
     % check handle_AndorSpectrometer for properties
     rack.addInstrument(handle_AndorSpectrometer, "AndorSpectrometer");
     rack.addChannel("AndorSpectrometer", "temperature", "CCD_T"); % cooler temperature in C
-    rack.addChannel("AndorSpectrometer", "exposure_time", "CCD_exposure"); % in seconds
-    rack.addChannel("AndorSpectrometer", "accumulations", "CCD_accumulations"); % number of accumulations per acquisition
-    rack.addChannel("AndorSpectrometer", "center_wavelength", "Spectrometer_center_wavelength"); % center wavelength in nm
-    rack.addChannel("AndorSpectrometer", "grating", "Spectrometer_grating"); % spectrograph grating index
-    rack.addChannel("AndorSpectrometer", "pixel_index", "CCD_pixel_index"); % pixel index for readout
-    rack.addChannel("AndorSpectrometer", "wavelength", "CCD_wavelength"); % wavelength corresponding to current pixel
+    rack.addChannel("AndorSpectrometer", "exposure_time", "exposure"); % in seconds
+    rack.addChannel("AndorSpectrometer", "accumulations", "accumulations"); % number of accumulations per acquisition
+    rack.addChannel("AndorSpectrometer", "center_wavelength", "center_wavelength"); % center wavelength in nm
+    rack.addChannel("AndorSpectrometer", "grating", "grating"); % spectrograph grating index
+    rack.addChannel("AndorSpectrometer", "pixel_index", "pixel_index"); % pixel index for readout
+    rack.addChannel("AndorSpectrometer", "wavelength", "wavelength"); % wavelength corresponding to current pixel
     rack.addChannel("AndorSpectrometer", "counts", "CCD_counts");
     handle_AndorSpectrometer.currentGratingInfo();
 end
