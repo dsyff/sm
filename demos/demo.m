@@ -71,7 +71,7 @@ strainController_Use = 0;
 strain_cryostat = "Opticool"; %Opticool, Montana2
 
 K10CR1_Use = 0;
-AndorCCD_Use = 0;
+Andor_Use = 0;
 
 %% INSTRUMENT SETUP GUIDE
 % This section explains the standard pattern for adding instruments and channels
@@ -373,18 +373,18 @@ if K10CR1_Use
     rack.addChannel("K10CR1", "position_deg", "K10CR1_position_deg");
 end
 
-if AndorCCD_Use
+if Andor_Use
     handle_AndorSpectrometer = instrument_AndorSpectrometer("AndorSpectrometer");
     % check handle_AndorSpectrometer.pixelCount for number of pixels
     rack.addInstrument(handle_AndorSpectrometer, "AndorSpectrometer");
-    rack.addChannel("AndorSpectrometer", "temperature", "Spectrometer_T"); % cooler temperature in C
-    rack.addChannel("AndorSpectrometer", "exposure_time", "Spectrometer_exposure"); % in seconds
-    rack.addChannel("AndorSpectrometer", "accumulations", "Spectrometer_accumulations"); % number of accumulations per acquisition
-    %rack.addChannel("AndorSpectrometer", "center_wavelength", "Spectrometer_center_wavelength"); % center wavelength in nm
-    %rack.addChannel("AndorSpectrometer", "grating", "Spectrometer_grating"); % spectrograph grating index
-    rack.addChannel("AndorSpectrometer", "pixel_index", "Spectrometer_pixel_index"); % pixel index for readout
-    rack.addChannel("AndorSpectrometer", "wavelength", "Spectrometer_wavelength"); % wavelength corresponding to current pixel
-    rack.addChannel("AndorSpectrometer", "counts", "Spectrometer_counts");
+    rack.addChannel("AndorSpectrometer", "temperature", "CCD_T"); % cooler temperature in C
+    rack.addChannel("AndorSpectrometer", "exposure_time", "CCD_exposure"); % in seconds
+    rack.addChannel("AndorSpectrometer", "accumulations", "CCD_accumulations"); % number of accumulations per acquisition
+    rack.addChannel("AndorSpectrometer", "center_wavelength", "Spectrometer_center_wavelength"); % center wavelength in nm
+    rack.addChannel("AndorSpectrometer", "grating", "Spectrometer_grating"); % spectrograph grating index
+    rack.addChannel("AndorSpectrometer", "pixel_index", "CCD_pixel_index"); % pixel index for readout
+    rack.addChannel("AndorSpectrometer", "wavelength", "CCD_wavelength"); % wavelength corresponding to current pixel
+    rack.addChannel("AndorSpectrometer", "counts", "CCD_counts");
 end
 
 if K2400_C_Use
