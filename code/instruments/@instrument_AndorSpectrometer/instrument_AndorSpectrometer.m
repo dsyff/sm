@@ -37,8 +37,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         PIXELMODE_16_BIT = uint32(4);
         PIXELMODE_32_BIT = uint32(8);
         PIXELMODE_COLOR_SHIFT = uint32(16);
-        ATSPECTROGRAPH_SUCCESS = int32(20202);
-        ATSPECTROGRAPH_LIB_ALIAS = "atspectrograph";
+        ATSPECTROGRAPH_LIB_ALIAS = "atspectrograph_lib";
     end
     
     properties (Access = private)
@@ -86,8 +85,25 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             obj@instrumentInterface();
             
             obj.address = address;
-            obj.initializeCamera();
-            obj.initializeSpectrograph();
+            fprintf("AndorSpectrometer: Loading Andor SDK and initializing CCD...\n");
+            try
+                obj.initializeCamera();
+            catch cameraInitError
+                warning("instrument_AndorSpectrometer:CameraInitRetry", ...
+                    "CCD initialization failed on first attempt (%s). Retrying once.", cameraInitError.message);
+                obj.initializeCamera();
+            end
+            fprintf("AndorSpectrometer: CCD ready; configuring detector geometry and defaults...\n");
+            fprintf("AndorSpectrometer: Enabling CCD cooling to -90 °C...\n");
+            try
+                fprintf("AndorSpectrometer: CCD configured. Attempting spectrograph initialization...\n");
+                obj.initializeSpectrograph();
+            catch spectroInitError
+                warning("instrument_AndorSpectrometer:SpectrographInitRetry", ...
+                    "Spectrograph initialization failed on first attempt (%s). Retrying once.", spectroInitError.message);
+                obj.initializeSpectrograph();
+            end
+            fprintf("AndorSpectrometer: Startup complete—temperature, wavelength, and grating channels ready.\n");
             obj.addChannel("temperature", setTolerances = 2);
             obj.addChannel("exposure_time");
             obj.addChannel("accumulations");
@@ -122,17 +138,17 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             
             handle = obj.communicationHandle;
             
-            obj.checkStatus(handle.SetReadMode(obj.READ_MODE_IMAGE), "SetReadModeImage");
-            cleanupReadMode = onCleanup(@() obj.checkStatus(handle.SetReadMode(obj.READ_MODE_FVB), "SetReadMode"));
+            obj.checkCCDStatus(handle.SetReadMode(obj.READ_MODE_IMAGE), "SetReadModeImage");
+            cleanupReadMode = onCleanup(@() obj.checkCCDStatus(handle.SetReadMode(obj.READ_MODE_FVB), "SetReadMode"));
             
-            obj.checkStatus(handle.SetImage(int32(1), int32(1), int32(1), int32(obj.xPixels), int32(1), int32(obj.yPixels)), "SetImage");
-            obj.checkStatus(handle.StartAcquisition(), "StartAcquisitionImage");
+            obj.checkCCDStatus(handle.SetImage(int32(1), int32(1), int32(1), int32(obj.xPixels), int32(1), int32(obj.yPixels)), "SetImage");
+            obj.checkCCDStatus(handle.StartAcquisition(), "StartAcquisitionImage");
             obj.waitForAcquisitionCompletion(handle, "GetStatusImage");
             
             totalPixels = double(obj.xPixels) * double(obj.yPixels);
             buffer = NET.createArray("System.Int32", totalPixels);
             ret = handle.GetAcquiredData(buffer, uint32(totalPixels));
-            obj.checkStatus(ret, "GetAcquiredDataImage");
+            obj.checkCCDStatus(ret, "GetAcquiredDataImage");
             
             image = reshape(double(buffer), [double(obj.xPixels), double(obj.yPixels)]).';
             
@@ -154,7 +170,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     [ret, temperature] = handle.GetTemperature(temperature);
                     obj.lastTemperatureStatus = ret;
                     if ret ~= obj.DRV_SUCCESS && ~(ret >= obj.TEMP_STATUS_MIN && ret <= obj.TEMP_STATUS_MAX)
-                        obj.checkStatus(ret, "GetTemperature");
+                        obj.checkCCDStatus(ret, "GetTemperature");
                     end
                     obj.currentTemperature = double(temperature);
                 case 2 % exposure_time
@@ -204,7 +220,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                         "Temperature setpoint must be a finite scalar.");
                     handle = obj.communicationHandle;
                     targetTemperatureInt = int32(round(targetTemperature));
-                    obj.checkStatus(handle.SetTemperature(targetTemperatureInt), "SetTemperature");
+                    obj.checkCCDStatus(handle.SetTemperature(targetTemperatureInt), "SetTemperature");
                     obj.currentTemperature = NaN;
                     obj.lastTemperatureStatus = int32(0);
                 case 2 % exposure_time
@@ -213,7 +229,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                         "Exposure time must be positive.");
                     obj.exposureTime = newExposure;
                     handle = obj.communicationHandle;
-                    obj.checkStatus(handle.SetExposureTime(obj.exposureTime), "SetExposureTime");
+                    obj.checkCCDStatus(handle.SetExposureTime(obj.exposureTime), "SetExposureTime");
                     obj.invalidateSpectrumCache();
                 case 3 % accumulations
                     newAccumulations = double(setValues(1));
@@ -222,7 +238,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                         "Number of accumulations must be a positive integer.");
                     obj.accumulations = uint32(newAccumulations);
                     handle = obj.communicationHandle;
-                    obj.checkStatus(handle.SetNumberAccumulations(int32(obj.accumulations)), "SetNumberAccumulations");
+                    obj.checkCCDStatus(handle.SetNumberAccumulations(int32(obj.accumulations)), "SetNumberAccumulations");
                     obj.invalidateSpectrumCache();
                 case 4 % center_wavelength
                     newCenter = double(setValues(1));
@@ -288,27 +304,27 @@ classdef instrument_AndorSpectrometer < instrumentInterface
 
             obj.communicationHandle = ATMCD64CS.AndorSDK();
             handle = obj.communicationHandle;
-            obj.checkStatus(handle.Initialize(""), "Initialize");
+            obj.checkCCDStatus(handle.Initialize(""), "Initialize");
             obj.initialized = true;
 
-            obj.checkStatus(handle.SetReadMode(obj.READ_MODE_FVB), "SetReadMode");
-            obj.checkStatus(handle.SetAcquisitionMode(obj.ACQ_MODE_ACCUMULATE), "SetAcquisitionMode");
-            obj.checkStatus(handle.SetTriggerMode(obj.DEFAULT_TRIGGER_MODE), "SetTriggerMode");
-            obj.checkStatus(handle.SetExposureTime(obj.exposureTime), "SetExposureTime");
+            obj.checkCCDStatus(handle.SetReadMode(obj.READ_MODE_FVB), "SetReadMode");
+            obj.checkCCDStatus(handle.SetAcquisitionMode(obj.ACQ_MODE_ACCUMULATE), "SetAcquisitionMode");
+            obj.checkCCDStatus(handle.SetTriggerMode(obj.DEFAULT_TRIGGER_MODE), "SetTriggerMode");
+            obj.checkCCDStatus(handle.SetExposureTime(obj.exposureTime), "SetExposureTime");
             obj.exposureTime = instrument_AndorSpectrometer.DEFAULT_EXPOSURE;
-            obj.checkStatus(handle.SetNumberAccumulations(int32(obj.accumulations)), "SetNumberAccumulations");
+            obj.checkCCDStatus(handle.SetNumberAccumulations(int32(obj.accumulations)), "SetNumberAccumulations");
             obj.accumulations = instrument_AndorSpectrometer.DEFAULT_ACCUMULATIONS;
-            obj.checkStatus(handle.SetVSSpeed(obj.DEFAULT_VSSpeed), "SetVSSpeed");
-            obj.checkStatus(handle.SetADChannel(obj.DEFAULT_AD_CHANNEL), "SetADChannel");
-            obj.checkStatus(handle.SetVSAmplitude(obj.DEFAULT_VSAMPLITUDE), "SetVSAmplitude");
-            obj.checkStatus(handle.SetHSSpeed(obj.DEFAULT_OUTAMP_TYPE, obj.DEFAULT_HSSPEED), "SetHSSpeed");
-            obj.checkStatus(handle.SetPreAmpGain(obj.DEFAULT_PREAMP_GAIN), "SetPreAmpGain");
-            obj.checkStatus(handle.SetFilterMode(obj.DEFAULT_FILTER_MODE), "SetFilterMode");
+            obj.checkCCDStatus(handle.SetVSSpeed(obj.DEFAULT_VSSpeed), "SetVSSpeed");
+            obj.checkCCDStatus(handle.SetADChannel(obj.DEFAULT_AD_CHANNEL), "SetADChannel");
+            obj.checkCCDStatus(handle.SetVSAmplitude(obj.DEFAULT_VSAMPLITUDE), "SetVSAmplitude");
+            obj.checkCCDStatus(handle.SetHSSpeed(obj.DEFAULT_OUTAMP_TYPE, obj.DEFAULT_HSSPEED), "SetHSSpeed");
+            obj.checkCCDStatus(handle.SetPreAmpGain(obj.DEFAULT_PREAMP_GAIN), "SetPreAmpGain");
+            obj.checkCCDStatus(handle.SetFilterMode(obj.DEFAULT_FILTER_MODE), "SetFilterMode");
 
             detectorX = int32(0);
             detectorY = int32(0);
             [ret, detectorX, detectorY] = handle.GetDetector(detectorX, detectorY);
-            obj.checkStatus(ret, "GetDetector");
+            obj.checkCCDStatus(ret, "GetDetector");
             obj.xPixels = uint32(detectorX);
             obj.yPixels = uint32(detectorY);
             obj.pixelCount = obj.xPixels;
@@ -317,27 +333,27 @@ classdef instrument_AndorSpectrometer < instrumentInterface
 
             preAmpGainCount = int32(0);
             [ret, preAmpGainCount] = handle.GetNumberPreAmpGains(preAmpGainCount);
-            obj.checkStatus(ret, "GetNumberPreAmpGains");
+            obj.checkCCDStatus(ret, "GetNumberPreAmpGains");
             obj.preAmpGainMax = uint32(preAmpGainCount - 1);
 
             vsSpeedCount = int32(0);
             [ret, vsSpeedCount] = handle.GetNumberVSSpeeds(vsSpeedCount);
-            obj.checkStatus(ret, "GetNumberVSSpeeds");
+            obj.checkCCDStatus(ret, "GetNumberVSSpeeds");
             obj.vsSpeedMax = uint32(vsSpeedCount - 1);
 
             hsSpeedCount = int32(0);
             [ret, hsSpeedCount] = handle.GetNumberHSSpeeds(obj.DEFAULT_AD_CHANNEL, obj.DEFAULT_OUTAMP_TYPE, hsSpeedCount);
-            obj.checkStatus(ret, "GetNumberHSSpeeds");
+            obj.checkCCDStatus(ret, "GetNumberHSSpeeds");
             obj.hsSpeedMax = uint32(hsSpeedCount - 1);
 
             vsAmplitudeCount = int32(0);
             [ret, vsAmplitudeCount] = handle.GetNumberVSAmplitudes(vsAmplitudeCount);
-            obj.checkStatus(ret, "GetNumberVSAmplitudes");
+            obj.checkCCDStatus(ret, "GetNumberVSAmplitudes");
             obj.vsAmplitudeMax = uint32(vsAmplitudeCount - 1);
 
             bitDepthValue = int32(0);
             [ret, bitDepthValue] = handle.GetBitDepth(obj.DEFAULT_AD_CHANNEL, bitDepthValue);
-            obj.checkStatus(ret, "GetBitDepth");
+            obj.checkCCDStatus(ret, "GetBitDepth");
             obj.bitDepth = uint32(bitDepthValue);
 
             capabilitiesType = handle.GetType().Assembly.GetType("ATMCD64CS.AndorSDK+AndorCapabilities");
@@ -348,7 +364,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             capabilities = System.Activator.CreateInstance(capabilitiesType);
             capabilities.ulSize = uint32(System.Runtime.InteropServices.Marshal.SizeOf(capabilities));
             ret = handle.GetCapabilities(capabilities);
-            obj.checkStatus(ret, "GetCapabilities");
+            obj.checkCCDStatus(ret, "GetCapabilities");
             pixelModeBits = uint32(capabilities.ulPixelMode);
             obj.bitsPerPixel = obj.deriveBitsPerPixel(pixelModeBits);
             obj.pixelModeColorValue = bitshift(pixelModeBits, -double(obj.PIXELMODE_COLOR_SHIFT));
@@ -359,7 +375,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             xSize = single(0);
             ySize = single(0);
             [ret, xSize, ySize] = handle.GetPixelSize(xSize, ySize);
-            obj.checkStatus(ret, "GetPixelSize");
+            obj.checkCCDStatus(ret, "GetPixelSize");
             obj.pixelSizeX = double(xSize);
             obj.pixelSizeY = double(ySize);
 
@@ -369,8 +385,8 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             obj.pendingCounts = NaN;
             obj.pendingWavelength = NaN;
 
-            obj.checkStatus(handle.SetTemperature(-90), "SetTemperature");
-            obj.checkStatus(handle.CoolerON(), "CoolerON");
+            obj.checkCCDStatus(handle.SetTemperature(-90), "SetTemperature");
+            obj.checkCCDStatus(handle.CoolerON(), "CoolerON");
 
         end
 
@@ -383,8 +399,9 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     "ATSpectrograph DLL was not found at %s.", dllPath);
             end
 
+            fprintf("AndorSpectrometer: Loading ATSpectrograph DLL and probing devices...\n");
             if ~libisloaded(libAlias)
-                loadlibrary(dllPath, headerPath, 'alias', libAlias);
+                loadlibrary(dllPath, headerPath, 'alias', char(libAlias));
             end
 
             status = calllib(libAlias, 'ATSpectrographInitialize', '');
@@ -398,6 +415,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     "No ATSpectrograph devices detected by the SDK.");
             end
 
+            fprintf("AndorSpectrometer: Spectrograph online; reading grating and wavelength settings...\n");
             obj.spectrographDevice = int32(0);
             obj.spectrographInitialized = true;
 
@@ -462,10 +480,10 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             if libisloaded(libAlias)
                 try
                     status = calllib(libAlias, 'ATSpectrographClose');
-                    statusInt = obj.normalizeSpectrographStatus(status);
-                    if statusInt ~= obj.ATSPECTROGRAPH_SUCCESS
+                    statusStr = obj.toSpectrographStatusString(status);
+                    if ~strcmp(statusStr, "ATSPECTROGRAPH_SUCCESS")
                         warning("instrument_AndorSpectrometer:SpectrographClose", ...
-                            "ATSpectrographClose returned status %d.", statusInt);
+                            "ATSpectrographClose returned status %s.", statusStr);
                     end
                 catch closeError
                     warning("instrument_AndorSpectrometer:SpectrographClose", ...
@@ -505,54 +523,29 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                 actionName = "";
             end
             actionName = string(actionName);
-            statusInt = obj.normalizeSpectrographStatus(statusCode);
-            if statusInt == obj.ATSPECTROGRAPH_SUCCESS
+            statusStr = obj.toSpectrographStatusString(statusCode);
+            if strcmp(statusStr, "ATSPECTROGRAPH_SUCCESS")
                 return;
             end
 
-            libAlias = obj.getSpectrographLibAlias();
-            description = "";
-            if libisloaded(libAlias)
-                bufferLength = int32(256);
-                descBuffer = repmat(char(0), 1, double(bufferLength));
-                try
-                    [~, descBuffer] = calllib(libAlias, 'ATSpectrographGetFunctionReturnDescription', statusInt, descBuffer, bufferLength);
-                    if ischar(descBuffer)
-                        trimmed = descBuffer(descBuffer ~= 0);
-                        description = strtrim(string(trimmed));
-                    end
-                catch
-                    % Ignore description lookup failures
-                end
-            end
-
-            if strlength(description) > 0
-                error("instrument_AndorSpectrometer:SpectrographError", ...
-                    "%s failed with status code %d (%s).", actionName, statusInt, description);
-            else
-                error("instrument_AndorSpectrometer:SpectrographError", ...
-                    "%s failed with status code %d.", actionName, statusInt);
-            end
+            error("instrument_AndorSpectrometer:SpectrographError", ...
+                "%s failed with status %s.", actionName, statusStr);
         end
-
-        function statusInt = normalizeSpectrographStatus(obj, statusCode)
-            if isstring(statusCode)
-                statusCode = strtrim(statusCode);
-                parsed = str2double(statusCode);
-            elseif ischar(statusCode)
-                parsed = str2double(strtrim(statusCode));
-            elseif isnumeric(statusCode)
-                parsed = double(statusCode);
+        
+        function statusStr = toSpectrographStatusString(~, statusValue)
+            if ischar(statusValue)
+                cleaned = statusValue(statusValue ~= 0);
+                statusStr = strtrim(cleaned);
+            elseif isstring(statusValue)
+                statusStr = strtrim(statusValue);
             else
-                parsed = NaN;
+                statusStr = string(statusValue);
             end
-
-            if isnan(parsed)
+            if strlength(statusStr) == 0
                 error("instrument_AndorSpectrometer:SpectrographStatusParse", ...
-                    "Spectrograph returned an unexpected status value of type %s.", class(statusCode));
+                    "Spectrograph returned an unexpected status value of type %s.", class(statusValue));
             end
-
-            statusInt = int32(parsed);
+            statusStr = char(statusStr);
         end
 
         function pushSpectrographPixelGeometry(obj)
@@ -660,12 +653,12 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         
         function acquireSpectrum(obj)
             handle = obj.communicationHandle;
-            obj.checkStatus(handle.StartAcquisition(), "StartAcquisition");
+            obj.checkCCDStatus(handle.StartAcquisition(), "StartAcquisition");
             obj.waitForAcquisitionCompletion(handle, "GetStatus");
             
             buffer = NET.createArray("System.Int32", obj.pixelCount);
             ret = handle.GetAcquiredData(buffer, uint32(obj.pixelCount));
-            obj.checkStatus(ret, "GetAcquiredData");
+            obj.checkCCDStatus(ret, "GetAcquiredData");
             
             obj.spectrumData = double(buffer);
             if ~iscolumn(obj.spectrumData)
@@ -699,7 +692,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             while true
                 statusCode = int32(0);
                 [ret, statusCode] = handle.GetStatus(statusCode);
-                obj.checkStatus(ret, char(actionLabel));
+                obj.checkCCDStatus(ret, char(actionLabel));
                 if statusCode == obj.DRV_IDLE
                     break;
                 end
@@ -707,20 +700,26 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             end
         end
         
-        function checkStatus(obj, statusCode, actionName)
+        function checkCCDStatus(obj, statusCode, actionName)
+            if nargin < 3
+                actionName = "";
+            end
+            actionName = string(actionName);
             if statusCode == obj.DRV_SUCCESS
                 return;
             end
             
             if statusCode == obj.DRV_NOT_AVAILABLE
-                if strcmp(actionName, "Initialize")
-                    error("instrument_AndorSpectrometer:DriverNotAvailable Initialize failed with DRV_NOT_AVAILABLE (20992). Close SOLIS before using this driver in MATLAB.");
+                if actionName == "Initialize"
+                    error("instrument_AndorSpectrometer:CCDError", ...
+                        "CCD Error: Initialize failed with DRV_NOT_AVAILABLE (20992). Close SOLIS before using this driver in MATLAB.");
                 end
-                fprintf("instrument_AndorSpectrometer: %s returned DRV_NOT_AVAILABLE (20992). This feature is not supported by the current camera configuration.\n", actionName);
+                fprintf("instrument_AndorSpectrometer: CCD Warning: %s returned DRV_NOT_AVAILABLE (20992). This feature is not supported by the current camera configuration.\n", char(actionName));
                 return;
             end
             
-            error("instrument_AndorSpectrometer: %s failed with status code %d.", actionName, statusCode);
+            error("instrument_AndorSpectrometer:CCDError", ...
+                "CCD Error: %s failed with status code %d.", actionName, statusCode);
         end
         
         function invalidateSpectrumCache(obj, clearWavelength)
