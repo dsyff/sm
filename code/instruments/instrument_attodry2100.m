@@ -21,9 +21,10 @@ classdef instrument_attodry2100 < instrumentInterface
             obj.ensureLibraryOnPath();
 
             obj.communicationHandle = connect(char(address));
+            obj.initializeMagnet(options.magnetChannel);
 
             obj.addChannel("T");
-            obj.initializeMagnet(options.magnetChannel);
+            obj.addChannel("B");
         end
 
         function delete(obj)
@@ -78,31 +79,21 @@ classdef instrument_attodry2100 < instrumentInterface
             try
                 [errorNumber, channelCount] = magnet_getNumberOfMagnetChannels(obj.communicationHandle);
             catch ME
-                warning("instrument_attodry2100:MagnetProbeFailed", ...
+                error("instrument_attodry2100:MagnetProbeFailed", ...
                     "Failed to query magnet channel count: %s", ME.message);
-                return;
             end
 
-            if errorNumber ~= 0
-                warning("instrument_attodry2100:MagnetUnavailable", ...
-                    "magnet_getNumberOfMagnetChannels returned error %d. Magnetic field channel disabled.", errorNumber);
-                return;
-            end
+            obj.assertNoError(errorNumber, "magnet_getNumberOfMagnetChannels");
 
             channelCount = double(channelCount);
             if channelCount < 1
-                return;
+                error("instrument_attodry2100:MagnetUnavailable", ...
+                    "Cryostat reports zero magnet channels.");
             end
 
             channel = min(channelCount, requestedChannel);
-            if channel ~= requestedChannel
-                warning("instrument_attodry2100:MagnetChannelAdjusted", ...
-                    "Requested magnet channel %d unavailable. Using channel %d instead.", requestedChannel, channel);
-            end
-
             obj.magnetChannel = channel;
             obj.hasMagnet = true;
-            obj.addChannel("B");
         end
 
         function assertNoError(~, errorNumber, operation)

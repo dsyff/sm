@@ -36,6 +36,7 @@ E4980AL_GPIB = 6; %E4980AL LCR meter for strain controller
 
 Montana2_IP = "136.167.55.165";
 Opticool_IP = "127.0.0.1";
+Attodry2100_Address = "127.0.0.1"; % Update to the cryostat controller host name or IP
 
 K10CR1_Serial = ""; % Leave blank to use the first detected device
 
@@ -72,6 +73,7 @@ strain_cryostat = "Opticool"; %Opticool, Montana2
 
 K10CR1_Use = 0;
 Andor_Use = 0;
+Attodry2100_Use = 0;
 
 %% INSTRUMENT SETUP GUIDE
 % This section explains the standard pattern for adding instruments and channels
@@ -588,6 +590,13 @@ if Opticool_Use
         rack.addChannel("Opticool", "T", "T");
     end
     rack.addChannel("Opticool", "B", "B");
+end
+
+if Attodry2100_Use
+    handle_attodry2100 = instrument_attodry2100(Attodry2100_Address);
+    rack.addInstrument(handle_attodry2100, "attodry2100");
+    rack.addChannel("attodry2100", "T", "attodry_T");
+    rack.addChannel("attodry2100", "B", "attodry_B");
 end
 
 if virtual_del_V_Use
