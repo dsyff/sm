@@ -45,8 +45,8 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         exposureTime (1, 1) double = instrument_AndorSpectrometer.DEFAULT_EXPOSURE;
         accumulations (1, 1) double = instrument_AndorSpectrometer.DEFAULT_ACCUMULATIONS;
         initialized logical = false;
-        currentIndex (1, 1) uint32 = 1;
-        requestedMask logical = true;
+        currentIndex (1, 1) double = 1;
+        requestedMask logical = [];
         spectrumData double = [];
         wavelengthData double = [];
         pixelCount (1, 1) uint32 = 0;
@@ -55,7 +55,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         currentTemperature double = NaN;
         lastTemperatureStatus int32 = int32(0);
         currentCenterWavelength double = NaN;
-        currentGrating int32 = int32(-1);
+        currentGrating (1, 1) double = NaN;
         spectrographDevice (1, 1) int32 = int32(0);
         spectrographInitialized (1, 1) logical = false;
     end
@@ -237,16 +237,15 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                 case 4 % center_wavelength
                     getValues = obj.currentCenterWavelength;
                 case 5 % grating
-                    getValues = double(obj.currentGrating);
+                    getValues = obj.currentGrating;
                 case 6 % pixel_index
-                    getValues = double(obj.currentIndex);
+                    getValues = obj.currentIndex;
                 case 7 % wavelength
                     getValues = obj.pendingWavelength;
                     obj.pendingWavelength = NaN;
                 case 8 % counts
                     getValues = obj.pendingCounts;
                     obj.pendingCounts = NaN;
-                    obj.pendingWavelength = NaN;
             end
         end
         
@@ -295,7 +294,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     obj.validateSpectrographGrating(candidate);
                     libAlias = instrument_AndorSpectrometer.ATSPECTROGRAPH_LIB_ALIAS;
                     obj.checkSpectrographStatus(calllib(libAlias, 'ATSpectrographSetGrating', obj.spectrographDevice, candidate), "ATSpectrographSetGrating");
-                    obj.currentGrating = candidate;
+                    obj.currentGrating = double(candidate);
                     obj.invalidateSpectrumCache();
                     obj.updateWavelengthCache();
                 case 6 % pixel_index
@@ -306,8 +305,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     assert(idx >= 1 && idx <= obj.pixelCount, ...
                         "instrument_AndorSpectrometer:InvalidIndex", ...
                         "Pixel index must be between 1 and %d.", obj.pixelCount);
-                    newIndex = uint32(idx);
-                    obj.prepareCounts(newIndex);
+                    obj.prepareCounts(idx);
                 otherwise
                     setWriteChannelHelper@instrumentInterface(obj, channelIndex, setValues);
             end
@@ -409,7 +407,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             obj.pixelSizeX = double(xSize);
             obj.pixelSizeY = double(ySize);
 
-            obj.requestedMask = true(obj.pixelCount, 1);
+            obj.requestedMask = false(obj.pixelCount, 1);
             obj.spectrumData = nan(obj.pixelCount, 1);
             obj.wavelengthData = [];
             obj.pendingCounts = NaN;
@@ -552,7 +550,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             end
             obj.spectrographInitialized = false;
             obj.currentCenterWavelength = NaN;
-            obj.currentGrating = int32(-1);
+            obj.currentGrating = NaN;
             obj.spectrographGratingCount = int32(0);
         end
 
@@ -605,8 +603,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             libAlias = instrument_AndorSpectrometer.ATSPECTROGRAPH_LIB_ALIAS;
             [ret, currentGrating] = calllib(libAlias, 'ATSpectrographGetGrating', obj.spectrographDevice, int32(0));
             obj.checkSpectrographStatus(ret, "ATSpectrographGetGrating");
-            current = int32(currentGrating);
-            obj.currentGrating = current;
+            obj.currentGrating = double(currentGrating);
         end
 
         function executeSpectrographProbe(obj)
@@ -659,17 +656,6 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         end
 
         function prepareCounts(obj, idx)
-            if nargin < 2 || isempty(idx)
-                idx = obj.currentIndex;
-            end
-            if idx ~= obj.currentIndex
-                obj.currentIndex = idx;
-                obj.pendingCounts = NaN;
-                obj.pendingWavelength = NaN;
-                obj.requestedMask = true(obj.pixelCount, 1);
-            elseif ~isnan(obj.pendingCounts) && ~isnan(obj.pendingWavelength)
-                return;
-            end
             if idx < 1 || idx > obj.pixelCount
                 error("instrument_AndorSpectrometer:IndexOutOfRange", "Current index %d is outside detector range 1:%d.", idx, obj.pixelCount);
             end
@@ -681,10 +667,12 @@ classdef instrument_AndorSpectrometer < instrumentInterface
 
             if needsAcquisition
                 obj.acquireSpectrum();
+                obj.ensureWavelengthCache();
+                obj.requestedMask = false(obj.pixelCount, 1);
             end
 
+            obj.currentIndex = idx;
             obj.pendingCounts = obj.spectrumData(idx);
-            obj.ensureWavelengthCache();
             obj.pendingWavelength = obj.wavelengthData(idx);
             obj.requestedMask(idx) = true;
         end
