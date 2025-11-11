@@ -18,7 +18,7 @@ function sm_new_Callback(what,arg)
 %     <http://www.gnu.org/licenses/>.
     switch nargin
         case 1
-            eval(what);
+            eval([what ';']);
         case 2
             eval([what '(arg);']);
     end
@@ -292,9 +292,9 @@ function RunNum
     s=get(smaux.sm.run_eth,'String');
     if isempty(s)
         set(smaux.sm.runincrement_cbh,'Value',0);
-        smaux.run=[];  
+        smaux.run=[];
     else
-        val = str2double(s)
+        val = str2double(s);
         if ~isnan(val) && isinteger(uint16(val)) && uint16(val)>=0 && uint16(val)<=999
             smaux.run=uint16(val);
             set(smaux.sm.run_eth,'String',smaux.run);
