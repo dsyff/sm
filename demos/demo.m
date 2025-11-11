@@ -385,6 +385,7 @@ if Andor_Use
     rack.addChannel("AndorSpectrometer", "pixel_index", "CCD_pixel_index"); % pixel index for readout
     rack.addChannel("AndorSpectrometer", "wavelength", "CCD_wavelength"); % wavelength corresponding to current pixel
     rack.addChannel("AndorSpectrometer", "counts", "CCD_counts");
+    handle_AndorSpectrometer.currentGratingInfo();
 end
 
 if K2400_C_Use
