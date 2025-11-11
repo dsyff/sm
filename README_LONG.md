@@ -173,6 +173,16 @@ scan.loops(2).rng = [-1, 1];
 scan.loops(2).npoints = 21;
 ```
 
+#### Real-time Plot Axes
+
+`smrun_new` fixes the axis choice without relying on any “display loop” concept:
+
+- Let `m` be the loop index that acquires the channel (`dataloop(channel)`) and `n` the total number of loops.
+- For **1D plots** the x-axis always corresponds to loop `m`; no other loop is considered.
+- For **2D plots** the channel must be collected no deeper than loop `n-1` so that a second varying loop exists. The y-axis is taken from the first remaining loop in the data tensor that differs from `m`. If no such loop is available, the code raises a descriptive `LoopMappingError`.
+
+The initial plot composition and the streaming refresh path both reuse these loop selections, keeping updates fast while surfacing misconfigurations immediately.
+
 ### 5. TOLERANCES AND VERIFICATION
 
 ```matlab
@@ -505,5 +515,5 @@ end
 
 ---
 
-✨ **SM 1.5 Complete Documentation Guide** - Last Updated: 2025-07-19  
+✨ **SM 1.5 Complete Documentation Guide** - Last Updated: 2025-11-11  
    Prepared for optimal Copilot productivity and user experience

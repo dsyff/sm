@@ -48,9 +48,9 @@ end
 scandef = scan.loops;
 
 if ~isfield(scan, 'disp') || isempty(scan.disp)
-    disp = struct('loop', {}, 'channel', {}, 'dim', {});
+    scan_disp = struct('loop', {}, 'channel', {}, 'dim', {});
 else
-    disp = scan.disp;
+    scan_disp = scan.disp;
 end
 
 nloops = length(scandef);
@@ -211,7 +211,7 @@ for i = 1:nloops
 end
    
 % Determine subplot layout based on number of displays
-switch length(disp)
+switch length(scan_disp)
     case 1,         sbpl = [1 1];         
     case 2,         sbpl = [1 2];
     case {3, 4},    sbpl = [2 2];
@@ -222,7 +222,7 @@ switch length(disp)
     case {17, 18, 19, 20}, sbpl = [4 5];
     case {21, 22, 23, 24, 25}, sbpl = [5 5];
     case {26, 27, 28, 29, 30}, sbpl = [5 6];
-    otherwise,      sbpl = [6 6]; disp(36:end) = [];
+    otherwise,      sbpl = [6 6]; scan_disp(36:end) = [];
 end
 
 % Determine figure number - always use 1000 and overwrite previous scans
@@ -252,87 +252,142 @@ set(figHandle, 'CloseRequestFcn', @(src,evt) gracefulClose());
 
 
 % Set default display loops
-if ~isfield(disp, 'loop')
-    for i = 1:length(disp)
-        disp(i).loop = dataloop(disp(i).channel)-1;
+if ~isfield(scan_disp, 'loop')
+    for i = 1:length(scan_disp)
+        scan_disp(i).loop = dataloop(scan_disp(i).channel)-1;
     end
 end
 
 s.type = '()';
 s2.type = '()';
-for i = 1:length(disp)    
+display_x_loops = zeros(1, length(scan_disp));
+for i = 1:length(scan_disp)    
     subplot(sbpl(1), sbpl(2), i);
-    dc = disp(i).channel;
+    dc = scan_disp(i).channel;
 
     baseLen = nloops - dataloop(dc) + 1 + ndim(dc);
     s.subs = num2cell(ones(1, baseLen));
-    if disp(i).dim > numel(s.subs)
-        s.subs(end+1:disp(i).dim) = {1};
+    if scan_disp(i).dim > numel(s.subs)
+        s.subs(end+1:scan_disp(i).dim) = {1};
     end
-    idx_start = numel(s.subs) - disp(i).dim + 1;
+    idx_start = numel(s.subs) - scan_disp(i).dim + 1;
     idx_start = max(1, idx_start);
     [s.subs{idx_start:end}] = deal(':');
     
-    if dataloop(dc) - ndim(dc) < 1 
-        x = 1:datadim(dc, ndim(dc));
-        xlab = 'n';
-    else
-        % For x-axis: Loop 1 corresponds to columns (second dimension)
-        % Since data is stored as [npoints(end:-1:i), ...], loop 1 is the last loop
-        loop_idx_x = 1;  % Loop 1 for x-axis
-        if isfield(scandef(loop_idx_x),'setchanranges') && ~isempty(scandef(loop_idx_x).setchanranges)
-            % Generate x values using the first channel's range from setchanranges
-            first_channel_range = scandef(loop_idx_x).setchanranges{1};
-            total_points = npoints(loop_idx_x);
-            if total_points > 1
-                x = linspace(first_channel_range(1), first_channel_range(2), total_points);
-            else
-                x = first_channel_range(1);
-            end
-        else
-            % For scans without setchanranges, use simple index-based x-axis
-            x = 1:npoints(loop_idx_x);
-        end
-        
-        if ~isempty(scandef(loop_idx_x).setchan)
-            xlab = smdata.channels(scandef(loop_idx_x).setchan(1)).name;
-        else
-            xlab = '';
+    dataSize = size(data{dc});
+    if isempty(dataSize)
+        dataSize = 1;
+    end
+    dimCount = numel(dataSize);
+    loopsDesc = nloops:-1:dataloop(dc);
+    loopForDim = zeros(1, dimCount);
+    mapLimit = min(numel(loopsDesc), dimCount);
+    if mapLimit > 0
+        loopForDim(1:mapLimit) = loopsDesc(1:mapLimit);
+    end
+    dimForLoop = zeros(1, nloops);
+    for dimIdx = 1:dimCount
+        loopNumber = loopForDim(dimIdx);
+        if loopNumber > 0
+            dimForLoop(loopNumber) = dimIdx;
         end
     end
 
-    if disp(i).dim == 2        
-        if dataloop(dc) - ndim(dc) < 0
-            y = 1:datadim(dc, ndim(dc)-1);
-            ylab = 'n';
-        else
-            % For y-axis: Loop 2 corresponds to rows (first dimension)
-            % Since data is stored as [npoints(end:-1:i), ...], loop 2 is nloops-1
-            loop_idx_y = 2;  % Loop 2 for y-axis
-            if loop_idx_y <= nloops && isfield(scandef(loop_idx_y),'setchanranges') && ~isempty(scandef(loop_idx_y).setchanranges)
-                % Generate y values using the first channel's range from setchanranges
-                first_channel_range = scandef(loop_idx_y).setchanranges{1};
-                total_points = npoints(loop_idx_y);
-                if total_points > 1
-                    y = linspace(first_channel_range(1), first_channel_range(2), total_points);
-                else
-                    y = first_channel_range(1);
-                end
-            else
-                % For scans without setchanranges, use simple index-based y-axis
-                if loop_idx_y <= nloops
-                    y = 1:npoints(loop_idx_y);
-                else
-                    y = 1:datadim(dc, ndim(dc)-1);
-                end
+    channel_loop_idx = dataloop(dc);
+    if channel_loop_idx < 1 || channel_loop_idx > nloops
+        error("smrun_new:LoopMappingError", ...
+            "Display %d maps channel %d to invalid loop index %d.", ...
+            i, dc, channel_loop_idx);
+    end
+    if dimForLoop(channel_loop_idx) == 0
+        error("smrun_new:LoopMappingError", ...
+            "Display %d cannot resolve loop %d for channel %d axes.", ...
+            i, channel_loop_idx, dc);
+    end
+
+    display_x_loops(i) = channel_loop_idx;
+    xDim = dimForLoop(channel_loop_idx);
+
+    xlab = '';
+    if xDim > 0
+        axisLength = dataSize(xDim);
+        [loopAxis, loopLabel] = buildLoopAxis(channel_loop_idx);
+        loopAxis = double(loopAxis(:)');
+        if isempty(loopAxis)
+            if axisLength > 0
+                loopAxis = 1:axisLength;
             end
-            
-            if loop_idx_y <= nloops && ~isempty(scandef(loop_idx_y).setchan)
-                ylab = smdata.channels(scandef(loop_idx_y).setchan(1)).name;
+        elseif axisLength > 0 && numel(loopAxis) ~= axisLength
+            if axisLength == 1
+                loopAxis = loopAxis(1);
             else
-                ylab = '';
+                loopAxis = linspace(loopAxis(1), loopAxis(end), axisLength);
             end
         end
+        x = loopAxis;
+        xlab = loopLabel;
+    else
+        axisLength = dataSize(max(1, dimCount));
+        if axisLength <= 0
+            axisLength = 1;
+        end
+        x = 1:axisLength;
+        xlab = 'n';
+    end
+
+    if scan_disp(i).dim == 2    
+        if channel_loop_idx > nloops - 1
+            error("smrun_new:InvalidLoopConfiguration", ...
+                "Display %d uses channel %d from loop %d but requires at least two varying loops (n = %d).", ...
+                i, dc, channel_loop_idx, nloops);
+        end
+
+        loopsForChannel = zeros(1, dimCount);
+        for loopCandidate = 1:nloops
+            dimIdxCandidate = dimForLoop(loopCandidate);
+            if dimIdxCandidate > 0
+                loopsForChannel(dimIdxCandidate) = loopCandidate;
+            end
+        end
+        loopsForChannel = loopsForChannel(loopsForChannel ~= 0);
+
+        if numel(loopsForChannel) < 2
+            error("smrun_new:InsufficientLoopDimensions", ...
+                "Display %d requires at least two loop dimensions for channel %d.", ...
+                i, dc);
+        end
+
+        y_loop_idx = [];
+        for candidateLoop = loopsForChannel
+            if candidateLoop ~= channel_loop_idx
+                y_loop_idx = candidateLoop;
+                break;
+            end
+        end
+        if isempty(y_loop_idx)
+            error("smrun_new:LoopMappingError", ...
+                "Display %d could not determine a y-axis loop distinct from loop %d.", ...
+                i, channel_loop_idx);
+        end
+
+        yDim = dimForLoop(y_loop_idx);
+        yAxisLength = dataSize(yDim);
+        [yAxis, yLabel] = buildLoopAxis(y_loop_idx);
+        yAxis = double(yAxis(:)');
+        if isempty(yAxis)
+            if yAxisLength > 0
+                yAxis = 1:yAxisLength;
+            end
+        elseif yAxisLength > 0 && numel(yAxis) ~= yAxisLength
+            if yAxisLength == 1
+                yAxis = yAxis(1);
+            else
+                yAxis = linspace(yAxis(1), yAxis(end), yAxisLength);
+            end
+        end
+
+        y = yAxis;
+        ylab = yLabel;
         z = NaN(length(y),length(x));
         z(:, :) = subsref(data{dc}, s);
         % Data is stored as [loop2, loop1, ...] which is correct for imagesc
@@ -355,7 +410,11 @@ for i = 1:length(disp)
         set(gca, 'XLim', xLimits, 'XLimMode', 'manual');
         xlabel(strrep(xlab, '_', '\_'));
         if dc <= length(getch)
-            ylabel(strrep(smdata.channels(getch(dc)).name, '_', '\_'));
+            plotLabel = strrep(smdata.channels(getch(dc)).name, '_', '\_');
+            ylabel(plotLabel);
+            title(plotLabel);
+        else
+            title('');
         end
     end
 end  
@@ -376,12 +435,12 @@ totpoints_cached = totpoints;
 channel_offsets = cumsum([0, ngetchan(1:end-1)]);
 
 % Pre-compute display update variables for speed
-disp_loops = [disp.loop];
-disp_channels = [disp.channel];
-disp_dims = [disp.dim];
+disp_loops = [scan_disp.loop];
+disp_channels = [scan_disp.channel];
+disp_dims = [scan_disp.dim];
 
 loop_to_display = cell(1, nloops);
-for k = 1:numel(disp)
+for k = 1:numel(scan_disp)
     loop_id = disp_loops(k);
     if loop_id >= 1 && loop_id <= nloops
         loop_to_display{loop_id}(end+1) = k;
@@ -395,35 +454,17 @@ x_labels = cell(1, nloops);
 y_labels = cell(1, nloops);
 
 for loop_idx = 1:nloops
-    % Pre-compute x-axis for this loop
-    if isfield(scandef(loop_idx),'setchanranges') && ~isempty(scandef(loop_idx).setchanranges)
-        first_channel_range = scandef(loop_idx).setchanranges{1};
-        total_points = npoints(loop_idx);
-        if total_points > 1
-            x_axes{loop_idx} = linspace(first_channel_range(1), first_channel_range(2), total_points);
-            y_axes{loop_idx} = linspace(first_channel_range(1), first_channel_range(2), total_points);
-        else
-            x_axes{loop_idx} = first_channel_range(1);
-            y_axes{loop_idx} = first_channel_range(1);
-        end
-    else
-        x_axes{loop_idx} = 1:npoints(loop_idx);
-        y_axes{loop_idx} = 1:npoints(loop_idx);
-    end
-    
-    % Pre-compute labels
-    if ~isempty(scandef(loop_idx).setchan)
-        x_labels{loop_idx} = smdata.channels(scandef(loop_idx).setchan(1)).name;
-        y_labels{loop_idx} = smdata.channels(scandef(loop_idx).setchan(1)).name;
-    else
-        x_labels{loop_idx} = '';
-        y_labels{loop_idx} = '';
-    end
+    [axisVals, axisLabel] = buildLoopAxis(loop_idx);
+    axisVals = double(axisVals(:)');
+    x_axes{loop_idx} = axisVals;
+    y_axes{loop_idx} = axisVals;
+    x_labels{loop_idx} = axisLabel;
+    y_labels{loop_idx} = axisLabel;
 end
 
 % Cache subplot information to avoid repeated subplot() calls
 subplot_cache = containers.Map('KeyType', 'int32', 'ValueType', 'any');
-for k = 1:length(disp)
+for k = 1:length(scan_disp)
     subplot_cache(k) = struct('row', sbpl(1), 'col', sbpl(2), 'idx', k);
 end
 
@@ -486,7 +527,7 @@ isdummy = false(1, nloops);
 for i = 1:nloops
     isdummy(i) = isfield(scandef(i), 'waittime') && ~isempty(scandef(i).waittime) && scandef(i).waittime < 0 ...
         && isempty(scandef(i).getchan) ...
-        && ~any(scan.saveloop(1) == i) && ~any([disp.loop] == i);
+        && ~any(scan.saveloop(1) == i) && ~any([scan_disp.loop] == i);
 end
 
 % main loop - optimized version
@@ -661,12 +702,17 @@ for point_idx = 1:totpoints_cached
                     end
 
                     y_vec = y_data(:)';
-                    x_loop_idx = disp_loops(k);
                     x_vec = [];
-                    if x_loop_idx >= 1 && x_loop_idx <= numel(x_axes) && ~isempty(x_axes{x_loop_idx})
-                        candidate_x = x_axes{x_loop_idx};
-                        if numel(candidate_x) == numel(y_vec)
-                            x_vec = candidate_x(:)';
+                    loopCandidate = display_x_loops(k);
+                    if loopCandidate >= 1 && loopCandidate <= numel(x_axes)
+                        candidate_x = x_axes{loopCandidate};
+                        if ~isempty(candidate_x)
+                            candidate_x = candidate_x(:)';
+                            if numel(candidate_x) == numel(y_vec)
+                                x_vec = candidate_x;
+                            elseif numel(candidate_x) >= 2 && numel(y_vec) > 1
+                                x_vec = linspace(candidate_x(1), candidate_x(end), numel(y_vec));
+                            end
                         end
                     end
                     if isempty(x_vec)
@@ -891,6 +937,45 @@ function scanStruct = buildScanForSaveTemplate()
             else
                 scanStruct.loops(loopIdx).setchan = cellstr(scalarNames(:)).';
             end
+        end
+    end
+end
+
+
+function [axisValues, axisLabel] = buildLoopAxis(loopIdx)
+    axisValues = [];
+    axisLabel = '';
+    if ~(loopIdx >= 1 && loopIdx <= nloops)
+        return;
+    end
+
+    totalPoints = npoints(loopIdx);
+    loopDef = scandef(loopIdx);
+
+    if totalPoints > 0
+        if isfield(loopDef, 'setchanranges') && ~isempty(loopDef.setchanranges)
+            firstRange = loopDef.setchanranges{1};
+            if numel(firstRange) >= 2 && totalPoints > 1
+                axisValues = linspace(firstRange(1), firstRange(2), totalPoints);
+            elseif ~isempty(firstRange)
+                singleValue = firstRange(1);
+                axisValues = repmat(singleValue, 1, totalPoints);
+            end
+        end
+
+        if isempty(axisValues)
+            axisValues = 1:totalPoints;
+        end
+    else
+        axisValues = [];
+    end
+
+    axisValues = double(axisValues(:)');
+
+    if isfield(loopDef, 'setchan') && ~isempty(loopDef.setchan)
+        chanIdx = loopDef.setchan(1);
+        if chanIdx >= 1 && chanIdx <= numel(smdata.channels)
+            axisLabel = smdata.channels(chanIdx).name;
         end
     end
 end
