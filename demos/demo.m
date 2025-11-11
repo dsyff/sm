@@ -376,6 +376,7 @@ end
 if Andor_Use
     handle_AndorSpectrometer = instrument_AndorSpectrometer("AndorSpectrometer");
     % check handle_AndorSpectrometer for properties
+    rack.batchGetTimeout = minutes(10);
     rack.addInstrument(handle_AndorSpectrometer, "AndorSpectrometer");
     rack.addChannel("AndorSpectrometer", "temperature", "CCD_T"); % cooler temperature in C
     rack.addChannel("AndorSpectrometer", "exposure_time", "exposure"); % in seconds
