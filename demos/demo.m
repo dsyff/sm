@@ -36,7 +36,7 @@ E4980AL_GPIB = 6; %E4980AL LCR meter for strain controller
 
 Montana2_IP = "136.167.55.165";
 Opticool_IP = "127.0.0.1";
-Attodry2100_Address = "127.0.0.1"; % Update to the cryostat controller host name or IP
+Attodry2100_Address = "192.168.1.1";
 
 K10CR1_Serial = ""; % Leave blank to use the first detected device
 
@@ -594,9 +594,9 @@ end
 
 if Attodry2100_Use
     handle_attodry2100 = instrument_attodry2100(Attodry2100_Address);
-    rack.addInstrument(handle_attodry2100, "attodry2100");
-    rack.addChannel("attodry2100", "T", "attodry_T");
-    rack.addChannel("attodry2100", "B", "attodry_B");
+    rack.addInstrument(handle_attodry2100, "Attodry2100");
+    rack.addChannel("Attodry2100", "T", "T");
+    rack.addChannel("Attodry2100", "B", "B");
 end
 
 if virtual_del_V_Use
