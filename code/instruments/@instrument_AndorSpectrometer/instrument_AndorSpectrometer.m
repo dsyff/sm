@@ -401,7 +401,17 @@ classdef instrument_AndorSpectrometer < instrumentInterface
 
             fprintf("AndorSpectrometer: Loading ATSpectrograph DLL and probing devices...\n");
             if ~libisloaded(libAlias)
-                loadlibrary(dllPath, headerPath, 'alias', char(libAlias));
+                [notfoundSymbols, loadWarnings] = loadlibrary(dllPath, headerPath, 'alias', char(libAlias));
+                if ~isempty(loadWarnings)
+                    for warnIdx = 1:numel(loadWarnings)
+                        warning("instrument_AndorSpectrometer:SpectrographLoadWarning", ...
+                            "loadlibrary warning %d/%d: %s", warnIdx, numel(loadWarnings), loadWarnings{warnIdx});
+                    end
+                end
+                if ~isempty(notfoundSymbols)
+                    warning("instrument_AndorSpectrometer:SpectrographLoadMissing", ...
+                        "loadlibrary reported unresolved symbols: %s", strjoin(cellstr(notfoundSymbols), ", "));
+                end
             end
 
             status = calllib(libAlias, 'ATSpectrographInitialize', '');
