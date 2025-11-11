@@ -241,7 +241,8 @@ obj.addChannel("frequency", setTolerances = 0.01);   % 10mHz tolerance
   - Exposure updates automatically invalidate cached spectra and respect status polling
   - Cosmic ray filtering enabled by default with saturation checks scaled per accumulation
   - Exposes temperature, exposure_time, accumulations, pixel_index, and counts channels aligned with demos
-  - Provides `
+  - `currentGratingInfo()` surfaces `ATSpectrographGetGratingInfo` details for the active grating at initialization time
+  - Setting `pixel_index` calls into `prepareCounts(newIndex)` which both refreshes the spectrum (if required) and caches wavelength/count pairs so consecutive `smget` calls reuse the same acquisition until the index or acquisition parameters change
 
 - **strainController**: Persistent strain control system (migrated from v1.3)
   - **Parallel processing**: Real-time PID control loop running on worker thread

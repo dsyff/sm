@@ -223,7 +223,6 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                 case 6 % pixel_index
                     % Nothing required before returning the current index
                 case {7, 8} % wavelength/counts
-                    obj.prepareCounts();
             end
         end
         
@@ -254,14 +253,14 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         function setWriteChannelHelper(obj, channelIndex, setValues)
             switch channelIndex
                 case 1 % temperature
-                    targetTemperature = double(setValues(1));
+                    targetTemperature = setValues(1);
                     handle = obj.communicationHandle;
                     targetTemperatureInt = int32(round(targetTemperature));
                     obj.checkCCDStatus(handle.SetTemperature(targetTemperatureInt), "SetTemperature");
                     obj.currentTemperature = NaN;
                     obj.lastTemperatureStatus = int32(0);
                 case 2 % exposure_time
-                    newExposure = double(setValues(1));
+                    newExposure = setValues(1);
                     assert(newExposure > 0, "instrument_AndorSpectrometer:InvalidExposure", ...
                         "Exposure time must be positive.");
                     obj.exposureTime = newExposure;
@@ -269,7 +268,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     obj.checkCCDStatus(handle.SetExposureTime(obj.exposureTime), "SetExposureTime");
                     obj.invalidateSpectrumCache();
                 case 3 % accumulations
-                    newAccumulations = double(setValues(1));
+                    newAccumulations = setValues(1);
                     assert(newAccumulations == round(newAccumulations) && newAccumulations >= 1, ...
                         "instrument_AndorSpectrometer:InvalidAccumulations", ...
                         "Number of accumulations must be a positive integer.");
@@ -278,7 +277,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     obj.checkCCDStatus(handle.SetNumberAccumulations(int32(obj.accumulations)), "SetNumberAccumulations");
                     obj.invalidateSpectrumCache();
                 case 4 % center_wavelength
-                    newCenter = double(setValues(1));
+                    newCenter = setValues(1);
                     assert(newCenter, ...
                         "instrument_AndorSpectrometer:InvalidCenterWavelength", ...
                         "Center wavelength must be a finite scalar value in nanometers.");
@@ -288,7 +287,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     obj.invalidateSpectrumCache();
                     obj.updateWavelengthCache();
                 case 5 % grating
-                    newGrating = double(setValues(1));
+                    newGrating = setValues(1);
                     assert(newGrating == round(newGrating), ...
                         "instrument_AndorSpectrometer:InvalidGrating", ...
                         "Grating index must be an integer value.");
@@ -300,14 +299,15 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     obj.invalidateSpectrumCache();
                     obj.updateWavelengthCache();
                 case 6 % pixel_index
-                    idx = double(setValues(1));
+                    idx = setValues(1);
                     assert(idx == round(idx), ...
                         "instrument_AndorSpectrometer:InvalidIndex", ...
                         "Pixel index must be an integer value.");
-                    assert(idx >= 1 && idx <= double(obj.pixelCount), ...
+                    assert(idx >= 1 && idx <= obj.pixelCount, ...
                         "instrument_AndorSpectrometer:InvalidIndex", ...
                         "Pixel index must be between 1 and %d.", obj.pixelCount);
-                    obj.currentIndex = uint32(idx);
+                    newIndex = uint32(idx);
+                    obj.prepareCounts(newIndex);
                 otherwise
                     setWriteChannelHelper@instrumentInterface(obj, channelIndex, setValues);
             end
@@ -658,28 +658,31 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             end
         end
 
-        function prepareCounts(obj)
-            if ~isnan(obj.pendingCounts) && ~isnan(obj.pendingWavelength)
+        function prepareCounts(obj, idx)
+            if nargin < 2 || isempty(idx)
+                idx = obj.currentIndex;
+            end
+            if idx ~= obj.currentIndex
+                obj.currentIndex = idx;
+                obj.pendingCounts = NaN;
+                obj.pendingWavelength = NaN;
+                obj.requestedMask = true(obj.pixelCount, 1);
+            elseif ~isnan(obj.pendingCounts) && ~isnan(obj.pendingWavelength)
                 return;
             end
-            idx = obj.currentIndex;
             if idx < 1 || idx > obj.pixelCount
                 error("instrument_AndorSpectrometer:IndexOutOfRange", "Current index %d is outside detector range 1:%d.", idx, obj.pixelCount);
             end
-            
-            needsAcquisition = false;
-            if isempty(obj.spectrumData) || numel(obj.spectrumData) ~= obj.pixelCount
-                needsAcquisition = true;
-            elseif obj.requestedMask(idx)
-                needsAcquisition = true;
-            elseif isnan(obj.spectrumData(idx))
-                needsAcquisition = true;
+
+            needsAcquisition = isempty(obj.spectrumData) || numel(obj.spectrumData) ~= obj.pixelCount;
+            if ~needsAcquisition
+                needsAcquisition = obj.requestedMask(idx) || isnan(obj.spectrumData(idx));
             end
-            
+
             if needsAcquisition
                 obj.acquireSpectrum();
             end
-            
+
             obj.pendingCounts = obj.spectrumData(idx);
             obj.ensureWavelengthCache();
             obj.pendingWavelength = obj.wavelengthData(idx);
