@@ -21,9 +21,9 @@ instrumentRackGlobal.flush();
 % Track whether saveData has already persisted results, even if initialization aborts early
 save_operations_completed = false;
 
-if ~isstruct(scan) 
-    filename=scan;
-    scan=smscan;
+if ~isstruct(scan)
+    filename = scan;
+    scan = smscan;
 end
 
 % Set global constants for the scan
@@ -840,7 +840,11 @@ function saveData()
             text_data = struct();
             [~, name_only, ext] = fileparts(filename);
             text_data.title = [name_only ext]; % Use just filename without path
-            text_data.consts = smscan.consts;
+            if isfield(scan, 'consts')
+                text_data.consts = scan.consts;
+            else
+                text_data.consts = [];
+            end
 
             % Safely handle comments for body text
             if isfield(scan, 'comments') && ~isempty(scan.comments)
