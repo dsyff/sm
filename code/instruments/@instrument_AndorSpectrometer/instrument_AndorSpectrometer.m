@@ -277,9 +277,10 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     obj.invalidateSpectrumCache();
                 case 4 % center_wavelength
                     newCenter = setValues(1);
-                    assert(newCenter, ...
+                    isValidCenter = isscalar(newCenter) && isfinite(newCenter) && newCenter > 0;
+                    assert(isValidCenter, ...
                         "instrument_AndorSpectrometer:InvalidCenterWavelength", ...
-                        "Center wavelength must be a finite scalar value in nanometers.");
+                        "Center wavelength must be a positive, finite scalar value in nanometers.");
                     libAlias = instrument_AndorSpectrometer.ATSPECTROGRAPH_LIB_ALIAS;
                     obj.checkSpectrographStatus(calllib(libAlias, 'ATSpectrographSetWavelength', obj.spectrographDevice, single(newCenter)), "ATSpectrographSetWavelength");
                     obj.currentCenterWavelength = newCenter;
@@ -519,17 +520,13 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             calibrationBuffer = zeros(detectorPixelCount, 1, 'single');
             [ret, calibrationBuffer] = calllib(libAlias, 'ATSpectrographGetCalibration', obj.spectrographDevice, calibrationBuffer, requestedPixelCount);
             obj.checkSpectrographStatus(ret, "ATSpectrographGetCalibration");
-            wavelength = double(calibrationBuffer(:));
-
-            if detectorPixelCount > numel(wavelength)
-                wavelength = [wavelength; nan(detectorPixelCount - numel(wavelength), 1)];
-            elseif detectorPixelCount < numel(wavelength)
-                wavelength = wavelength(1:detectorPixelCount);
-            end
+            % Flip the wavelength array to match the detector pixel order. wavelength is reported by SDK in ascending order. but in the CCD higher pixel 
+            % index corresponds to higher energy.
+            wavelength = flip(double(calibrationBuffer(:))); 
 
             if numel(wavelength) ~= detectorPixelCount
                 error("instrument_AndorSpectrometer:WavelengthSizeMismatch", ...
-                    "Expected %d wavelength samples but received %d.", detectorPixelCount, numel(wavelength));
+                    "Expected %.0f wavelength samples but received %.0f.", detectorPixelCount, numel(wavelength));
             end
         end
 
@@ -584,8 +581,13 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         end
 
         function pushSpectrographPixelGeometry(obj)
-            if obj.pixelCount == 0 || ~isfinite(obj.pixelSizeX) || obj.pixelSizeX <= 0
-                return;
+            if obj.pixelCount == 0
+                error("instrument_AndorSpectrometer:PixelGeometryUnset", ...
+                    "Cannot push spectrograph pixel geometry because the detector reported zero pixels.");
+            end
+            if ~isfinite(obj.pixelSizeX) || obj.pixelSizeX <= 0
+                error("instrument_AndorSpectrometer:PixelGeometryInvalidSize", ...
+                    "Cannot push spectrograph pixel geometry because the pixel width %.3g is not positive and finite.", obj.pixelSizeX);
             end
             libAlias = instrument_AndorSpectrometer.ATSPECTROGRAPH_LIB_ALIAS;
             obj.checkSpectrographStatus(calllib(libAlias, 'ATSpectrographSetPixelWidth', obj.spectrographDevice, single(obj.pixelSizeX)), "ATSpectrographSetPixelWidth");
