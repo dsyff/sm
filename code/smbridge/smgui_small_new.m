@@ -24,6 +24,10 @@ function varargout = smgui_small_new(varargin)
 %thomas 2023.12
  global smdata smscan smaux rack bridge;
  
+ smbridgeAddSharedPaths();
+ smpptEnsureGlobals();
+ smdatapathEnsureGlobals();
+ 
 % Initialize global variables if they don't exist
 if ~exist('smscan', 'var') || isempty(smscan)
     smscan.loops(1).npoints = 101;
@@ -167,7 +171,8 @@ end
             'Position',[100 26 60 20],...
             'HorizontalAlignment','left',...
             'FontSize',8,...
-            'Value',1);
+            'Value',1,...
+            'Callback',@AppendPptToggle);
         
     smaux.smgui.datapanel = uipanel('Parent',smaux.smgui.nullpanel,'Title','Data File',...
         'Units','pixels',...
@@ -300,6 +305,8 @@ end
     plotchoices.loop=[];
 
     Update();
+    registerSmallGuiWithPptState();
+    registerSmallGuiWithDataState();
     set(smaux.smgui.figure1,'Visible','on')
 
 end 
@@ -569,17 +576,8 @@ function SavePath(varargin)
     x=uigetdir;
     if x
         smaux.datadir = x;
-        seplocations=findstr(filesep,smaux.datadir);
-        if length(seplocations)>1
-            displaystring=smaux.datadir(seplocations(end-1)+1:end);
-        else
-            displaystring=smaux.datadir;
-        end
-        if length(displaystring)>100
-            displaystring=displaystring(end-99:end);
-        end
-        set(smaux.smgui.datapath_sth,'String',displaystring);
-        set(smaux.smgui.datapath_sth,'TooltipString',smaux.datadir);
+        smdatapathUpdateGlobalState('small', smaux.datadir);
+        smdatapathApplyStateToGui('small');
     end
 end
 
@@ -596,13 +594,8 @@ global smaux smscan;
     [savedataFile,savedataPath] = uiputfile('*.mat','Save Data As');
     if savedataPath ~= 0
         smaux.datadir=savedataPath(1:end-1);
-        seplocations=findstr(filesep,smaux.datadir);
-        displaystring=smaux.datadir(seplocations(end-1)+1:end);
-        if length(displaystring)>40
-            displaystring=displaystring(end-39:end);
-        end
-        set(smaux.smgui.datapath_sth,'String',displaystring);
-        set(smaux.smgui.datapath_sth,'TooltipString',smaux.datadir);
+        smdatapathUpdateGlobalState('small', smaux.datadir);
+        smdatapathApplyStateToGui('small');
 
         savedataFile=savedataFile(1:end-4); %crop off .mat
         separators=strfind(savedataFile,'_');
@@ -625,11 +618,39 @@ end
 function SavePPT(varargin)
 global smaux;
     [pptFile,pptPath] = uiputfile('*.ppt','Append to Presentation');
-    if pptFile ~= 0
-        smaux.pptsavefile=fullfile(pptPath,pptFile);   
-        set(smaux.smgui.pptfile_sth,'String',pptFile);
-        set(smaux.smgui.pptfile_sth,'TooltipString',smaux.pptsavefile);
+    if isequal(pptFile, 0)
+        return;
     end
+    selectedFile = fullfile(pptPath, pptFile);
+    checkboxValue = false;
+    if isstruct(smaux) && isfield(smaux, 'smgui') && isstruct(smaux.smgui) ...
+            && isfield(smaux.smgui, 'appendppt_cbh') && ishandle(smaux.smgui.appendppt_cbh)
+        checkboxValue = logical(get(smaux.smgui.appendppt_cbh, 'Value'));
+    end
+    smpptUpdateGlobalState('small', checkboxValue, selectedFile);
+    smpptApplyStateToGui('small');
+end
+
+function AppendPptToggle(varargin)
+    global smaux
+    checkboxValue = false;
+    if isstruct(smaux) && isfield(smaux, 'smgui') && isstruct(smaux.smgui) ...
+            && isfield(smaux.smgui, 'appendppt_cbh') && ishandle(smaux.smgui.appendppt_cbh)
+        checkboxValue = logical(get(smaux.smgui.appendppt_cbh, 'Value'));
+    end
+    smpptUpdateGlobalState('small', checkboxValue);
+    smpptApplyStateToGui('small');
+end
+
+function syncScanPptFromGUI()
+    global smaux
+    checkboxValue = false;
+    if isstruct(smaux) && isfield(smaux, 'smgui') && isstruct(smaux.smgui) ...
+            && isfield(smaux.smgui, 'appendppt_cbh') && ishandle(smaux.smgui.appendppt_cbh)
+        checkboxValue = logical(get(smaux.smgui.appendppt_cbh, 'Value'));
+    end
+    smpptUpdateGlobalState('small', checkboxValue);
+    smpptApplyStateToGui('small');
 end
     
 %callback for comment text
@@ -804,6 +825,8 @@ end
 function Run(varargin)
     global smaux smscan smdata instrumentRackGlobal;
 
+    syncScanPptFromGUI();
+
     % create a good filename
     pathstring = get(smaux.smgui.datapath_sth,'String');
     filestring = get(smaux.smgui.filename_eth,'String');      
@@ -868,6 +891,7 @@ end
 function ToScans(varargin)
     global smaux smscan
     try
+        syncScanPptFromGUI();
         smaux.scans{end+1}=smscan;
         sm
         sm_new_Callback('UpdateToGUI');
@@ -890,6 +914,7 @@ end
 function ToQueue(varargin)
     global smaux smscan
     try
+        syncScanPptFromGUI();
         smaux.smq{end+1}=smscan;
         sm
         sm_new_Callback('UpdateToGUI');
@@ -938,14 +963,6 @@ function Update(varargin)
     end
     
     if isstruct(smaux)
-        if ~isfield(smaux,'pptsavefile')
-            smaux.pptsavefile = 'log.ppt';
-        end
-        [pptsavefilepath pptsavefilename pptextension]=fileparts(smaux.pptsavefile);
-        set(smaux.smgui.pptfile_sth,'String',pptsavefilename);
-        set(smaux.smgui.pptfile_sth,'TooltipString',smaux.pptsavefile);
-        set(smaux.smgui.appendppt_cbh,'Value',1);
-
         if ~isfield(smaux, 'datasavefile')
             smaux.datasavefile = 'log';
         end
@@ -953,26 +970,29 @@ function Update(varargin)
         set(smaux.smgui.filename_eth,'String', smaux.datasavefile);
 
         %if a directory path has not been set, use current folder + \data.
-        if ~isfield(smaux,'datadir')
-            smaux.datadir = [cd, '\data'];
+        if ~isfield(smaux,'datadir') || isempty(smaux.datadir)
+            smaux.datadir = smdatapathDefaultPath();
         end
         if ~exist(smaux.datadir, "dir")
             mkdir(smaux.datadir);
         end
 
-        seplocations=findstr(filesep,smaux.datadir);
-        displaystring=smaux.datadir(seplocations(end-1)+1:end);
-        if length(displaystring)>40
-            displaystring=displaystring(end-39:end);
+        currentPath = smdatapathGetState();
+        if ~strcmp(currentPath, smaux.datadir)
+            smdatapathUpdateGlobalState('small', smaux.datadir);
+        else
+            smdatapathApplyStateToGui('small');
         end
-        set(smaux.smgui.datapath_sth,'String',displaystring);
-        set(smaux.smgui.datapath_sth,'TooltipString',smaux.datadir);
         
         if isfield(smaux,'run')
             set(smaux.smgui.runnumber_eth,'String',smaux.run);
             RunNumber;
         end
     end
+    registerSmallGuiWithPptState();
+    smpptApplyStateToGui('small');
+    registerSmallGuiWithDataState();
+    smdatapathApplyStateToGui('small');
 end
 
 function scaninit(varargin)
@@ -1620,5 +1640,88 @@ function scalarNames = convertVectorToScalarNames(vectorChannelName)
         for i = 1:channelSize
             scalarNames{end+1} = sprintf("%s_%d", vectorChannelName, i);
         end
+    end
+end
+
+
+function registerSmallGuiWithPptState()
+    global smaux
+    smpptEnsureGlobals();
+    if ~isstruct(smaux) || ~isfield(smaux, 'smgui') || ~isstruct(smaux.smgui)
+        return;
+    end
+    handles.figure = [];
+    if isfield(smaux.smgui, 'figure1')
+        handles.figure = smaux.smgui.figure1;
+    end
+    handles.checkbox = [];
+    if isfield(smaux.smgui, 'appendppt_cbh')
+        handles.checkbox = smaux.smgui.appendppt_cbh;
+    end
+    handles.fileLabel = [];
+    if isfield(smaux.smgui, 'pptfile_sth')
+        handles.fileLabel = smaux.smgui.pptfile_sth;
+    end
+    smpptRegisterGui('small', handles);
+    [currentEnabled, currentFile] = smpptGetState();
+    checkboxValue = currentEnabled;
+    if ishandle(handles.checkbox)
+        checkboxValue = logical(get(handles.checkbox, 'Value'));
+    end
+    targetEnabled = checkboxValue;
+    targetFile = currentFile;
+    if isempty(targetFile)
+        if isfield(smaux, 'pptsavefile') && ~isempty(smaux.pptsavefile)
+            targetFile = smaux.pptsavefile;
+        else
+            targetFile = 'log.ppt';
+        end
+    end
+    if targetEnabled ~= currentEnabled || ~strcmp(char(targetFile), char(currentFile))
+        smpptUpdateGlobalState('small', targetEnabled, targetFile);
+    end
+    smpptApplyStateToGui('small');
+end
+
+
+function registerSmallGuiWithDataState()
+    global smaux
+    smdatapathEnsureGlobals();
+    if ~isstruct(smaux) || ~isfield(smaux, 'smgui') || ~isstruct(smaux.smgui)
+        return;
+    end
+
+    handles = struct();
+    if isfield(smaux.smgui, 'datapath_sth')
+        handles.label = smaux.smgui.datapath_sth;
+        handles.tooltipHandle = smaux.smgui.datapath_sth;
+        handles.displayLimit = 100;
+    end
+    smdatapathRegisterGui('small', handles);
+
+    currentPath = smdatapathGetState();
+    targetPath = currentPath;
+    if isempty(targetPath)
+        if isfield(smaux, 'datadir') && ~isempty(smaux.datadir)
+            targetPath = smaux.datadir;
+        else
+            targetPath = smdatapathDefaultPath();
+        end
+    else
+        smaux.datadir = targetPath;
+    end
+
+    if isempty(smaux.datadir)
+        smaux.datadir = targetPath;
+    end
+
+    if ~exist(targetPath, 'dir')
+        mkdir(targetPath);
+    end
+
+    if ~strcmp(char(targetPath), char(currentPath))
+        smdatapathUpdateGlobalState('small', targetPath);
+    else
+        smdatapathApplyStateToGui('small');
     end
 end

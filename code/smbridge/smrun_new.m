@@ -15,6 +15,8 @@ global smscan;
 global smaux;
 global instrumentRackGlobal
 
+smbridgeAddSharedPaths();
+
 %flush all instrument buffers before starting scan
 instrumentRackGlobal.flush();
 
@@ -24,6 +26,10 @@ save_operations_completed = false;
 if ~isstruct(scan)
     filename = scan;
     scan = smscan;
+end
+
+if isstruct(scan) && isfield(scan, 'ppt')
+    scan = rmfield(scan, 'ppt');
 end
 
 % Set global constants for the scan
@@ -835,33 +841,35 @@ function saveData()
 
     % Save PowerPoint if enabled
     try
-        if logical(get(smaux.smgui.appendppt_cbh, 'Value'))
-            % Create text structure for smsaveppt (it expects .title and .body fields)
-            text_data = struct();
-            [~, name_only, ext] = fileparts(filename);
-            text_data.title = [name_only ext]; % Use just filename without path
-            if isfield(scan, 'consts')
-                text_data.consts = scan.consts;
+        [pptEnabled, pptFile] = smpptGetState();
+        if pptEnabled
+            if isempty(pptFile)
+                fprintf("smrun_new: PowerPoint append skipped (no file specified).\n");
             else
-                text_data.consts = [];
-            end
-
-            % Safely handle comments for body text
-            if isfield(scan, 'comments') && ~isempty(scan.comments)
-                if iscell(scan.comments)
-                    text_data.body = strvcat(scan.comments{:});
-                elseif ischar(scan.comments)
-                    text_data.body = scan.comments;
+                % Create text structure for smsaveppt (it expects .title and .body fields)
+                text_data = struct();
+                [~, name_only, ext] = fileparts(filename);
+                text_data.title = [name_only ext]; % Use just filename without path
+                if isfield(scan, 'consts')
+                    text_data.consts = scan.consts;
                 else
-                    text_data.body = char(scan.comments);
+                    text_data.consts = [];
                 end
-            else
-                text_data.body = '';
-            end
 
-            ppt_file = smaux.pptsavefile;
-            if ~isempty(ppt_file) && ischar(ppt_file)
-                smsaveppt(ppt_file, text_data, '-f1000');
+                % Safely handle comments for body text
+                if isfield(scan, 'comments') && ~isempty(scan.comments)
+                    if iscell(scan.comments)
+                        text_data.body = strvcat(scan.comments{:});
+                    elseif ischar(scan.comments)
+                        text_data.body = scan.comments;
+                    else
+                        text_data.body = char(scan.comments);
+                    end
+                else
+                    text_data.body = '';
+                end
+
+                smsaveppt(pptFile, text_data, '-f1000');
             end
         end
     catch pptError
@@ -924,6 +932,9 @@ end
 
 function scanStruct = buildScanForSaveTemplate()
     scanStruct = scan;
+    if isfield(scanStruct, 'ppt')
+        scanStruct = rmfield(scanStruct, 'ppt');
+    end
     scanStruct.loops = scandef;
     for loopIdx = 1:nloops
         if isfield(scanStruct.loops(loopIdx), 'getchan')
@@ -1003,4 +1014,6 @@ function limits = computeAxisLimits(axisValues)
         end
     end
 end
+
+
 end
