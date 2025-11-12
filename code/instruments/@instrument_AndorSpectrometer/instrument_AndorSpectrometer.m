@@ -129,16 +129,8 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         end
         
         function delete(obj)
-            try
-                obj.shutdownCamera();
-            catch cameraError
-                warning("instrument_AndorSpectrometer:delete", "Failed to shutdown Andor camera cleanly: %s", cameraError.message);
-            end
-            try
-                obj.shutdownSpectrograph();
-            catch spectroError
-                warning("instrument_AndorSpectrometer:deleteSpectrograph", "Failed to shutdown spectrograph cleanly: %s", spectroError.message);
-            end
+            obj.shutdownCamera();
+            obj.shutdownSpectrograph();
         end
         
         function flush(~)
@@ -457,40 +449,11 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             end
 
             fprintf("instrument_AndorSpectrometer: Spectrograph online; reading grating and wavelength settings...\n");
+            obj.spectrographInitialized = false;
             obj.spectrographDevice = int32(0);
+
+            obj.executeSpectrographProbe();
             obj.spectrographInitialized = true;
-
-            try
-                obj.executeSpectrographProbe();
-            catch firstProbeError
-                firstReport = getReport(firstProbeError, 'extended', 'hyperlinks', 'off');
-                warning("instrument_AndorSpectrometer:SpectrographInitRetry", ...
-                    "Spectrograph probe failed on first attempt. First error:\n%s\nRetrying once...", firstReport);
-
-                obj.spectrographInitialized = false;
-                status = calllib(libAlias, 'ATSpectrographInitialize', '');
-                obj.checkSpectrographStatus(status, "ATSpectrographInitialize-Retry");
-
-                [status, deviceCount] = calllib(libAlias, 'ATSpectrographGetNumberDevices', int32(0));
-                obj.checkSpectrographStatus(status, "ATSpectrographGetNumberDevices-Retry");
-                deviceCount = double(deviceCount);
-                if deviceCount <= 0
-                    error("instrument_AndorSpectrometer:SpectrographUnavailable", ...
-                        "No ATSpectrograph devices detected by the SDK after retry.");
-                end
-
-                obj.spectrographDevice = int32(0);
-                obj.spectrographInitialized = true;
-
-                try
-                    obj.executeSpectrographProbe();
-                catch secondProbeError
-                    secondReport = getReport(secondProbeError, 'extended', 'hyperlinks', 'off');
-                    error("instrument_AndorSpectrometer:SpectrographProbeFailed", ...
-                        "Spectrograph initialization failed after retry.\nFirst error:\n%s\nSecond error:\n%s", ...
-                        firstReport, secondReport);
-                end
-            end
         end
         
         function shutdownCamera(obj)
