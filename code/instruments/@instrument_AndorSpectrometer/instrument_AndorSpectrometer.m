@@ -520,9 +520,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             calibrationBuffer = zeros(detectorPixelCount, 1, 'single');
             [ret, calibrationBuffer] = calllib(libAlias, 'ATSpectrographGetCalibration', obj.spectrographDevice, calibrationBuffer, requestedPixelCount);
             obj.checkSpectrographStatus(ret, "ATSpectrographGetCalibration");
-            % Flip the wavelength array to match the detector pixel order. wavelength is reported by SDK in ascending order. but in the CCD higher pixel 
-            % index corresponds to higher energy.
-            wavelength = flip(double(calibrationBuffer(:))); 
+            wavelength = double(calibrationBuffer(:)); 
 
             if numel(wavelength) ~= detectorPixelCount
                 error("instrument_AndorSpectrometer:WavelengthSizeMismatch", ...
