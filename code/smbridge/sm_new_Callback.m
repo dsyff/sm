@@ -30,6 +30,7 @@ function Open(h)
         smbridgeAddSharedPaths();
         smpptEnsureGlobals();
         smdatapathEnsureGlobals();
+        smrunEnsureGlobals();
 
         smaux.sm=h;
         
@@ -44,7 +45,7 @@ function Open(h)
             smaux.datadir = smdatapathDefaultPath();
         end
         if ~isfield(smaux, 'run')
-            smaux.run = uint16(1);
+            smaux.run = [];
         end
         if ~isfield(smaux, 'comments')
             smaux.comments = '';
@@ -53,6 +54,7 @@ function Open(h)
         UpdateToGUI;
         smpptAttachMainGui();
         smdatapathAttachMainGui();
+        smrunAttachMainGui();
     catch ME
         % Create detailed error message
         errorMsg = sprintf('Error in Open function:\n\n%s\n\nFile: %s\nLine: %d\n\nStack trace:\n', ...
@@ -313,17 +315,17 @@ function RunNum
     s=get(smaux.sm.run_eth,'String');
     if isempty(s)
         set(smaux.sm.runincrement_cbh,'Value',0);
-        smaux.run=[];
+        smrunUpdateGlobalState('main', []);
     else
         val = str2double(s);
-        if ~isnan(val) && isinteger(uint16(val)) && uint16(val)>=0 && uint16(val)<=999
-            smaux.run=uint16(val);
-            set(smaux.sm.run_eth,'String',smaux.run);
+        if ~isnan(val) && isfinite(val) && val>=0 && val<=999
+            smrunUpdateGlobalState('main', val);
         else
             errordlg('Please enter an integer in [000 999]','Bad Run Number');
-            set(smaux.sm.run_eth,'String','');
+            smrunUpdateGlobalState('main', []);
         end
     end
+    smrunApplyStateToGui('main');
 end
 
 function RunCreate
@@ -348,13 +350,23 @@ function Run
                 end
             else
                 %filename for this run
-                runstring=sprintf('%03u',smaux.run);
                 scan_file_name = replace(scan.name, ".", "_"); %Thomas 20240611 sanitize scan name for saving
-                datasaveFile = fullfile(smaux.datadir,[runstring  '_' scan_file_name '.mat']);
-                while exist(datasaveFile,'file')
-                    smaux.run=smaux.run+1;
-                    runstring=sprintf('%03u',smaux.run);
+                if ~isfield(smaux,'datadir') || isempty(smaux.datadir)
+                    smaux.datadir = smdatapathDefaultPath();
+                end
+                if ~exist(smaux.datadir, 'dir')
+                    mkdir(smaux.datadir);
+                end
+                smdatapathUpdateGlobalState('main', smaux.datadir);
+                runCandidate = smrunGetState();
+                useRunPrefix = ~isnan(runCandidate);
+                if useRunPrefix
+                    runToUse = smrunNextAvailableRunNumber(smaux.datadir, runCandidate);
+                    runstring = sprintf('%03u', runToUse);
                     datasaveFile = fullfile(smaux.datadir,[runstring  '_' scan_file_name '.mat']);
+                else
+                    runstring = '';
+                    datasaveFile = fullfile(smaux.datadir,[scan_file_name '.mat']);
                 end
                 
                 scan = UpdateConstants(scan);
@@ -365,7 +377,11 @@ function Run
                 [pptEnabled, ~] = smpptGetState();
                 if pptEnabled
                     try
-                        slide.title = [runstring  '_' scan_file_name '.mat'];
+                        if useRunPrefix && ~isempty(runstring)
+                            slide.title = [runstring  '_' scan_file_name '.mat'];
+                        else
+                            slide.title = [scan_file_name '.mat'];
+                        end
                         % Safely handle comments
                         if ~isfield(scan,'comments')
                             scan.comments = '';
@@ -384,7 +400,10 @@ function Run
                         % PowerPoint save functionality moved to smrun_new
                     end
                 end
-                smaux.run=smaux.run+1; %increment run number;
+                if useRunPrefix
+                    smrunUpdateGlobalState('main', smrunIncrement(runToUse));
+                end
+                smrunApplyStateToGui('main');
                 UpdateToGUI;
                 drawnow;
                 pause(3);
@@ -564,16 +583,7 @@ function UpdateToGUI
         end
         
         %populate run number eth
-        if isfield(smaux,'run') && isinteger(smaux.run)
-            val = smaux.run;
-            if ~isnan(val) && isinteger(uint16(val)) && uint16(val)>=0 && uint16(val)<=999
-                smaux.run=uint16(val);
-                set(smaux.sm.run_eth,'String',smaux.run);
-            else
-                errordlg('Please enter an integer in [000 999]','Bad Run Number');
-                set(smaux.sm.run_eth,'String','');
-            end
-        end
+        smrunApplyStateToGui('main');
         
         %populate powerpoint main file sth
         [pptEnabledMain, pptFileMain] = smpptGetState();
@@ -671,5 +681,20 @@ function smdatapathAttachMainGui()
         handles.displayLimit = 40;
     end
     smdatapathRegisterGui('main', handles);
+end
+
+
+function smrunAttachMainGui()
+    global smaux
+    smrunEnsureGlobals();
+    if ~isstruct(smaux) || ~isfield(smaux, 'sm') || ~isstruct(smaux.sm)
+        return;
+    end
+    handles = struct();
+    if isfield(smaux.sm, 'run_eth')
+        handles.edit = smaux.sm.run_eth;
+        handles.tooltipHandle = smaux.sm.run_eth;
+    end
+    smrunRegisterGui('main', handles);
 end
 

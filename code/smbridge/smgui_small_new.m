@@ -27,6 +27,7 @@ function varargout = smgui_small_new(varargin)
  smbridgeAddSharedPaths();
  smpptEnsureGlobals();
  smdatapathEnsureGlobals();
+ smrunEnsureGlobals();
  
 % Initialize global variables if they don't exist
 if ~exist('smscan', 'var') || isempty(smscan)
@@ -211,8 +212,7 @@ end
             'Position',[40 5 25 15],...
             'Callback',@RunNumber);
         if ~isfield(smaux, "run")
-            smaux.run = 1;
-            set(smaux.smgui.runnumber_eth,'String',smaux.run);
+            smaux.run = [];
         end
         smaux.smgui.autoincrement_cbh = uicontrol('Parent',smaux.smgui.datapanel,'Style','checkbox',...
             'String','AutoIncrement',...
@@ -604,8 +604,8 @@ global smaux smscan;
             rundouble=str2double(runstring);
             if ~isnan(rundouble)
                 runint=uint16(rundouble);
-                smaux.run=runint;
-                set(smaux.smgui.runnumber_eth,'String',smaux.run);
+                smrunUpdateGlobalState('small', double(runint));
+                smrunApplyStateToGui('small');
                 savedataFile=savedataFile(1:separators(end)-1); %crop off runstring
             end
         end
@@ -662,19 +662,20 @@ end
 % Callback for updating run number
 function RunNumber(varargin)
     global smaux;
-    if isempty(get(smaux.smgui.runnumber_eth,'String'))
+    strValue = get(smaux.smgui.runnumber_eth,'String');
+    if isempty(strValue)
         set(smaux.smgui.autoincrement_cbh,'Value',0);
-        smaux.run=[];
+        smrunUpdateGlobalState('small', []);
     else
-        val = str2double(get(smaux.smgui.runnumber_eth,'String'));
-        if ~isnan(val) && isinteger(uint16(val)) && uint16(val)>=0 && uint16(val)<=999
-            smaux.run=uint16(val);
-            set(smaux.smgui.runnumber_eth,'String',smaux.run);
+        val = str2double(strValue);
+        if ~isnan(val) && isfinite(val) && val>=0 && val<=999
+            smrunUpdateGlobalState('small', val);
         else
             errordlg('Please enter an integer in [000 999]','Bad Run Number');
-            set(smaux.smgui.runnumber_eth,'String','');
+            smrunUpdateGlobalState('small', []);
         end
     end
+    smrunApplyStateToGui('small');
 end
 
 % Callback for updating number of loops
@@ -827,49 +828,34 @@ function Run(varargin)
 
     syncScanPptFromGUI();
 
-    % create a good filename
-    pathstring = get(smaux.smgui.datapath_sth,'String');
-    filestring = get(smaux.smgui.filename_eth,'String');      
-    runstring = get(smaux.smgui.runnumber_eth,'String');
-    if isempty(pathstring) || isempty(filestring)
+    filestring = get(smaux.smgui.filename_eth,'String');
+    if isempty(filestring)
         FileName;
         filestring = get(smaux.smgui.filename_eth,'String');
-        if isempty(runstring)
-            datasaveFile = fullfile(smaux.datadir,[filestring '.mat']);
-        else
-            runstring = sprintf('%03u',smaux.run);
-            datasaveFile = fullfile(smaux.datadir,[runstring '_' filestring '.mat']);
-        end
-    else        
-        if isempty(runstring)
-            datasaveFile = fullfile(smaux.datadir,[filestring '.mat']);
-        else
-            runstring = sprintf('%03u',smaux.run);
-            datasaveFile = fullfile(smaux.datadir,[runstring '_' filestring '.mat']);
-        end
+    end
+    if isempty(filestring)
+        error('smgui_small_new:MissingFilename', ...
+            'A base filename must be selected before running.');
+    end
 
-        smaux.run = smaux.run + 1;
-        set(smaux.smgui.runnumber_eth,'String',smaux.run);
+    if ~isfield(smaux, 'datadir') || isempty(smaux.datadir)
+        smaux.datadir = smdatapathDefaultPath();
+    end
+    if ~exist(smaux.datadir, "dir")
+        mkdir(smaux.datadir);
+    end
+    smdatapathUpdateGlobalState('small', smaux.datadir);
+    smdatapathApplyStateToGui('small');
 
-        if exist(datasaveFile,'file')
-            if get(smaux.smgui.autoincrement_cbh,'Value') && isinteger(smaux.run)
-                while exist(datasaveFile,'file')
-                    smaux.run = smaux.run + 1;
-                    set(smaux.smgui.runnumber_eth,'String',smaux.run);
-                    runstring = sprintf('%03u',smaux.run);
-                    datasaveFile = fullfile(smaux.datadir,[runstring '_' filestring '.mat']);
-                end
-            else
-                FileName;
-                filestring = get(smaux.smgui.filename_eth,'String');
-                if isempty(runstring)
-                    datasaveFile = fullfile(smaux.datadir,[filestring '.mat']);
-                else
-                    runstring = sprintf('%03u',smaux.run);
-                    datasaveFile = fullfile(smaux.datadir,[runstring '_' filestring '.mat']);
-                end
-            end
-        end
+    runCandidate = smrunGetState();
+    useRunPrefix = ~isnan(runCandidate);
+
+    if useRunPrefix
+        runToUse = smrunNextAvailableRunNumber(smaux.datadir, runCandidate);
+        runstring = sprintf('%03u', runToUse);
+        datasaveFile = fullfile(smaux.datadir,[runstring '_' filestring '.mat']);
+    else
+        datasaveFile = fullfile(smaux.datadir,[filestring '.mat']);
     end
 
     UpdateConstants;
@@ -884,6 +870,12 @@ function Run(varargin)
     data = smrun_new(smscan, datasaveFile);
 
     % PowerPoint save functionality moved to smrun_new
+
+    if useRunPrefix
+        nextRun = smrunIncrement(runToUse);
+        smrunUpdateGlobalState('small', nextRun);
+    end
+    smrunApplyStateToGui('small');
 
 end
 
@@ -984,15 +976,14 @@ function Update(varargin)
             smdatapathApplyStateToGui('small');
         end
         
-        if isfield(smaux,'run')
-            set(smaux.smgui.runnumber_eth,'String',smaux.run);
-            RunNumber;
-        end
+        smrunApplyStateToGui('small');
     end
     registerSmallGuiWithPptState();
     smpptApplyStateToGui('small');
     registerSmallGuiWithDataState();
     smdatapathApplyStateToGui('small');
+    registerSmallGuiWithRunState();
+    smrunApplyStateToGui('small');
 end
 
 function scaninit(varargin)
@@ -1724,4 +1715,20 @@ function registerSmallGuiWithDataState()
     else
         smdatapathApplyStateToGui('small');
     end
+end
+
+
+function registerSmallGuiWithRunState()
+    global smaux
+    smrunEnsureGlobals();
+    if ~isstruct(smaux) || ~isfield(smaux, 'smgui') || ~isstruct(smaux.smgui)
+        return;
+    end
+
+    handles = struct();
+    if isfield(smaux.smgui, 'runnumber_eth')
+        handles.edit = smaux.smgui.runnumber_eth;
+        handles.tooltipHandle = smaux.smgui.runnumber_eth;
+    end
+    smrunRegisterGui('small', handles);
 end

@@ -11,7 +11,8 @@ function smbridgeAddSharedPaths()
 
     baseDir = fileparts(mfilename('fullpath'));
     sharedDirs = {fullfile(baseDir, 'shared', 'ppt'), ...
-                  fullfile(baseDir, 'shared', 'data')};
+                  fullfile(baseDir, 'shared', 'data'), ...
+                  fullfile(baseDir, 'shared', 'run')};
 
     for k = 1:numel(sharedDirs)
         dirPath = sharedDirs{k};
