@@ -27,6 +27,10 @@ end
 function Open(h)
     global smaux
     try
+        smbridgeAddSharedPaths();
+        smpptEnsureGlobals();
+        smdatapathEnsureGlobals();
+
         smaux.sm=h;
         
         % Initialize required fields if they don't exist
@@ -36,8 +40,8 @@ function Open(h)
         if ~isfield(smaux, 'smq')
             smaux.smq = {};
         end
-        if ~isfield(smaux, 'datadir')
-            smaux.datadir = pwd;
+        if ~isfield(smaux, 'datadir') || isempty(smaux.datadir)
+            smaux.datadir = smdatapathDefaultPath();
         end
         if ~isfield(smaux, 'run')
             smaux.run = uint16(1);
@@ -47,6 +51,8 @@ function Open(h)
         end
         
         UpdateToGUI;
+        smpptAttachMainGui();
+        smdatapathAttachMainGui();
     catch ME
         % Create detailed error message
         errorMsg = sprintf('Error in Open function:\n\n%s\n\nFile: %s\nLine: %d\n\nStack trace:\n', ...
@@ -232,17 +238,31 @@ function TXTenqueue
 end
 
 function PPTauto
+    global smaux
+    smpptEnsureGlobals();
+    enabled = false;
+    if isstruct(smaux) && isfield(smaux, 'sm') && isstruct(smaux.sm) ...
+            && isfield(smaux.sm, 'pptauto_cbh') && ishandle(smaux.sm.pptauto_cbh)
+        enabled = logical(get(smaux.sm.pptauto_cbh, 'Value'));
+    end
+    [~, currentFile] = smpptGetState();
+    smpptUpdateGlobalState('main', enabled, currentFile);
 end
 
 function PPTFile
     global smaux
-    [pptFile,pptPath] = uiputfile('*.ppt','Append to Presentation');
-    if pptFile
-        smaux.pptsavefile=fullfile(pptPath,pptFile);   
-        set(smaux.sm.pptfile_sth,'String',pptFile);
-        set(smaux.sm.pptfile_sth,'TooltipString',smaux.pptsavefile);
-    end    
-end
+    [pptFile, pptPath] = uiputfile('*.ppt', 'Append to Presentation');
+    if isequal(pptFile, 0)
+        return;
+    end
+    selectedFile = fullfile(pptPath, pptFile);
+    enabled = false;
+    if isstruct(smaux) && isfield(smaux, 'sm') && isstruct(smaux.sm) ...
+            && isfield(smaux.sm, 'pptauto_cbh') && ishandle(smaux.sm.pptauto_cbh)
+        enabled = logical(get(smaux.sm.pptauto_cbh, 'Value'));
+    end
+    smpptUpdateGlobalState('main', enabled, selectedFile);
+end    
 
 function PPTFile2
     global smaux
@@ -283,6 +303,7 @@ function SavePath
     x=uigetdir;
     if x
         smaux.datadir = x;
+        smdatapathUpdateGlobalState('main', smaux.datadir);
     end
     UpdateToGUI;
 end
@@ -337,10 +358,12 @@ function Run
                 end
                 
                 scan = UpdateConstants(scan);
+                scan = ensureScanPpt(scan);
                 smrun_new(scan,datasaveFile);  % Updated to use new version
                 
                 %save to powerpoint
-                if get(smaux.sm.pptauto_cbh,'Value')
+                [pptEnabled, ~] = smpptGetState();
+                if pptEnabled
                     try
                         slide.title = [runstring  '_' scan_file_name '.mat'];
                         % Safely handle comments
@@ -526,17 +549,18 @@ function UpdateToGUI
         
         %populate data path sth
         if isfield(smaux,'datadir') && exist(smaux.datadir,'dir')
-            seplocations=findstr(filesep,smaux.datadir);
-            if length(seplocations)>1
-                displaystring=smaux.datadir(seplocations(end-1)+1:end);
+            currentPath = smdatapathGetState();
+            if ~strcmp(currentPath, smaux.datadir)
+                smdatapathUpdateGlobalState('main', smaux.datadir);
             else
-                displaystring=smaux.datadir;
+                smdatapathApplyStateToGui('main');
             end
-            if length(displaystring)>40
-                displaystring=displaystring(end-39:end);
+        else
+            smaux.datadir = smdatapathDefaultPath();
+            if ~exist(smaux.datadir, 'dir')
+                mkdir(smaux.datadir);
             end
-            set(smaux.sm.datapath_sth,'String',displaystring);
-            set(smaux.sm.datapath_sth,'TooltipString',smaux.datadir);
+            smdatapathApplyStateToGui('main');
         end
         
         %populate run number eth
@@ -552,10 +576,19 @@ function UpdateToGUI
         end
         
         %populate powerpoint main file sth
-        if isfield(smaux,'pptsavefile') && exist(smaux.pptsavefile,'file')
-            [pathstr, name, ext] = fileparts(smaux.pptsavefile);
-            set(smaux.sm.pptfile_sth,'String',[name ext]);
-            set(smaux.sm.pptfile_sth,'TooltipString',smaux.pptsavefile);
+        [pptEnabledMain, pptFileMain] = smpptGetState();
+        if isfield(smaux.sm, 'pptauto_cbh') && ishandle(smaux.sm.pptauto_cbh)
+            set(smaux.sm.pptauto_cbh, 'Value', double(pptEnabledMain));
+        end
+        if isfield(smaux.sm, 'pptfile_sth') && ishandle(smaux.sm.pptfile_sth)
+            if isempty(pptFileMain)
+                displayName = '';
+            else
+                [~, name, ext] = fileparts(pptFileMain);
+                displayName = [name ext];
+            end
+            set(smaux.sm.pptfile_sth, 'String', displayName);
+            set(smaux.sm.pptfile_sth, 'TooltipString', pptFileMain);
         end
         
         %populate powerpoint priority file sth
@@ -590,3 +623,53 @@ function UpdateToGUI
         errordlg(errorMsg, 'UpdateToGUI Error', 'modal');
     end
 end
+
+
+function scan = ensureScanPpt(scan)
+    smpptEnsureGlobals();
+    if ~isstruct(scan)
+        return;
+    end
+    if isfield(scan, 'ppt')
+        scan = rmfield(scan, 'ppt');
+    end
+end
+
+
+function smpptAttachMainGui()
+    global smaux
+    smpptEnsureGlobals();
+    if ~isstruct(smaux) || ~isfield(smaux, 'sm') || ~isstruct(smaux.sm)
+        return;
+    end
+    handles.figure = [];
+    if isfield(smaux.sm, 'figure1')
+        handles.figure = smaux.sm.figure1;
+    end
+    handles.checkbox = [];
+    if isfield(smaux.sm, 'pptauto_cbh')
+        handles.checkbox = smaux.sm.pptauto_cbh;
+    end
+    handles.fileLabel = [];
+    if isfield(smaux.sm, 'pptfile_sth')
+        handles.fileLabel = smaux.sm.pptfile_sth;
+    end
+    smpptRegisterGui('main', handles);
+end
+
+
+function smdatapathAttachMainGui()
+    global smaux
+    smdatapathEnsureGlobals();
+    if ~isstruct(smaux) || ~isfield(smaux, 'sm') || ~isstruct(smaux.sm)
+        return;
+    end
+    handles = struct();
+    if isfield(smaux.sm, 'datapath_sth')
+        handles.label = smaux.sm.datapath_sth;
+        handles.tooltipHandle = smaux.sm.datapath_sth;
+        handles.displayLimit = 40;
+    end
+    smdatapathRegisterGui('main', handles);
+end
+
