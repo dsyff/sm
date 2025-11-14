@@ -1,4 +1,5 @@
 global instrumentRackGlobal smscan smaux smdata bridge tareData; %#ok<NUSED>
+%#ok<*GVMIS,*UNRCH>
 
 %% initialize
 path(pathdef);
@@ -50,6 +51,8 @@ counter_Use = 1;
 clock_Use = 1;
 test_Use = 0; %extra counters for testing
 virtual_del_V_Use = 0;
+virtual_hysteresis_Use = 0;
+virtual_nonlinear_T_Use = 0;
 
 SR860_1_Use = 0;
 SR830_1_Use = 0;
@@ -600,11 +603,29 @@ if Attodry2100_Use
 end
 
 if virtual_del_V_Use
-    % Sets V2 according to V2 = V1 + del_V on the master instrument rack provided at construction time.
-    handle_virtual_del_V = instrument_virtual_del_V("virtual_delta", rack, ...
-        VWSe2ChannelName = "V_WSe2", VTgChannelName = "V_tg");
+    % Sets V_set according to V_set = V_get + del_V on the master instrument rack provided at construction time.
+    handle_virtual_del_V = virtualInstrument_del_V("virtual_delta", rack, ...
+        vGetChannelName = "V_WSe2", vSetChannelName = "V_tg");
     rack.addInstrument(handle_virtual_del_V, "virtual_delta");
     rack.addChannel("virtual_delta", "del_V", "del_V", [], [], -10, 10); % No ramp rate, no threshold, limits -10V to +10V
+end
+
+if virtual_hysteresis_Use
+    handle_virtual_hysteresis = virtualInstrument_hysteresis("virtual_hysteresis1", rack, ...
+        setChannelName = "V_tg", ...
+        min = -5, ...
+        max = 5);
+    rack.addInstrument(handle_virtual_hysteresis, "virtual_hysteresis1");
+    rack.addChannel("virtual_hysteresis1", "hysteresis", "hys_V_tg", [], [], 0, 1);
+end
+
+if virtual_nonlinear_T_Use
+    handle_virtual_nonlinear_T = virtualInstrument_nonlinear_T("virtual_nonlinear_T", rack, ...
+        tSetChannelName = virtual_nonlinear_T_TargetChannel, ...
+        tMin = 4, ...
+        tMax = 200);
+    rack.addInstrument(handle_virtual_nonlinear_T, "virtual_nonlinear_T");
+    rack.addChannel("virtual_nonlinear_T", "nonlinear_T", "T_normalized", [], [], 0, 1);
 end
 
 %% wrap up setup

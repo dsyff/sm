@@ -7,12 +7,15 @@ classdef (Sealed) instrumentRack < handle
         batchSetTimeout (1, 1) duration = hours(2);
     end
     properties (SetAccess = private)
-        instrumentTable = table(Size = [0, 3], ...
-            VariableTypes = ["instrumentInterface", "string", "string"], ...
-            VariableNames = ["instruments", "instrumentFriendlyNames", "addresses"]);
-        channelTable = table(Size = [0, 10], ...
-            VariableTypes = ["instrumentInterface", "string", "string", "string", "uint64", "double", "cell", "cell", "cell", "cell"], ...
-            VariableNames = ["instruments", "instrumentFriendlyNames", "channels", "channelFriendlyNames", "channelSizes", "readDelays", "rampRates", "rampThresholds", "softwareMins", "softwareMaxs"]);
+        instrumentTable = table(Size = [0, 4], ...
+            VariableTypes = ["instrumentInterface", "string", "string", "logical"], ...
+            VariableNames = ["instruments", "instrumentFriendlyNames", "addresses", "virtual"]);
+        channelTable = table(Size = [0, 11], ...
+            VariableTypes = ["instrumentInterface", "string", "string", "string", "uint64", "double", "cell", "cell", "cell", "cell", "logical"], ...
+            VariableNames = ["instruments", "instrumentFriendlyNames", "channels", "channelFriendlyNames", "channelSizes", "readDelays", "rampRates", "rampThresholds", "softwareMins", "softwareMaxs", "virtual"]);
+    end
+    properties (Access = private)
+        isBatchGetActive logical = false;
     end
     methods
         function obj = instrumentRack(skipDialog)
@@ -61,8 +64,8 @@ classdef (Sealed) instrumentRack < handle
                 assert(~any(instrumentObj == obj.instrumentTable.instruments), "Instrument must not repeat.")
                 assert(~matches(instrumentFriendlyName, obj.instrumentTable.instrumentFriendlyNames), "Instrument friendly name must not repeat.")
             end
-            
-            obj.instrumentTable = [obj.instrumentTable; {instrumentObj, instrumentFriendlyName, instrumentObj.address}];
+            isVirtualInstrument = isa(instrumentObj, "virtualInstrumentInterface");
+            obj.instrumentTable = [obj.instrumentTable; {instrumentObj, instrumentFriendlyName, instrumentObj.address, isVirtualInstrument}];
         end
         
         function addChannel(obj, instrumentFriendlyName, channel, channelFriendlyName, rampRates, rampThresholds, softwareMins, softwareMaxs)
@@ -81,6 +84,7 @@ classdef (Sealed) instrumentRack < handle
             instrumentTableIndex = find(instrumentFriendlyName == obj.instrumentTable.instrumentFriendlyNames);
             assert(~isempty(instrumentTableIndex), "Instrument friendly name not found.");
             instrument = obj.instrumentTable.instruments(instrumentTableIndex);
+            instrumentVirtualFlag = obj.instrumentTable.virtual(instrumentTableIndex);
             
             % find channel size
             channelSize = instrument.findChannelSize(channel);
@@ -133,22 +137,33 @@ classdef (Sealed) instrumentRack < handle
             
             assert(all(softwareMins <= softwareMaxs), "Software limits must satisfy min <= max for every element.");
             
-            % test run to make sure channel is initialized before timing
-            % response time
-            instrument.getChannel(channel);
-            
-            % obtain response time of getRead over a few trials
-            readDelayArray = nan(5, 1);
-            trials = 5;
-            for tryIndex = 1:trials
-                instrument.getWriteChannel(channel);
-                startTime = tic;
-                instrument.getReadChannel(channel);
-                readDelayArray(tryIndex) = toc(startTime);
+            if instrumentVirtualFlag
+                readDelay = NaN;
+            else
+                try
+                    % test run to make sure channel is initialized before timing
+                    % response time
+                    instrument.getChannel(channel);
+                    
+                    % obtain response time of getRead over a few trials
+                    readDelayArray = nan(5, 1);
+                    trials = 5;
+                    for tryIndex = 1:trials
+                        instrument.getWriteChannel(channel);
+                        startTime = tic;
+                        instrument.getReadChannel(channel);
+                        readDelayArray(tryIndex) = toc(startTime);
+                    end
+                    readDelay = median(readDelayArray);
+                catch ME
+                    warning("instrumentRack:ReadDelayMeasurementFailed", ...
+                        "Failed to measure read delay for %s/%s: %s", ...
+                        instrumentFriendlyName, channel, ME.message);
+                    readDelay = inf;
+                end
             end
-            readDelay = median(readDelayArray);
             
-            newTable = [obj.channelTable; {instrument, instrumentFriendlyName, channel, channelFriendlyName, channelSize, readDelay, {rampRates}, {rampThresholds}, {softwareMins}, {softwareMaxs}}];
+            newTable = [obj.channelTable; {instrument, instrumentFriendlyName, channel, channelFriendlyName, channelSize, readDelay, {rampRates}, {rampThresholds}, {softwareMins}, {softwareMaxs}, instrumentVirtualFlag}];
             
             % check for repetitions
             if ~isempty(obj.channelTable)
@@ -170,38 +185,57 @@ classdef (Sealed) instrumentRack < handle
             % Add originalIndex column to track original positions
             getTableFull.originalIndex = (1:height(getTableFull)).';
             
-            % Attach values column: initialize as cell array of nan arrays
-            getTableFull.getValues = cell(height(getTableFull), 1);
+            assert(~obj.isBatchGetActive, "instrumentRack:ActiveBatchGet", ...
+                "Cannot call rackGet while a batch get is already in progress.");
             
             % sort descending based on response time
             getTableFull = sortrows(getTableFull, "readDelays", "descend");
             
+            physicalMask = ~getTableFull.virtual;
+            virtualMask = getTableFull.virtual;
+
             tries = 0;
             while tries < obj.tryTimes
-                getTableRemaining = getTableFull;
                 try
-                    startTime = datetime("now");
-                    while ~isempty(getTableRemaining)
-                        assert(datetime("now") - startTime < obj.batchGetTimeout, "Timed out while performing batch get.");
-                        
-                        % get a batch of channels with different instruments
-                        [~, uniqueIndices, ~] = unique(getTableRemaining.instruments, "stable");
-                        batchTable = getTableRemaining(uniqueIndices, :);
-                        getTableRemaining(uniqueIndices, :) = [];
-                        
-                        % first to write is last to read
-                        for batchIndex = 1:height(batchTable)
-                            batchTable.instruments(batchIndex).getWriteChannel(batchTable.channels(batchIndex));
+                    getTableFull.getValues = cell(height(getTableFull), 1);
+
+                    if any(physicalMask)
+                        lockGuard = obj.activateBatchGetLock(); %#ok<NASGU>
+                        getTableRemaining = getTableFull(physicalMask, :);
+                        startTime = datetime("now");
+                        while ~isempty(getTableRemaining)
+                            assert(datetime("now") - startTime < obj.batchGetTimeout, "Timed out while performing batch get.");
+                            
+                            % get a batch of channels with different instruments
+                            [~, uniqueIndices, ~] = unique(getTableRemaining.instruments, "stable");
+                            batchTable = getTableRemaining(uniqueIndices, :);
+                            getTableRemaining(uniqueIndices, :) = [];
+                            
+                            % first to write is last to read
+                            for batchIndex = 1:height(batchTable)
+                                batchTable.instruments(batchIndex).getWriteChannel(batchTable.channels(batchIndex));
+                            end
+                            for batchIndex = height(batchTable):-1:1
+                                instrument = batchTable.instruments(batchIndex);
+                                channel = batchTable.channels(batchIndex);
+                                getValuesPartial = instrument.getReadChannel(channel);
+                                originalIndex = batchTable.originalIndex(batchIndex);
+                                getTableFull.getValues{originalIndex} = getValuesPartial;
+                            end
                         end
-                        for batchIndex = height(batchTable):-1:1
-                            instrument = batchTable.instruments(batchIndex);
-                            channel = batchTable.channels(batchIndex);
-                            getValues = instrument.getReadChannel(channel);
-                            % Store values back in the correct position in getTableFull
-                            originalIndex = batchTable.originalIndex(batchIndex);
-                            getTableFull.getValues{originalIndex} = getValues;
+                        clear lockGuard;
+                    end
+
+                    if any(virtualMask)
+                        for virtualIndex = find(virtualMask).'
+                            instrument = getTableFull.instruments(virtualIndex);
+                            channel = getTableFull.channels(virtualIndex);
+                            virtualValues = instrument.getChannel(channel);
+                            originalIndex = getTableFull.originalIndex(virtualIndex);
+                            getTableFull.getValues{originalIndex} = virtualValues;
                         end
                     end
+
                     % Concatenate all values in order
                     values = vertcat(getTableFull.getValues{:});
                     break;
@@ -226,7 +260,6 @@ classdef (Sealed) instrumentRack < handle
                 end
             end
         end
-        
         function rackSetWrite(obj, channelFriendlyNames, values)
             arguments
                 obj;
@@ -454,6 +487,17 @@ classdef (Sealed) instrumentRack < handle
     end
     
     methods (Access = private)
+
+        function lockGuard = activateBatchGetLock(obj)
+            assert(~obj.isBatchGetActive, "instrumentRack:ActiveBatchGet", ...
+                "Cannot start a new batch get while another batch get is in progress.");
+            obj.isBatchGetActive = true;
+            lockGuard = onCleanup(@() obj.clearBatchGetLock());
+        end
+
+        function clearBatchGetLock(obj)
+            obj.isBatchGetActive = false;
+        end
         
         function channelIndices = findChannelIndices(obj, channelFriendlyNames)
             

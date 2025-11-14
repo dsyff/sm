@@ -91,36 +91,8 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 obj;
                 channel (1, 1) string {mustBeNonzeroLengthText};
             end
-            obj.getWriteChannel(channel);
-            getValues = obj.getReadChannel(channel);
-        end
-
-        function getWriteChannel(obj, channel)
-            arguments
-                obj;
-                channel (1, 1) string {mustBeNonzeroLengthText};
-            end
-            channelIndex = obj.findChannelIndex(channel);
-            obj.getWriteChannelHelper(channelIndex);
-            obj.lastGetChannelIndex = channelIndex;
-        end
-
-        function getValues = getReadChannel(obj, channel)
-            arguments
-                obj;
-                channel (1, 1) string {mustBeNonzeroLengthText};
-            end
-            assert(~isempty(obj.lastGetChannelIndex), "getWrite has not been called for channel %s, or setWrite has been called", channel);
-            channelIndex = obj.findChannelIndex(channel);
-            assert(channelIndex == obj.lastGetChannelIndex, "Last getWrite was channel %s, but getRead was called for channel %s.", obj.channelTable.channels(obj.lastGetChannelIndex), channel);
-            getValues = obj.getReadChannelHelper(channelIndex);
-            obj.checkSize(channelIndex, getValues);
-            %assert(all(~isnan(getValues)), "getRead for channel %s received nan value(s). Received:\n%s", channel, formattedDisplayText(getValues));
-            % enforce column vector
-            if ~isscalar(getValues) && isrow(getValues)
-                warning("Channel %s returned a row vector while getting. A column vector is preferred.", channel);
-                getValues = getValues.';
-            end
+            obj.performGetWrite(channel);
+            getValues = obj.performGetRead(channel);
         end
 
         function setChannel(obj, channel, setValues)
@@ -149,6 +121,10 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
             channelIndex = obj.findChannelIndex(channel);
             % check validity of setValues
             obj.checkSize(channelIndex, setValues);
+            % LLM note: After checkSize and the arguments validation above,
+            % helper overrides receive a column double whose length matches
+            % the declared channel. Redundant scalar extractors (e.g. in
+            % virtual instruments) are unnecessary.
             assert(all(~isnan(setValues)), "setWrite for channel %s received nan value(s). Received:\n%s", channel, formattedDisplayText(setValues));
             % enforce column vector
             if ~isscalar(setValues) && isrow(setValues)
@@ -270,6 +246,24 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
 
     methods (Access = private, Sealed)
 
+        function performGetWrite(obj, channel)
+            channelIndex = obj.findChannelIndex(channel);
+            obj.getWriteChannelHelper(channelIndex);
+            obj.lastGetChannelIndex = channelIndex;
+        end
+
+        function getValues = performGetRead(obj, channel)
+            assert(~isempty(obj.lastGetChannelIndex), "getWrite has not been called for channel %s, or setWrite has been called", channel);
+            channelIndex = obj.findChannelIndex(channel);
+            assert(channelIndex == obj.lastGetChannelIndex, "Last getWrite was channel %s, but getRead was called for channel %s.", obj.channelTable.channels(obj.lastGetChannelIndex), channel);
+            getValues = obj.getReadChannelHelper(channelIndex);
+            obj.checkSize(channelIndex, getValues);
+            if ~isscalar(getValues) && isrow(getValues)
+                warning("Channel %s returned a row vector while getting. A column vector is preferred.", channel);
+                getValues = getValues.';
+            end
+        end
+
         function checkSize(obj, channelIndex, values)
             channelSize = obj.channelTable.channelSizes(channelIndex);
             assert(length(values) == channelSize, "Expected channel %s to have length %d. Received length %d instead.", obj.channelTable.channels(channelIndex), channelSize, length(values));
@@ -292,6 +286,26 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
             obj.channelTable = [obj.channelTable; {channel, channelSize}];
             obj.lastSetValues = cell(height(obj.channelTable), 1);
             obj.setTolerances = [obj.setTolerances, {NameValueArgs.setTolerances}];
+        end
+
+    end
+
+    methods (Access = ?instrumentRack, Sealed)
+
+        function getWriteChannel(obj, channel)
+            arguments
+                obj;
+                channel (1, 1) string {mustBeNonzeroLengthText};
+            end
+            obj.performGetWrite(channel);
+        end
+
+        function getValues = getReadChannel(obj, channel)
+            arguments
+                obj;
+                channel (1, 1) string {mustBeNonzeroLengthText};
+            end
+            getValues = obj.performGetRead(channel);
         end
 
     end

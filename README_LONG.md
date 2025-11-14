@@ -101,6 +101,8 @@ virtualLogRamp = instrument_VirtualLogRamp(keithley2400, startV, endV);
 **Implementation notes:**
 
 - The abstract base lives at `code/sm2/virtualInstrumentInterface.m`; concrete virtual instruments belong in `code/instruments/` alongside physical drivers.
+- Virtual channels are excluded from the hardware batch scheduler. `rackGet` processes all physical channels first, then invokes each virtual channel's `virtualGetChannelRead`.
+- Override `virtualGetChannelRead` to expose readbacks; the base implementation raises a descriptive error so missing read logic is obvious.
 - Use `instrument_demo.m` as the formatting template—keep constructors concise, rely on default tolerances from `addChannel`, and only override `setCheckChannelHelper` when you need behaviour beyond the rack's default verification.
 
 ### 2. GETWRITE/GETREAD SEPARATION 🚀
@@ -117,8 +119,7 @@ sm1.5:        [cmd1, cmd2, cmd3] → [read1, read2, read3]   (parallel)
 - **Implementation**: All new instruments must implement both methods
 
 **Intelligent Timing Optimization:**
-- **Response Time Measurement**: During `addChannel()`, system measures each channel's 
-  response delay (5 trials, median time) and stores in `getReadTimes`
+- **Response Time Measurement**: During `addChannel()`, the rack measures each physical channel's response delay (median of five trials). Virtual channels store `NaN` delays because they never participate in the physical batch ordering.
 - **Smart Ordering**: In `rackGet()`, channels sorted by response time (longest first)
 - **"First to Write, Last to Read"**: 
   - Longest delay channels get `getWrite` commands first
@@ -132,11 +133,9 @@ sm1.5:        [cmd1, cmd2, cmd3] → [read1, read2, read3]   (parallel)
   ```
 
 #### ⚠️ Avoid Nested `rackGet` Calls
-- `instrumentRack` expects every `getReadChannel` to immediately follow the matching `getWriteChannel` for the same physical channel.
-- Virtual instruments that call `rackGet` (or `getChannel`) inside their own `getRead` implementation can accidentally interleave `getWrite` commands from different channels.
-- Many hardware drivers assume the last serial command they issued still matches the pending read. If another instrument sneaks in a `getWrite`, the response buffer becomes invalid.
-- `instrumentInterface` detects this mismatch and throws a descriptive error rather than failing silently; a newcomer might hit this error without understanding the root cause.
-- **Never** perform a nested `rackGet` from inside an instrument method. Instead, split complex measurements into independent channels or prefetch the required values before the outer `rackGet` begins.
+- The rack holds a software lock while hardware channels are mid-flight and rejects any attempt to start a second batch during that window.
+- Virtual instruments run after the lock is released, so they may safely call back into the rack from inside `virtualGetChannelRead`. Physical drivers must still rely on the rack to drive `getWrite`/`getRead` pairs.
+- Direct calls to `instrument.getWriteChannel` / `getReadChannel` outside `instrumentRack` are blocked; use `getChannel` or let the rack orchestrate batch operations.
 
 ### 3. SETWRITE/SETCHECK SEPARATION ⚡
 **Batch optimization for setting instrument parameters**
