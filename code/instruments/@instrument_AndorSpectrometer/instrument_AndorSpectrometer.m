@@ -120,7 +120,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             obj.addChannel("temperature", setTolerances = 2);
             obj.addChannel("exposure_time");
             obj.addChannel("accumulations");
-            obj.addChannel("center_wavelength");
+            obj.addChannel("center_wavelength", setTolerances = 1E-2);
             obj.addChannel("grating");
             obj.addChannel("pixel_index");
             obj.addChannel("wavelength");
@@ -205,9 +205,9 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     end
                     obj.currentTemperature = double(temperature);
                 case 2 % exposure_time
-                    % Exposure is read directly in getReadChannelHelper
+                    obj.refreshExposureTime();
                 case 3 % accumulations
-                    % Accumulations are read directly in getReadChannelHelper
+                    obj.refreshAccumulations();
                 case 4 % center_wavelength
                     obj.refreshSpectrographCenterWavelength();
                 case 5 % grating
@@ -410,6 +410,42 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             obj.checkCCDStatus(handle.CoolerON(), "CoolerON");
 
         end
+
+        function refreshExposureTime(obj)
+            handle = obj.communicationHandle;
+            if isempty(handle)
+                error("instrument_AndorSpectrometer:CameraHandleUnavailable", ...
+                    "Cannot refresh exposure time because the camera communication handle is unavailable.");
+            end
+
+            [ret, exposureSeconds, ~, ~] = handle.GetAcquisitionTimings(single(0), single(0), single(0));
+            obj.checkCCDStatus(ret, "GetAcquisitionTimings");
+            obj.exposureTime = double(exposureSeconds);
+        end
+
+        function refreshAccumulations(obj)
+            handle = obj.communicationHandle;
+            if isempty(handle)
+                error("instrument_AndorSpectrometer:CameraHandleUnavailable", ...
+                    "Cannot refresh accumulations because the camera communication handle is unavailable.");
+            end
+
+            if ~ismethod(handle, "GetNumberAccumulations")
+                persistent accumulationQueryWarningIssued
+                if isempty(accumulationQueryWarningIssued) || ~accumulationQueryWarningIssued
+                    warning("instrument_AndorSpectrometer:GetNumberAccumulationsUnsupported", ...
+                        "CCD reports no GetNumberAccumulations method; cached accumulation count may be stale.");
+                    accumulationQueryWarningIssued = true;
+                end
+                return;
+            end
+
+            accumulationCount = int32(0);
+            [ret, accumulationCount] = handle.GetNumberAccumulations(accumulationCount);
+            obj.checkCCDStatus(ret, "GetNumberAccumulations");
+            obj.accumulations = double(accumulationCount);
+        end
+
 
         function initializeSpectrograph(obj)
             libAlias = instrument_AndorSpectrometer.ATSPECTROGRAPH_LIB_ALIAS;
