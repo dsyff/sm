@@ -12,7 +12,7 @@ end
 %% settings
 % If last sampling is older than staleTime ago, and if activeControl is on,
 % get statements from smc receive error
-staleTime = seconds(2);
+staleTime = seconds(10);
 %dataChunkLength = 2^20; %-
 dataChunkLength = 2^16;
 temperatureSafeMargin = 3; %K for determining max strain voltage
@@ -583,7 +583,7 @@ end
             matched = true;
             switch command.action
                 case "GET"
-                    send(dog2Man, formattedDisplayText(rack_strain));
+                    send(dog2Man, string(formattedDisplayText(rack_strain)));
                 case "SET"
                     dogError("cannot set %s.", command, command.channel);
                 case "CHECK"

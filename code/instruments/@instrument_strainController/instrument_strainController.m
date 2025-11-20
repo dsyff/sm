@@ -5,7 +5,7 @@ classdef instrument_strainController < instrumentInterface
             "V_str_o", "V_str_i", "I_str_o", "I_str_i", "activeControl"];
         dogGetTimeout duration = seconds(15);
         dogCheckTimeout duration = seconds(60);
-        rack_strainController;
+        rack_strainController string = "";
     end
 
     properties (Access = protected)
@@ -82,7 +82,7 @@ classdef instrument_strainController < instrumentInterface
 
             obj.setTimeout = hours(3);
 
-            obj.rack_strainController = dogGet(obj.handle_strainWatchdog, "rack");
+            obj.rack_strainController = string(dogGet(obj.handle_strainWatchdog, "rack"));
         end
 
         function delete(obj)
