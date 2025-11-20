@@ -1,7 +1,6 @@
 classdef instrument_attodry2100 < instrumentInterface
     % Minimal Attodry2100 integration supporting temperature and field reads
     properties (Access = private)
-        libraryDir string
         hasMagnet (1, 1) logical = false
         magnetChannel (1, 1) double = 1
         lastTemperature double = NaN
@@ -17,8 +16,6 @@ classdef instrument_attodry2100 < instrumentInterface
             obj@instrumentInterface();
 
             obj.address = address;
-            obj.libraryDir = obj.resolveLibraryDir();
-            obj.ensureLibraryOnPath();
 
             obj.communicationHandle = connect(char(address));
             obj.initializeMagnet(options.magnetChannel);
@@ -100,24 +97,6 @@ classdef instrument_attodry2100 < instrumentInterface
             if errorNumber ~= 0
                 error("instrument_attodry2100:CommandFailed", ...
                     "%s returned error %d.", operation, errorNumber);
-            end
-        end
-
-        function ensureLibraryOnPath(obj)
-            libraryPath = char(obj.libraryDir);
-            pathEntries = strsplit(path, pathsep);
-            if ~any(strcmp(libraryPath, pathEntries))
-                addpath(libraryPath);
-            end
-        end
-
-        function libraryDir = resolveLibraryDir(~)
-            instrumentsDir = fileparts(mfilename("fullpath"));
-            repoRoot = fileparts(fileparts(instrumentsDir));
-            libraryDir = fullfile(repoRoot, "temp", "atto-device-matlab-1.12.0", "atto_device", "CRYO2100");
-            if ~isfolder(libraryDir)
-                error("instrument_attodry2100:MissingLibrary", ...
-                    "Expected CRYO2100 library directory not found at %s.", libraryDir);
             end
         end
     end

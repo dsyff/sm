@@ -53,6 +53,15 @@ test_Use = 0; %extra counters for testing
 virtual_del_V_Use = 0;
 virtual_hysteresis_Use = 0;
 virtual_nonlinear_T_Use = 0;
+virtual_nE_Use = 0;
+virtual_nE_vTgChannelName = "V_tg";
+virtual_nE_vBgChannelName = "V_bg";
+virtual_nE_vTgLimits = [-6, 6];
+virtual_nE_vBgLimits = [-60, 60];
+virtual_nE_cnp_tg_1 = 0;
+virtual_nE_cnp_bg_1 = -20;
+virtual_nE_cnp_tg_2 = 2;
+virtual_nE_cnp_bg_2 = -10;
 
 SR860_1_Use = 0;
 SR830_1_Use = 0;
@@ -206,7 +215,7 @@ if strainController_Use
     end
 
     rack.addInstrument(handle_strainController, "strain");
-    rack.addChannel("strain", "del_d", "del_d");
+    rack.addChannel("strain", "del_d", "del_d", [], [], -5E-5, 5E-5);
     rack.addChannel("strain", "T", "T");
     rack.addChannel("strain", "Cp", "Cp");
     rack.addChannel("strain", "Q", "Q");
@@ -627,6 +636,21 @@ if virtual_nonlinear_T_Use
         tMax = 200);
     rack.addInstrument(handle_virtual_nonlinear_T, "virtual_nonlinear_T");
     rack.addChannel("virtual_nonlinear_T", "nonlinear_T", "T_normalized", [], [], 0, 1);
+end
+
+if virtual_nE_Use
+    handle_virtual_nE = virtualInstrument_nE("virtual_nE", rack, ...
+        vTgChannelName = virtual_nE_vTgChannelName, ...
+        vBgChannelName = virtual_nE_vBgChannelName, ...
+        vTgLimits = virtual_nE_vTgLimits, ...
+        vBgLimits = virtual_nE_vBgLimits, ...
+        cnpTg1 = virtual_nE_cnp_tg_1, ...
+        cnpBg1 = virtual_nE_cnp_bg_1, ...
+        cnpTg2 = virtual_nE_cnp_tg_2, ...
+        cnpBg2 = virtual_nE_cnp_bg_2);
+    rack.addInstrument(handle_virtual_nE, "virtual_nE");
+    rack.addChannel("virtual_nE", "n", "n_normalized", [], [], 0, 1);
+    rack.addChannel("virtual_nE", "E", "E_normalized", [], [], 0, 1);
 end
 
 %% wrap up setup
