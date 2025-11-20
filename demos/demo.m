@@ -219,7 +219,8 @@ if strainController_Use
     rack.addChannel("strain", "activeControl", "activeControl");
     
     fprintf("Strain controller rack starts.\n");
-    disp(handle_strainController.getRack());
+    strainControllerRackSummary = handle_strainController.getRack();
+    disp(strainControllerRackSummary);
     fprintf("Strain controller rack ends.\n");
     fprintf("Strain controller initialized and tared.\n");
     
