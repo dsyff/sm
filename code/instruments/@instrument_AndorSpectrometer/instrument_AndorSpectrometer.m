@@ -20,6 +20,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         DEFAULT_TRIGGER_MODE = int32(0); % Internal trigger
         DEFAULT_ACCUMULATIONS = double(2);
         DEFAULT_FILTER_MODE = int32(2); % Cosmic ray filter on
+        FILTER_MODE_OFF = int32(0); % Cosmic ray filter off
         STATUS_POLL_DELAY = 0.05; % matlab pause in loop waiting for acquisition
         
         % Andor SDK constants. do not change
@@ -58,6 +59,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         currentGrating (1, 1) double = NaN;
         spectrographDevice (1, 1) int32 = int32(0);
         spectrographInitialized (1, 1) logical = false;
+        currentFilterMode (1, 1) int32 = int32(-1);
     end
     
     properties (GetAccess = public, SetAccess = private)
@@ -189,6 +191,32 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                 info.index, info.lines_per_mm, blazeText, info.home, info.offset);
         end
 
+        function ccdCounts = flushCCD(obj)
+            handle = obj.communicationHandle;
+            if isempty(handle)
+                error("instrument_AndorSpectrometer:FlushCCDUnavailable", ...
+                    "Cannot flush the CCD because the camera communication handle is unavailable.");
+            end
+
+            originalExposure = obj.exposureTime;
+            originalAccumulations = obj.accumulations;
+            originalFilterMode = obj.currentFilterMode;
+
+            cleanup = onCleanup(@() obj.restoreAcquisitionSettings(originalExposure, originalAccumulations, originalFilterMode));
+
+            obj.checkCCDStatus(handle.SetExposureTime(0), "SetExposureTimeFlush");
+            obj.exposureTime = 0;
+
+            obj.checkCCDStatus(handle.SetNumberAccumulations(int32(1)), "SetNumberAccumulationsFlush");
+            obj.accumulations = 1;
+            obj.updateCosmicRayFilterForAccumulations();
+
+            obj.invalidateSpectrumCache();
+            obj.acquireSpectrum();
+
+            ccdCounts = obj.spectrumData;
+        end
+
     end
     
     methods (Access = ?instrumentInterface)
@@ -266,6 +294,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     obj.accumulations = newAccumulations;
                     handle = obj.communicationHandle;
                     obj.checkCCDStatus(handle.SetNumberAccumulations(int32(obj.accumulations)), "SetNumberAccumulations");
+                    obj.updateCosmicRayFilterForAccumulations();
                     obj.invalidateSpectrumCache();
                 case 4 % center_wavelength_nm
                     newCenter = setValues(1);
@@ -340,7 +369,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             % obj.checkCCDStatus(handle.SetVSAmplitude(obj.DEFAULT_VSAMPLITUDE), "SetVSAmplitude");
             obj.checkCCDStatus(handle.SetHSSpeed(obj.DEFAULT_OUTAMP_TYPE, obj.DEFAULT_HSSPEED), "SetHSSpeed");
             obj.checkCCDStatus(handle.SetPreAmpGain(obj.DEFAULT_PREAMP_GAIN), "SetPreAmpGain");
-            obj.checkCCDStatus(handle.SetFilterMode(obj.DEFAULT_FILTER_MODE), "SetFilterMode");
+            obj.applyCosmicRayFilterMode(obj.DEFAULT_FILTER_MODE);
 
             detectorX = int32(0);
             detectorY = int32(0);
@@ -750,6 +779,55 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             end
             obj.pendingCounts = NaN;
             obj.pendingWavelength = NaN;
+        end
+
+        function restoreAcquisitionSettings(obj, exposureTime, accumulations, filterMode)
+            handle = obj.communicationHandle;
+            if isempty(handle)
+                obj.exposureTime = exposureTime;
+                obj.accumulations = accumulations;
+                obj.currentFilterMode = int32(filterMode);
+                obj.invalidateSpectrumCache();
+                return;
+            end
+
+            if ~isequaln(obj.exposureTime, exposureTime)
+                obj.checkCCDStatus(handle.SetExposureTime(exposureTime), "SetExposureTimeRestore");
+            end
+            obj.exposureTime = exposureTime;
+
+            if ~isequaln(obj.accumulations, accumulations)
+                obj.checkCCDStatus(handle.SetNumberAccumulations(int32(accumulations)), "SetNumberAccumulationsRestore");
+            end
+            obj.accumulations = accumulations;
+
+            if obj.currentFilterMode ~= int32(filterMode)
+                obj.applyCosmicRayFilterMode(int32(filterMode));
+            end
+
+            obj.invalidateSpectrumCache();
+        end
+
+        function updateCosmicRayFilterForAccumulations(obj)
+            if obj.accumulations <= 1
+                targetMode = obj.FILTER_MODE_OFF;
+            else
+                targetMode = obj.DEFAULT_FILTER_MODE;
+            end
+            obj.applyCosmicRayFilterMode(targetMode);
+        end
+
+        function applyCosmicRayFilterMode(obj, mode)
+            handle = obj.communicationHandle;
+            if isempty(handle)
+                error("instrument_AndorSpectrometer:CameraHandleUnavailable", ...
+                    "Cannot adjust filter mode because the camera communication handle is unavailable.");
+            end
+            if obj.currentFilterMode == int32(mode)
+                return;
+            end
+            obj.checkCCDStatus(handle.SetFilterMode(int32(mode)), "SetFilterMode");
+            obj.currentFilterMode = int32(mode);
         end
         
         function bits = deriveBitsPerPixel(obj, pixelModeBits)
