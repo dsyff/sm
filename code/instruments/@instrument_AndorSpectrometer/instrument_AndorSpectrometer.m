@@ -117,13 +117,13 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                 end
             end
             fprintf("instrument_AndorSpectrometer: Startup complete—temperature, wavelength, and grating channels ready.\n");
-            obj.addChannel("temperature", setTolerances = 2);
+            obj.addChannel("temperature_C", setTolerances = 2);
             obj.addChannel("exposure_time");
             obj.addChannel("accumulations");
-            obj.addChannel("center_wavelength", setTolerances = 1E-2);
+            obj.addChannel("center_wavelength_nm", setTolerances = 1E-2);
             obj.addChannel("grating");
             obj.addChannel("pixel_index");
-            obj.addChannel("wavelength");
+            obj.addChannel("wavelength_nm");
             obj.addChannel("counts");
             
         end
@@ -195,7 +195,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         
         function getWriteChannelHelper(obj, channelIndex)
             switch channelIndex
-                case 1 % temperature
+                case 1 % temperature_C
                     handle = obj.communicationHandle;
                     temperature = int32(0);
                     [ret, temperature] = handle.GetTemperature(temperature);
@@ -208,31 +208,31 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     obj.refreshExposureTime();
                 case 3 % accumulations
                     obj.refreshAccumulations();
-                case 4 % center_wavelength
+                case 4 % center_wavelength_nm
                     obj.refreshSpectrographCenterWavelength();
                 case 5 % grating
                     obj.refreshSpectrographGrating();
                 case 6 % pixel_index
                     % Nothing required before returning the current index
-                case {7, 8} % wavelength/counts
+                case {7, 8} % wavelength_nm/counts
             end
         end
         
         function getValues = getReadChannelHelper(obj, channelIndex)
             switch channelIndex
-                case 1 % temperature
+                case 1 % temperature_C
                     getValues = obj.currentTemperature;
                 case 2 % exposure_time
                     getValues = obj.exposureTime;
                 case 3 % accumulations
                     getValues = obj.accumulations;
-                case 4 % center_wavelength
+                case 4 % center_wavelength_nm
                     getValues = obj.currentCenterWavelength;
                 case 5 % grating
                     getValues = obj.currentGrating;
                 case 6 % pixel_index
                     getValues = obj.currentIndex;
-                case 7 % wavelength
+                case 7 % wavelength_nm
                     getValues = obj.pendingWavelength;
                     obj.pendingWavelength = NaN;
                 case 8 % counts
@@ -243,7 +243,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         
         function setWriteChannelHelper(obj, channelIndex, setValues)
             switch channelIndex
-                case 1 % temperature
+                case 1 % temperature_C
                     targetTemperature = setValues(1);
                     handle = obj.communicationHandle;
                     targetTemperatureInt = int32(round(targetTemperature));
@@ -267,7 +267,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     handle = obj.communicationHandle;
                     obj.checkCCDStatus(handle.SetNumberAccumulations(int32(obj.accumulations)), "SetNumberAccumulations");
                     obj.invalidateSpectrumCache();
-                case 4 % center_wavelength
+                case 4 % center_wavelength_nm
                     newCenter = setValues(1);
                     isValidCenter = isscalar(newCenter) && isfinite(newCenter) && newCenter > 0;
                     assert(isValidCenter, ...
@@ -424,6 +424,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         end
 
         function refreshAccumulations(obj)
+            persistent accumulationQueryWarningIssued
             handle = obj.communicationHandle;
             if isempty(handle)
                 error("instrument_AndorSpectrometer:CameraHandleUnavailable", ...
@@ -431,7 +432,6 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             end
 
             if ~ismethod(handle, "GetNumberAccumulations")
-                persistent accumulationQueryWarningIssued
                 if isempty(accumulationQueryWarningIssued) || ~accumulationQueryWarningIssued
                     warning("instrument_AndorSpectrometer:GetNumberAccumulationsUnsupported", ...
                         "CCD reports no GetNumberAccumulations method; cached accumulation count may be stale.");
@@ -459,14 +459,11 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             fprintf("instrument_AndorSpectrometer: Loading ATSpectrograph DLL and probing devices...\n");
             if ~libisloaded(libAlias)
                 [notfoundSymbols, loadWarnings] = loadlibrary(dllPath, headerPath, 'alias', char(libAlias));
-                % if ~isempty(loadWarnings)
-                %     warnCount = size(loadWarnings, 1);
-                %     for warnIdx = 1:warnCount
-                %         message = strtrim(loadWarnings(warnIdx, :));
-                %         warning("instrument_AndorSpectrometer:SpectrographLoadWarning", ...
-                %             "loadlibrary warning %d/%d: %s", warnIdx, warnCount, message);
-                %     end
-                % end
+                if ~isempty(loadWarnings)
+                    warningLines = strtrim(cellstr(loadWarnings));
+                    warning("instrument_AndorSpectrometer:SpectrographLoadWarning", ...
+                        "loadlibrary emitted warnings:\n%s", strjoin(warningLines, newline));
+                end
                 if ~isempty(notfoundSymbols)
                     warning("instrument_AndorSpectrometer:SpectrographLoadMissing", ...
                         "loadlibrary reported unresolved symbols: %s", strjoin(cellstr(notfoundSymbols), ", "));
@@ -600,9 +597,9 @@ classdef instrument_AndorSpectrometer < instrumentInterface
 
         function refreshSpectrographGrating(obj)
             libAlias = instrument_AndorSpectrometer.ATSPECTROGRAPH_LIB_ALIAS;
-            [ret, currentGrating] = calllib(libAlias, 'ATSpectrographGetGrating', obj.spectrographDevice, int32(0));
+            [ret, gratingValue] = calllib(libAlias, 'ATSpectrographGetGrating', obj.spectrographDevice, int32(0));
             obj.checkSpectrographStatus(ret, "ATSpectrographGetGrating");
-            obj.currentGrating = double(currentGrating);
+            obj.currentGrating = double(gratingValue);
         end
 
         function executeSpectrographProbe(obj)
