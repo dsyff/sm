@@ -1,6 +1,9 @@
 # Exclude testing and legacy folders
-code/legacyInstruments/
+legacy/
 debug/
+temp/
+tests/
+
 
 # MATLAB specific ignores
 *.asv
@@ -35,4 +38,6 @@ Thumbs.db
 *.mex*
 *.p
 
+# exclude llm instructions
 .github/
+docs/

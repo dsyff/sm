@@ -15,12 +15,21 @@ global smscan;
 global smaux;
 global instrumentRackGlobal
 
+smbridgeAddSharedPaths();
+
 %flush all instrument buffers before starting scan
 instrumentRackGlobal.flush();
 
-if ~isstruct(scan) 
-    filename=scan;
-    scan=smscan;
+% Track whether saveData has already persisted results, even if initialization aborts early
+save_operations_completed = false;
+
+if ~isstruct(scan)
+    filename = scan;
+    scan = smscan;
+end
+
+if isstruct(scan) && isfield(scan, 'ppt')
+    scan = rmfield(scan, 'ppt');
 end
 
 % Set global constants for the scan
@@ -45,9 +54,9 @@ end
 scandef = scan.loops;
 
 if ~isfield(scan, 'disp') || isempty(scan.disp)
-    disp = struct('loop', {}, 'channel', {}, 'dim', {});
+    scan_disp = struct('loop', {}, 'channel', {}, 'dim', {});
 else
-    disp = scan.disp;
+    scan_disp = scan.disp;
 end
 
 nloops = length(scandef);
@@ -60,6 +69,8 @@ original_getchan = cell(1, nloops);
 original_setchan = cell(1, nloops);
 getchan_strings = cell(1, nloops);
 setchan_strings = cell(1, nloops);
+getchan_scalar_names = cell(1, nloops);
+setchan_scalar_names = cell(1, nloops);
 
 % Vectorized field initialization
 if ~isfield(scandef, 'npoints')
@@ -145,13 +156,34 @@ for i = 1:nloops
     scandef(i).getchan = smchanlookup_new(scandef(i).getchan, true);
     nsetchan(i) = length(scandef(i).setchan);
     ngetchan(i) = length(scandef(i).getchan);
+
+    if ~isempty(scandef(i).setchan)
+        scalarSetNames = strings(1, nsetchan(i));
+        for idx = 1:nsetchan(i)
+            scalarSetNames(idx) = string(smdata.channels(scandef(i).setchan(idx)).name);
+        end
+        setchan_scalar_names{i} = scalarSetNames;
+    else
+        setchan_scalar_names{i} = string.empty(1, 0);
+    end
+
+    if ~isempty(scandef(i).getchan)
+        scalarGetNames = strings(1, ngetchan(i));
+        for idx = 1:ngetchan(i)
+            scalarGetNames(idx) = string(smdata.channels(scandef(i).getchan(idx)).name);
+        end
+        getchan_scalar_names{i} = scalarGetNames;
+    else
+        getchan_scalar_names{i} = string.empty(1, 0);
+    end
 end
 
 % Build getch after channel lookup conversion - fully vectorized
 all_getchans = {scandef.getchan};
 nonempty_mask = ~cellfun(@isempty, all_getchans);
 if any(nonempty_mask)
-    getch = vertcat(all_getchans{nonempty_mask});
+    normalized_getchans = cellfun(@(chan) chan(:), all_getchans(nonempty_mask), 'UniformOutput', false);
+    getch = vertcat(normalized_getchans{:});
 else
     getch = [];
 end
@@ -159,36 +191,23 @@ end
 npoints = [scandef.npoints];
 totpoints = prod(npoints);
 
+scan_for_save_template = buildScanForSaveTemplate();
+
 datadim = zeros(sum(ngetchan), 5);
 data = cell(1, sum(ngetchan));
 ndim = zeros(1, sum(ngetchan));
 dataloop = zeros(1, sum(ngetchan));
 disph = zeros(1, sum(ngetchan));
 
-% Pre-compute all instchan data for efficiency
-instchan_data = cell(1, nloops);
 for i = 1:nloops
-    if ~isempty(scandef(i).getchan)
-        instchan_data{i} = reshape([smdata.channels(scandef(i).getchan).instchan], 2, [])';
-    else
-        instchan_data{i} = [];
+    % Pre-size using only loop dimensions; each channel sample is scalar per point
+    baseDim = npoints(end:-1:i);
+    if isempty(baseDim)
+        baseDim = 1;
     end
-end
-
-for i = 1:nloops
-    instchan_i = instchan_data{i};
     for j = 1:ngetchan(i)
-        ind = sum(ngetchan(1:i-1))+ j;
-        dd = smdata.inst(instchan_i(j, 1)).datadim(instchan_i(j, 2), :);
-        
-        if all(dd <= 1)
-            ndim(ind) = 0;
-        else
-            ndim(ind) = find(dd > 1, 1, 'last');
-        end
-        
-        datadim(ind, 1:ndim(ind)) = dd(1:ndim(ind));
-        dim = [npoints(end:-1:i), datadim(ind, 1:ndim(ind))];
+        ind = sum(ngetchan(1:i-1)) + j;
+        dim = baseDim;
         if length(dim) == 1
             dim(2) = 1;
         end
@@ -198,7 +217,7 @@ for i = 1:nloops
 end
    
 % Determine subplot layout based on number of displays
-switch length(disp)
+switch length(scan_disp)
     case 1,         sbpl = [1 1];         
     case 2,         sbpl = [1 2];
     case {3, 4},    sbpl = [2 2];
@@ -209,7 +228,7 @@ switch length(disp)
     case {17, 18, 19, 20}, sbpl = [4 5];
     case {21, 22, 23, 24, 25}, sbpl = [5 5];
     case {26, 27, 28, 29, 30}, sbpl = [5 6];
-    otherwise,      sbpl = [6 6]; disp(36:end) = [];
+    otherwise,      sbpl = [6 6]; scan_disp(36:end) = [];
 end
 
 % Determine figure number - always use 1000 and overwrite previous scans
@@ -222,106 +241,169 @@ else
     figurenumber = 1000;
 end
 
-if ~ishandle(figurenumber)
-    figureHandle = figure(figurenumber);
-    figureHandle.WindowState = 'maximized';
+if ishandle(figurenumber)
+    figHandle = figure(figurenumber);
+    clf(figHandle);
+else
+    figHandle = figure(figurenumber);
+    figHandle.WindowState = 'maximized';
     % Ensure figure is fully initialized before proceeding
     drawnow;
-else
-    figure(figurenumber);
-    clf;
 end
 
-set(figurenumber, 'CurrentCharacter', char(0));
+set(figHandle, 'CurrentCharacter', char(0));
 
 % Set CloseRequestFcn for graceful exit
-set(figurenumber, 'CloseRequestFcn', @(src,evt) gracefulClose());
+set(figHandle, 'CloseRequestFcn', @(src,evt) gracefulClose());
 
 
 % Set default display loops
-if ~isfield(disp, 'loop')
-    for i = 1:length(disp)
-        disp(i).loop = dataloop(disp(i).channel)-1;
+if ~isfield(scan_disp, 'loop')
+    for i = 1:length(scan_disp)
+        scan_disp(i).loop = dataloop(scan_disp(i).channel)-1;
     end
 end
 
 s.type = '()';
 s2.type = '()';
-for i = 1:length(disp)    
+display_x_loops = zeros(1, length(scan_disp));
+for i = 1:length(scan_disp)    
     subplot(sbpl(1), sbpl(2), i);
-    dc = disp(i).channel;
+    dc = scan_disp(i).channel;
 
-    s.subs = num2cell(ones(1, nloops - dataloop(dc) + 1 + ndim(dc)));
-    [s.subs{end-disp(i).dim+1:end}] = deal(':');
+    baseLen = nloops - dataloop(dc) + 1 + ndim(dc);
+    s.subs = num2cell(ones(1, baseLen));
+    if scan_disp(i).dim > numel(s.subs)
+        s.subs(end+1:scan_disp(i).dim) = {1};
+    end
+    idx_start = numel(s.subs) - scan_disp(i).dim + 1;
+    idx_start = max(1, idx_start);
+    [s.subs{idx_start:end}] = deal(':');
     
-    if dataloop(dc) - ndim(dc) < 1 
-        x = 1:datadim(dc, ndim(dc));
-        xlab = 'n';
-    else
-        % For x-axis: Loop 1 corresponds to columns (second dimension)
-        % Since data is stored as [npoints(end:-1:i), ...], loop 1 is the last loop
-        loop_idx_x = 1;  % Loop 1 for x-axis
-        if isfield(scandef(loop_idx_x),'setchanranges') && ~isempty(scandef(loop_idx_x).setchanranges)
-            % Generate x values using the first channel's range from setchanranges
-            first_channel_range = scandef(loop_idx_x).setchanranges{1};
-            total_points = npoints(loop_idx_x);
-            if total_points > 1
-                x = linspace(first_channel_range(1), first_channel_range(2), total_points);
-            else
-                x = first_channel_range(1);
-            end
-        else
-            % For scans without setchanranges, use simple index-based x-axis
-            x = 1:npoints(loop_idx_x);
-        end
-        
-        if ~isempty(scandef(loop_idx_x).setchan)
-            xlab = smdata.channels(scandef(loop_idx_x).setchan(1)).name;
-        else
-            xlab = '';
+    dataSize = size(data{dc});
+    if isempty(dataSize)
+        dataSize = 1;
+    end
+    dimCount = numel(dataSize);
+    loopsDesc = nloops:-1:dataloop(dc);
+    loopForDim = zeros(1, dimCount);
+    mapLimit = min(numel(loopsDesc), dimCount);
+    if mapLimit > 0
+        loopForDim(1:mapLimit) = loopsDesc(1:mapLimit);
+    end
+    dimForLoop = zeros(1, nloops);
+    for dimIdx = 1:dimCount
+        loopNumber = loopForDim(dimIdx);
+        if loopNumber > 0
+            dimForLoop(loopNumber) = dimIdx;
         end
     end
 
-    if disp(i).dim == 2        
-        if dataloop(dc) - ndim(dc) < 0
-            y = 1:datadim(dc, ndim(dc)-1);
-            ylab = 'n';
-        else
-            % For y-axis: Loop 2 corresponds to rows (first dimension)
-            % Since data is stored as [npoints(end:-1:i), ...], loop 2 is nloops-1
-            loop_idx_y = 2;  % Loop 2 for y-axis
-            if loop_idx_y <= nloops && isfield(scandef(loop_idx_y),'setchanranges') && ~isempty(scandef(loop_idx_y).setchanranges)
-                % Generate y values using the first channel's range from setchanranges
-                first_channel_range = scandef(loop_idx_y).setchanranges{1};
-                total_points = npoints(loop_idx_y);
-                if total_points > 1
-                    y = linspace(first_channel_range(1), first_channel_range(2), total_points);
-                else
-                    y = first_channel_range(1);
-                end
-            else
-                % For scans without setchanranges, use simple index-based y-axis
-                if loop_idx_y <= nloops
-                    y = 1:npoints(loop_idx_y);
-                else
-                    y = 1:datadim(dc, ndim(dc)-1);
-                end
+    channel_loop_idx = dataloop(dc);
+    if channel_loop_idx < 1 || channel_loop_idx > nloops
+        error("smrun_new:LoopMappingError", ...
+            "Display %d maps channel %d to invalid loop index %d.", ...
+            i, dc, channel_loop_idx);
+    end
+    if dimForLoop(channel_loop_idx) == 0
+        error("smrun_new:LoopMappingError", ...
+            "Display %d cannot resolve loop %d for channel %d axes.", ...
+            i, channel_loop_idx, dc);
+    end
+
+    display_x_loops(i) = channel_loop_idx;
+    xDim = dimForLoop(channel_loop_idx);
+
+    xlab = '';
+    if xDim > 0
+        axisLength = dataSize(xDim);
+        [loopAxis, loopLabel] = buildLoopAxis(channel_loop_idx);
+        loopAxis = double(loopAxis(:)');
+        if isempty(loopAxis)
+            if axisLength > 0
+                loopAxis = 1:axisLength;
             end
-            
-            if loop_idx_y <= nloops && ~isempty(scandef(loop_idx_y).setchan)
-                ylab = smdata.channels(scandef(loop_idx_y).setchan(1)).name;
+        elseif axisLength > 0 && numel(loopAxis) ~= axisLength
+            if axisLength == 1
+                loopAxis = loopAxis(1);
             else
-                ylab = '';
+                loopAxis = linspace(loopAxis(1), loopAxis(end), axisLength);
             end
         end
+        x = loopAxis;
+        xlab = loopLabel;
+    else
+        axisLength = dataSize(max(1, dimCount));
+        if axisLength <= 0
+            axisLength = 1;
+        end
+        x = 1:axisLength;
+        xlab = 'n';
+    end
+
+    if scan_disp(i).dim == 2    
+        if channel_loop_idx > nloops - 1
+            error("smrun_new:InvalidLoopConfiguration", ...
+                "Display %d uses channel %d from loop %d but requires at least two varying loops (n = %d).", ...
+                i, dc, channel_loop_idx, nloops);
+        end
+
+        loopsForChannel = zeros(1, dimCount);
+        for loopCandidate = 1:nloops
+            dimIdxCandidate = dimForLoop(loopCandidate);
+            if dimIdxCandidate > 0
+                loopsForChannel(dimIdxCandidate) = loopCandidate;
+            end
+        end
+        loopsForChannel = loopsForChannel(loopsForChannel ~= 0);
+
+        if numel(loopsForChannel) < 2
+            error("smrun_new:InsufficientLoopDimensions", ...
+                "Display %d requires at least two loop dimensions for channel %d.", ...
+                i, dc);
+        end
+
+        y_loop_idx = [];
+        for candidateLoop = loopsForChannel
+            if candidateLoop ~= channel_loop_idx
+                y_loop_idx = candidateLoop;
+                break;
+            end
+        end
+        if isempty(y_loop_idx)
+            error("smrun_new:LoopMappingError", ...
+                "Display %d could not determine a y-axis loop distinct from loop %d.", ...
+                i, channel_loop_idx);
+        end
+
+        yDim = dimForLoop(y_loop_idx);
+        yAxisLength = dataSize(yDim);
+        [yAxis, yLabel] = buildLoopAxis(y_loop_idx);
+        yAxis = double(yAxis(:)');
+        if isempty(yAxis)
+            if yAxisLength > 0
+                yAxis = 1:yAxisLength;
+            end
+        elseif yAxisLength > 0 && numel(yAxis) ~= yAxisLength
+            if yAxisLength == 1
+                yAxis = yAxis(1);
+            else
+                yAxis = linspace(yAxis(1), yAxis(end), yAxisLength);
+            end
+        end
+
+        y = yAxis;
+        ylab = yLabel;
         z = NaN(length(y),length(x));
         z(:, :) = subsref(data{dc}, s);
         % Data is stored as [loop2, loop1, ...] which is correct for imagesc
         % where loop2=y-axis (rows) and loop1=x-axis (columns)
         % No transpose needed - data is already in the correct format
         disph(i) = imagesc(x, y, z);
-        
-        set(gca, 'ydir', 'normal');
+
+        xLimits = computeAxisLimits(x);
+        yLimits = computeAxisLimits(y);
+        set(gca, 'XLim', xLimits, 'YLim', yLimits, 'ydir', 'normal');
         colorbar;
         if dc <= length(getch)
             title(strrep(smdata.channels(getch(dc)).name, '_', '\_'));
@@ -329,13 +411,16 @@ for i = 1:length(disp)
         xlabel(strrep(xlab, '_', '\_'));
         ylabel(strrep(ylab, '_', '\_'));
     else
-        y = zeros(size(x));
-        y(:) = subsref(data{dc}, s);
-        disph(i) = plot(x, y);
-        xlim(sort(x([1, end])));
+        disph(i) = plot(nan, nan);
+        xLimits = computeAxisLimits(x);
+        set(gca, 'XLim', xLimits, 'XLimMode', 'manual');
         xlabel(strrep(xlab, '_', '\_'));
         if dc <= length(getch)
-            ylabel(strrep(smdata.channels(getch(dc)).name, '_', '\_'));
+            plotLabel = strrep(smdata.channels(getch(dc)).name, '_', '\_');
+            ylabel(plotLabel);
+            title(plotLabel);
+        else
+            title('');
         end
     end
 end  
@@ -356,9 +441,17 @@ totpoints_cached = totpoints;
 channel_offsets = cumsum([0, ngetchan(1:end-1)]);
 
 % Pre-compute display update variables for speed
-disp_loops = [disp.loop];
-disp_channels = [disp.channel];
-disp_dims = [disp.dim];
+disp_loops = [scan_disp.loop];
+disp_channels = [scan_disp.channel];
+disp_dims = [scan_disp.dim];
+
+loop_to_display = cell(1, nloops);
+for k = 1:numel(scan_disp)
+    loop_id = disp_loops(k);
+    if loop_id >= 1 && loop_id <= nloops
+        loop_to_display{loop_id}(end+1) = k;
+    end
+end
 
 % Pre-allocate axis arrays for all loops to avoid repeated calculations
 x_axes = cell(1, nloops);
@@ -367,35 +460,17 @@ x_labels = cell(1, nloops);
 y_labels = cell(1, nloops);
 
 for loop_idx = 1:nloops
-    % Pre-compute x-axis for this loop
-    if isfield(scandef(loop_idx),'setchanranges') && ~isempty(scandef(loop_idx).setchanranges)
-        first_channel_range = scandef(loop_idx).setchanranges{1};
-        total_points = npoints(loop_idx);
-        if total_points > 1
-            x_axes{loop_idx} = linspace(first_channel_range(1), first_channel_range(2), total_points);
-            y_axes{loop_idx} = linspace(first_channel_range(1), first_channel_range(2), total_points);
-        else
-            x_axes{loop_idx} = first_channel_range(1);
-            y_axes{loop_idx} = first_channel_range(1);
-        end
-    else
-        x_axes{loop_idx} = 1:npoints(loop_idx);
-        y_axes{loop_idx} = 1:npoints(loop_idx);
-    end
-    
-    % Pre-compute labels
-    if ~isempty(scandef(loop_idx).setchan)
-        x_labels{loop_idx} = smdata.channels(scandef(loop_idx).setchan(1)).name;
-        y_labels{loop_idx} = smdata.channels(scandef(loop_idx).setchan(1)).name;
-    else
-        x_labels{loop_idx} = '';
-        y_labels{loop_idx} = '';
-    end
+    [axisVals, axisLabel] = buildLoopAxis(loop_idx);
+    axisVals = double(axisVals(:)');
+    x_axes{loop_idx} = axisVals;
+    y_axes{loop_idx} = axisVals;
+    x_labels{loop_idx} = axisLabel;
+    y_labels{loop_idx} = axisLabel;
 end
 
 % Cache subplot information to avoid repeated subplot() calls
 subplot_cache = containers.Map('KeyType', 'int32', 'ValueType', 'any');
-for k = 1:length(disp)
+for k = 1:length(scan_disp)
     subplot_cache(k) = struct('row', sbpl(1), 'col', sbpl(2), 'idx', k);
 end
 
@@ -453,14 +528,12 @@ temp_file_counter = 0;
 figure_check_counter = 0;
 figure_check_interval = 10;  % Check figure every 10 points
 
-save_operations_completed = false;
-
 % Find dummy loops
 isdummy = false(1, nloops);
 for i = 1:nloops
     isdummy(i) = isfield(scandef(i), 'waittime') && ~isempty(scandef(i).waittime) && scandef(i).waittime < 0 ...
         && isempty(scandef(i).getchan) ...
-        && ~any(scan.saveloop(1) == i) && ~any([disp.loop] == i);
+        && ~any(scan.saveloop(1) == i) && ~any([scan_disp.loop] == i);
 end
 
 % main loop - optimized version
@@ -554,74 +627,109 @@ for point_idx = 1:totpoints_cached
         
         % Update display every point for immediate responsiveness
         % Update displays with cached values for speed
-        for k = 1:length(disp)
-            if disp_loops(k) == j
-                dc = disp_channels(k);
+        loopDisplayIndices = [];
+        if j <= numel(loop_to_display) && ~isempty(loop_to_display{j})
+            loopDisplayIndices = loop_to_display{j};
+        end
+
+        for dispIdx = loopDisplayIndices
+            k = dispIdx;
+            dc = disp_channels(k);
+
+            if ~ishandle(disph(k)) || ~ishandle(figHandle)
+                continue;
+            end
                 
-                % For display updates, we want to show only data collected so far
-                % Create subscript for extracting current data state
+            % For display updates, we want to show only data collected so far
+            % Create subscript for extracting current data state
+            if disp_dims(k) == 2
+                % For 2D displays, extract the full data array
+                % The data will have NaN values where measurements haven't been taken yet
+                % This matches what the initial display does
+                s2.subs = repmat({':'}, 1, ndims(data{dc}));
+                
+            else
+                % For 1D displays, extract based on current loop position
+                nind = ndim(dc) + nloops + 1 - dataloop(dc) - disp_dims(k);
+                s2.subs = [num2cell([count(end:-1:max(j, end-nind+1)), ones(1, max(0, nind+j-1-nloops))]),...
+                    repmat({':'},1, disp_dims(k))];
+            end
+            
+            try
                 if disp_dims(k) == 2
-                    % For 2D displays, extract the full data array
-                    % The data will have NaN values where measurements haven't been taken yet
-                    % This matches what the initial display does
-                    s2.subs = repmat({':'}, 1, ndims(data{dc}));
-                    
-                else
-                    % For 1D displays, extract based on current loop position
-                    nind = ndim(dc) + nloops + 1 - dataloop(dc) - disp_dims(k);
-                    s2.subs = [num2cell([count(end:-1:max(j, end-nind+1)), ones(1, max(0, nind+j-1-nloops))]),...
-                        repmat({':'},1, disp_dims(k))];
-                end
-                
-                try
-                    if disp_dims(k) == 2
-                            % For 2D plots, handle 3D scan data properly
-                            z_data = subsref(data{dc}, s2);
-                            
-                            % Check if this is a 3D scan (more than 2 loops) and we're updating the outermost loop
-                            if nloops > 2 && j == nloops
-                                % Reset the plot for 3D scans when outermost loop changes
-                                z_data(:) = NaN;  % Clear the plot
-                            end
-                            
-                            % Ensure z_data is 2D for imagesc
-                            if ndims(z_data) > 2
-                                % For nD scans (n>2), extract 2D slice showing loop 1 vs loop 2
-                                % Data is stored as [n_outer, ..., n3, n2, n1]
-                                % We want to fix the outermost loop and show [n2, n1]
-                                slice_indices = repmat({':'}, 1, ndims(z_data));
-                                slice_indices{1} = count(end);  % Fix outermost loop at current value
-                                
-                                % For 4D+: also fix any intermediate loops at their current values
-                                for dim_idx = 2:(ndims(z_data)-2)
-                                    loop_idx = nloops - dim_idx + 1;  % Map dimension to loop index
-                                    if loop_idx >= 3  % Only fix loops 3 and higher
-                                        slice_indices{dim_idx} = count(loop_idx);
-                                    end
-                                end
-                                
-                                z_data = z_data(slice_indices{:});
-                                z_data = squeeze(z_data); % Remove all singleton dimensions
-                            end
-                            
-                            % Data is stored as [loop2, loop1, ...] which is correct for imagesc
-                            % where loop2=y-axis (rows) and loop1=x-axis (columns)
-                            % No transpose needed - data is already in the correct format
-                            
-                            % Simple efficient update - let errors surface if there's a size mismatch
-                            set(disph(k), 'cdata', z_data);
-                        else                
-                            y_data = subsref(data{dc}, s2);
-                            % For 3D scans, reset line plots when outermost loop changes
-                            if nloops > 2 && j == nloops
-                                y_data(:) = NaN;  % Clear the plot
-                            end
-                            set(disph(k), 'ydata', y_data);
+                    % Only update 2D plots after a full line (inner loop) completes
+                    innerLoopIdx = 1;
+                    if innerLoopIdx <= numel(count) && innerLoopIdx <= numel(npoints)
+                        if count(innerLoopIdx) ~= npoints(innerLoopIdx)
+                            continue;
                         end
-                    catch ME
-                        saveData();  % Ensure data is saved before exiting
-                        rethrow(ME);
                     end
+
+                    % For 2D plots, handle 3D scan data properly
+                    z_data = subsref(data{dc}, s2);
+
+                    % Check if this is a 3D scan (more than 2 loops) and we're updating the outermost loop
+                    if nloops > 2 && j == nloops
+                        % Reset the plot for 3D scans when outermost loop changes
+                        z_data(:) = NaN;  % Clear the plot
+                    end
+
+                    % Ensure z_data is 2D for imagesc
+                    if ndims(z_data) > 2
+                        % For nD scans (n>2), extract 2D slice showing loop 1 vs loop 2
+                        % Data is stored as [n_outer, ..., n3, n2, n1]
+                        % We want to fix the outermost loop and show [n2, n1]
+                        slice_indices = repmat({':'}, 1, ndims(z_data));
+                        slice_indices{1} = count(end);  % Fix outermost loop at current value
+
+                        % For 4D+: also fix any intermediate loops at their current values
+                        for dim_idx = 2:(ndims(z_data)-2)
+                            loop_idx = nloops - dim_idx + 1;  % Map dimension to loop index
+                            if loop_idx >= 3  % Only fix loops 3 and higher
+                                slice_indices{dim_idx} = count(loop_idx);
+                            end
+                        end
+
+                        z_data = z_data(slice_indices{:});
+                        z_data = squeeze(z_data); % Remove all singleton dimensions
+                    end
+
+                    % Data is stored as [loop2, loop1, ...] which is correct for imagesc
+                    % where loop2=y-axis (rows) and loop1=x-axis (columns)
+                    % No transpose needed - data is already in the correct format
+
+                    % Simple efficient update - let errors surface if there's a size mismatch
+                    set(disph(k), 'cdata', z_data);
+                else                
+                    y_data = subsref(data{dc}, s2);
+                    % For 3D scans, reset line plots when outermost loop changes
+                    if nloops > 2 && j == nloops
+                        y_data(:) = NaN;  % Clear the plot
+                    end
+
+                    y_vec = y_data(:)';
+                    x_vec = [];
+                    loopCandidate = display_x_loops(k);
+                    if loopCandidate >= 1 && loopCandidate <= numel(x_axes)
+                        candidate_x = x_axes{loopCandidate};
+                        if ~isempty(candidate_x)
+                            candidate_x = candidate_x(:)';
+                            if numel(candidate_x) == numel(y_vec)
+                                x_vec = candidate_x;
+                            elseif numel(candidate_x) >= 2 && numel(y_vec) > 1
+                                x_vec = linspace(candidate_x(1), candidate_x(end), numel(y_vec));
+                            end
+                        end
+                    end
+                    if isempty(x_vec)
+                        x_vec = 1:numel(y_vec);
+                    end
+
+                    set(disph(k), 'XData', x_vec, 'YData', y_vec);
+                end
+            catch ME
+                saveData();  % Ensure data is saved before exiting
+                rethrow(ME);
             end
         end
         
@@ -639,14 +747,16 @@ for point_idx = 1:totpoints_cached
                 else
                     tempfile = sprintf('%s%s%s-temp%d%s~', p, filesep, f, temp_file_counter, e);
                 end
-                save(tempfile, 'data', 'scan');
-            catch
+                saveScanDataToFile(tempfile);
+            catch tempSaveError
+                fprintf("smrun_new: Failed to save temporary data to %s (%s).\n", char(tempfile), tempSaveError.message);
                 % Fallback save
                 try
                     [~,f,e] = fileparts(filename);
-                    save([f '_fallback' e], 'data', 'scan');
-                catch
-                    % Silent failure for speed
+                    fallbackFile = sprintf('%s_fallback%s', f, e);
+                    saveScanDataToFile(fallbackFile);
+                catch fallbackSaveError
+                    fprintf("smrun_new: Fallback save failed for %s (%s).\n", char(fallbackFile), fallbackSaveError.message);
                 end
             end
         end
@@ -666,22 +776,18 @@ for point_idx = 1:totpoints_cached
     end
     
     % Optimized exit/pause checks - only check periodically to reduce overhead
-    figure_check_counter = figure_check_counter + 1;
-    if figure_check_counter >= figure_check_interval
-        figure_check_counter = 0;
-        if ishandle(figurenumber)
-            current_char = get(figurenumber, 'CurrentCharacter');
-            if current_char == char(27)  % Escape key
-                set(figurenumber, 'CurrentCharacter', char(0));
-                saveData();
-                return;
-            end
-        end
-        
-        % Check if scan should exit (e.g., figure was closed)
-        if scan_should_exit
+    if ishandle(figHandle)
+        current_char = get(figHandle, 'CurrentCharacter');
+        if current_char == char(27)  % Escape key
+            set(figHandle, 'CurrentCharacter', char(0));
+            saveData();
             return;
         end
+    end
+    
+    % Check if scan should exit (e.g., figure was closed)
+    if scan_should_exit
+        return;
     end
   
 end
@@ -695,33 +801,60 @@ function saveData()
     if save_operations_completed
         return;
     end
-        
-        % Save figure if it still exists
-        % if ishandle(figurenumber)
-        %     try
-        %         if exist('filename', 'var') && ~isempty(filename)
-        %             figstring = filename(1:length(filename)-4);
-        %             % Suppress figure file size warning
-        %             warning('off', 'MATLAB:Figure:FigureSavedToMATFileFormat');
-        %             warning('off', 'MATLAB:savefig:LargeFigure');
-        %             saveas(figurenumber, figstring, 'fig');
-        %             warning('on', 'MATLAB:Figure:FigureSavedToMATFileFormat');
-        %             warning('on', 'MATLAB:savefig:LargeFigure');
-        %             print(figurenumber, '-bestfit', figstring, '-dpdf');
-        %         end
-        %     catch ME
-        %         % Figure save failed - continue silently
-        %     end
-        % end
-        
-        % Save PowerPoint if enabled
-        if exist('smaux', 'var') && isstruct(smaux) && isfield(smaux, 'smgui') && isfield(smaux.smgui, 'appendppt_cbh') && get(smaux.smgui.appendppt_cbh,'Value')
-            try
+
+    prevWarningState = warning;
+    warningCleanup = onCleanup(@() warning(prevWarningState)); %#ok<NASGU>
+    [figpath, figname] = fileparts(filename);
+    if isempty(figname)
+        figstring = filename;
+    elseif isempty(figpath)
+        figstring = figname;
+    else
+        figstring = fullfile(figpath, figname);
+    end
+    warning('off', 'all');
+    set(figHandle, 'CloseRequestFcn', 'closereq');
+
+    try
+        saveScanDataToFile(filename);
+        [p,f,e] = fileparts(filename);
+        try
+            if isempty(p)
+                temp_pattern = sprintf('%s-temp*%s~', f, e);
+                temp_files = dir(temp_pattern);
+                for tf = 1:length(temp_files)
+                    delete(temp_files(tf).name);
+                end
+            else
+                temp_pattern = sprintf('%s%s%s-temp*%s~', p, filesep, f, e);
+                temp_files = dir(temp_pattern);
+                for tf = 1:length(temp_files)
+                    delete(fullfile(p, temp_files(tf).name));
+                end
+            end
+        catch tempCleanupError
+            fprintf("smrun_new: Failed to remove temp files matching %s (%s).\n", char(temp_pattern), tempCleanupError.message);
+        end
+    catch finalSaveError
+        fprintf("smrun_new: Failed to save final data (%s).\n", finalSaveError.message);
+    end
+
+    % Save PowerPoint if enabled
+    try
+        [pptEnabled, pptFile] = smpptGetState();
+        if pptEnabled
+            if isempty(pptFile)
+                fprintf("smrun_new: PowerPoint append skipped (no file specified).\n");
+            else
                 % Create text structure for smsaveppt (it expects .title and .body fields)
                 text_data = struct();
                 [~, name_only, ext] = fileparts(filename);
                 text_data.title = [name_only ext]; % Use just filename without path
-                text_data.consts = smscan.consts;
+                if isfield(scan, 'consts')
+                    text_data.consts = scan.consts;
+                else
+                    text_data.consts = [];
+                end
 
                 % Safely handle comments for body text
                 if isfield(scan, 'comments') && ~isempty(scan.comments)
@@ -735,60 +868,152 @@ function saveData()
                 else
                     text_data.body = '';
                 end
-                
-                % Validate PowerPoint file path and call smsaveppt correctly
-                if isfield(smaux, 'pptsavefile') && ~isempty(smaux.pptsavefile) && ischar(smaux.pptsavefile)
-                    smsaveppt(smaux.pptsavefile, text_data, '-f1000');
-                end
-                
-            catch pptError
-                % PowerPoint save failed - continue silently
-            end
-        end
-        
-        % Save data file
-        if exist('filename', 'var') && ~isempty(filename)
-            try
-                save(filename, 'data', 'scan')
-                
-                % Remove temporary files created for this scan only
-                [p,f,e] = fileparts(filename);
-                try
-                    % Create the same pattern used for temp file creation
-                    if isempty(p)
-                        temp_pattern = sprintf('%s-temp*%s~', f, e);
-                        temp_files = dir(temp_pattern);
-                        for tf = 1:length(temp_files)
-                            delete(temp_files(tf).name);
-                        end
-                    else
-                        % Use consistent path separators with creation
-                        temp_pattern = sprintf('%s%s%s-temp*%s~', p, filesep, f, e);
-                        temp_files = dir(temp_pattern);
-                        for tf = 1:length(temp_files)
-                            delete(fullfile(p, temp_files(tf).name));
-                        end
-                    end
-                catch tempError
-                    % Silent failure - don't interrupt scanning
-                end
-            catch ME
-                % Silent failure - don't interrupt scanning
-            end
-        end
 
-        save_operations_completed = true;
+                smsaveppt(pptFile, text_data, '-f1000');
+            end
+        end
+    catch pptError
+        fprintf("smrun_new: Skipping PowerPoint append (%s).\n", pptError.message);
+    end
+
+    try
+        pdfFile = sprintf('%s.pdf', figstring);
+        exportgraphics(figHandle, pdfFile, 'ContentType', 'vector');
+    catch pdfError
+        fprintf("smrun_new: Failed to export PDF (%s).\n", pdfError.message);
+    end
+
+    try
+        savefig(figHandle, figstring);
+    catch figureSaveError
+        fprintf("smrun_new: Failed to save figure (%s).\n", figureSaveError.message);
+        rethrow(figureSaveError);
+    end
+
+    save_operations_completed = true;
 
 end
 
 % Nested function for graceful window close
 function gracefulClose()
-    if ishandle(figurenumber)
-        % In case interrupted during or before save, ensure data is saved
-        saveData();
-        delete(figurenumber); % Close the figure
+    try
+        if ~ishandle(figHandle)
+            return;
+        end
+        selection = questdlg("Stop the scan and close this figure?", "Closing", "Stop", "Cancel", "Cancel");
+        if selection ~= "Stop"
+            return;
+        end
+        if ishandle(figHandle)
+            saveData();
+        end
+        scan_should_exit = true;
+    catch closeError
+        fprintf("smrun_new: gracefulClose encountered an error (%s). Once you are sure data is saved, try delete(gcf) to force close.\n", closeError.message);
     end
-    scan_should_exit = true;
+    if ishandle(figHandle)
+        delete(figHandle);
+    end
 end
+
+
+function saveScanDataToFile(targetFilename)
+    savePayload = struct();
+    savePayload.data = data;
+    savePayload.scan = prepareScanForSave();
+    save(targetFilename, '-struct', 'savePayload');
+end
+
+
+function scanStruct = prepareScanForSave()
+    scanStruct = scan_for_save_template;
+end
+
+
+function scanStruct = buildScanForSaveTemplate()
+    scanStruct = scan;
+    if isfield(scanStruct, 'ppt')
+        scanStruct = rmfield(scanStruct, 'ppt');
+    end
+    scanStruct.loops = scandef;
+    for loopIdx = 1:nloops
+        if isfield(scanStruct.loops(loopIdx), 'getchan')
+            scalarNames = getchan_scalar_names{loopIdx};
+            if isempty(scalarNames)
+                scanStruct.loops(loopIdx).getchan = {};
+            else
+                scanStruct.loops(loopIdx).getchan = cellstr(scalarNames(:)).';
+            end
+        end
+        if isfield(scanStruct.loops(loopIdx), 'setchan')
+            scalarNames = setchan_scalar_names{loopIdx};
+            if isempty(scalarNames)
+                scanStruct.loops(loopIdx).setchan = {};
+            else
+                scanStruct.loops(loopIdx).setchan = cellstr(scalarNames(:)).';
+            end
+        end
+    end
+end
+
+
+function [axisValues, axisLabel] = buildLoopAxis(loopIdx)
+    axisValues = [];
+    axisLabel = '';
+    if ~(loopIdx >= 1 && loopIdx <= nloops)
+        return;
+    end
+
+    totalPoints = npoints(loopIdx);
+    loopDef = scandef(loopIdx);
+
+    if totalPoints > 0
+        if isfield(loopDef, 'setchanranges') && ~isempty(loopDef.setchanranges)
+            firstRange = loopDef.setchanranges{1};
+            if numel(firstRange) >= 2 && totalPoints > 1
+                axisValues = linspace(firstRange(1), firstRange(2), totalPoints);
+            elseif ~isempty(firstRange)
+                singleValue = firstRange(1);
+                axisValues = repmat(singleValue, 1, totalPoints);
+            end
+        end
+
+        if isempty(axisValues)
+            axisValues = 1:totalPoints;
+        end
+    else
+        axisValues = [];
+    end
+
+    axisValues = double(axisValues(:)');
+
+    if isfield(loopDef, 'setchan') && ~isempty(loopDef.setchan)
+        chanIdx = loopDef.setchan(1);
+        if chanIdx >= 1 && chanIdx <= numel(smdata.channels)
+            axisLabel = smdata.channels(chanIdx).name;
+        end
+    end
+end
+
+
+function limits = computeAxisLimits(axisValues)
+    axisValues = double(axisValues(:));
+    if isempty(axisValues)
+        limits = [0 1];
+    else
+        minVal = min(axisValues);
+        maxVal = max(axisValues);
+        if minVal == maxVal
+            delta = max(abs(minVal) * 0.05, 1);
+            if delta == 0
+                delta = 1;
+            end
+            limits = [minVal - delta, maxVal + delta];
+        else
+            limits = [minVal, maxVal];
+        end
+    end
+end
+
 
 end

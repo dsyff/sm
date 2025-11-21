@@ -1,48 +1,22 @@
-%%
-global instrumentRackGlobal smscan smaux smdata bridge tareData;
-%% Clean up existing instruments to release serial ports
-if exist("handle_strainController", "var") && ~isempty(handle_strainController)
-    handle_strainController.stop();
-end
+global instrumentRackGlobal smscan smaux smdata bridge tareData; %#ok<NUSED>
+%#ok<*GVMIS,*UNRCH>
 
-if exist("instrumentRackGlobal", "var") && ~isempty(instrumentRackGlobal)
-    % Delete each instrument individually to properly release resources
-    if isfield(instrumentRackGlobal, "instrumentTable") && ~isempty(instrumentRackGlobal.instrumentTable)
-        instruments = instrumentRackGlobal.instrumentTable.instruments;
-        for i = 1:length(instruments)
-            try
-                delete(instruments(i));
-            catch ME
-                warning("Failed to delete instrument %d: %s", i, ME.message);
-            end
-        end
-    end
-    % Now delete the rack itself
-    delete(instrumentRackGlobal);
-    clear instrumentRackGlobal;
-end
-delete(visadevfind);
-delete(serialportfind);
-clear;
-%clear all;
-close all;
-global instrumentRackGlobal smscan smaux smdata bridge tareData;
+%% initialize
 path(pathdef);
-username=getenv("USERNAME");
-
-% Check for sm-main first, then sm-dev, then report error
+username = getenv("USERNAME");
 sm_main_path = sprintf("C:\\Users\\%s\\Desktop\\sm-main", username);
 sm_dev_path = sprintf("C:\\Users\\%s\\Desktop\\sm-dev", username);
 
-if exist(sm_main_path, "dir")
-    addpath(genpath(sm_main_path));
-    fprintf("Added sm-main to path: %s\n", sm_main_path);
-elseif exist(sm_dev_path, "dir")
+if exist(sm_dev_path, "dir")
     addpath(genpath(sm_dev_path));
     fprintf("Added sm-dev to path: %s\n", sm_dev_path);
+elseif exist(sm_main_path, "dir")
+    addpath(genpath(sm_main_path));
+    fprintf("Added sm-main to path: %s\n", sm_main_path);
 else
-    error("Neither sm-main nor sm-dev folders found in %s\\Desktop\\", sprintf("C:\\Users\\%s", username));
+    error("demo:MissingCodePath", "Neither sm-dev nor sm-main directories were found on the Desktop.");
 end
+sminit; % shared setup script keeps demo logic concise
 
 %% instrument addresses
 SR860_1_GPIB = 7; %sd
@@ -63,20 +37,35 @@ E4980AL_GPIB = 6; %E4980AL LCR meter for strain controller
 
 Montana2_IP = "136.167.55.165";
 Opticool_IP = "127.0.0.1";
+Attodry2100_Address = "192.168.1.1";
+
+K10CR1_Serial = ""; % Leave blank to use the first detected device
 
 %% GPIB Adaptor Indices - change these to match your setup
 % use visadevlist() to find out gpib addresses
-adaptorIndex = 2;        % Standard instruments
-adaptorIndex_strain = 0; % Strain controller instruments
+adaptorIndex = 0;        % Standard instruments
+adaptorIndex_strain = 2; % Strain controller instruments
 
 %% instrument usage flags
 counter_Use = 1;
 clock_Use = 1;
 test_Use = 0; %extra counters for testing
+virtual_del_V_Use = 0;
+virtual_hysteresis_Use = 0;
+virtual_nonlinear_T_Use = 0;
+virtual_nE_Use = 0;
+virtual_nE_vTgChannelName = "V_tg";
+virtual_nE_vBgChannelName = "V_bg";
+virtual_nE_vTgLimits = [-6, 6];
+virtual_nE_vBgLimits = [-60, 60];
+virtual_nE_cnp_tg_1 = 0;
+virtual_nE_cnp_bg_1 = -20;
+virtual_nE_cnp_tg_2 = 2;
+virtual_nE_cnp_bg_2 = -10;
 
 SR860_1_Use = 0;
-SR830_1_Use = 1;
-SR830_2_Use = 1;
+SR830_1_Use = 0;
+SR830_2_Use = 0;
 SR830_3_Use = 0;
 SR830_4_Use = 0;
 
@@ -84,37 +73,19 @@ K2450_A_Use = 0;
 K2450_B_Use = 0;
 K2450_C_Use = 0;
 
-K2400_A_Use = 1;
-K2400_B_Use = 1;
+K2400_A_Use = 0;
+K2400_B_Use = 0;
 K2400_C_Use = 0;
 
 Montana2_Use = 0;
-Opticool_Use = 1; %Opticool
+Opticool_Use = 0;
 
-strainController_Use = 1;
+strainController_Use = 0;
+strain_cryostat = "Opticool"; %Opticool, Montana2
 
-%% Handle strain controller dependencies
-if strainController_Use
-    % Strain controller manages K2450 A&B and cryostat internally
-    % Force these to be disabled to avoid conflicts
-    if K2450_A_Use || K2450_B_Use
-        fprintf("Warning: K2450 A&B disabled - managed internally by strain controller.\n");
-        K2450_A_Use = 0;
-        K2450_B_Use = 0;
-    end
-    if Montana2_Use
-        fprintf("Warning: Montana2 disabled - managed internally by strain controller.\n");
-        Montana2_Use = 0;
-    end
-end
-%% create new parallel pool
-if strainController_Use
-    currentPool = (gcp('nocreate'));
-    if isempty(currentPool) || currentPool.Busy
-        delete(currentPool);
-        parpool("Processes");
-    end
-end
+K10CR1_Use = 0;
+Andor_Use = 0;
+Attodry2100_Use = 0;
 
 %% INSTRUMENT SETUP GUIDE
 % This section explains the standard pattern for adding instruments and channels
@@ -200,12 +171,32 @@ end
 %% Create instrumentRack
 rack = instrumentRack(false); % TF to skip safety dialog for setup script
 
-
 %% Create strain controller first (if enabled) - manages K2450s A&B and cryostat internally
 if strainController_Use
-    cryostat_string = "Opticool"; %Opticool, Montana2
-    
+    if K2450_A_Use || K2450_B_Use
+        fprintf("Warning: K2450 A&B disabled - managed internally by strain controller.\n");
+        K2450_A_Use = 0;
+        K2450_B_Use = 0;
+    end
+    if Montana2_Use
+        fprintf("Warning: Montana2 disabled - managed internally by strain controller.\n");
+        Montana2_Use = 0;
+    end
+
+    currentPool = (gcp('nocreate'));
+    if isempty(currentPool) || currentPool.Busy
+        delete(currentPool);
+        parpool("Processes");
+    end
+
     %handle_strainController.plotLastSession();
+    if strain_cryostat == "Opticool"
+        strainCellNumber_default = 1;
+    elseif strain_cryostat == "Montana2"
+        strainCellNumber_default = 2;
+    else
+        error("demo:InvalidStrainCryostat", "strain_cryostat must be either 'Opticool' or 'Montana2'");
+    end
 
     handle_strainController = instrument_strainController("strainController_1", ...
         address_E4980AL = gpibAddress(E4980AL_GPIB, adaptorIndex_strain), ...
@@ -213,8 +204,8 @@ if strainController_Use
         address_K2450_B = gpibAddress(K2450_B_GPIB, adaptorIndex_strain), ...
         address_Montana2 = Montana2_IP, ...
         address_Opticool = Opticool_IP, ...
-        cryostat = cryostat_string, ...
-        strainCellNumber = 1);
+        cryostat = strain_cryostat, ...
+        strainCellNumber = strainCellNumber_default);
     
     if exist("tareData", "var") && isempty(tareData)
         tareData = handle_strainController.tare();
@@ -224,7 +215,7 @@ if strainController_Use
     end
 
     rack.addInstrument(handle_strainController, "strain");
-    rack.addChannel("strain", "del_d", "del_d");
+    rack.addChannel("strain", "del_d", "del_d", [], [], -5E-5, 5E-5);
     rack.addChannel("strain", "T", "T");
     rack.addChannel("strain", "Cp", "Cp");
     rack.addChannel("strain", "Q", "Q");
@@ -235,16 +226,10 @@ if strainController_Use
     rack.addChannel("strain", "I_str_o", "I_str_o");
     rack.addChannel("strain", "I_str_i", "I_str_i");
     rack.addChannel("strain", "activeControl", "activeControl");
-
-    % Parameters passed via constructor to legacy watchdog. Tare step skipped here; run your
-    % preferred tare workflow via the legacy UI/commands if needed.
-    
-    % Set initial voltages to zero
-    % smset("strain.V_str_o", 0);
-    % smset("strain.V_str_i", 0);
     
     fprintf("Strain controller rack starts.\n");
-    disp(handle_strainController.getRack());
+    strainControllerRackSummary = handle_strainController.getRack();
+    disp(strainControllerRackSummary);
     fprintf("Strain controller rack ends.\n");
     fprintf("Strain controller initialized and tared.\n");
     
@@ -286,7 +271,7 @@ if K2450_A_Use
     
     % Add to rack and configure channels
     rack.addInstrument(handle_K2450_A, "K2450_A");
-    rack.addChannel("K2450_A", "V_source", "V_tg0", 1, 0.5); % 1V/s ramp rate, 10mV threshold
+    rack.addChannel("K2450_A", "V_source", "V_tg0", 1, 0.5, -10, 10); % 1V/s ramp rate, 10mV threshold
     rack.addChannel("K2450_A", "I_measure", "I_tg0");
     rack.addChannel("K2450_A", "VI", "VI_tg0");
 end
@@ -313,7 +298,7 @@ if K2450_B_Use
     
     % Add to rack and configure channels
     rack.addInstrument(handle_K2450_B, "K2450_B");
-    rack.addChannel("K2450_B", "V_source", "V_tg1", 1, 0.5); % 1V/s ramp rate, 10mV threshold
+    rack.addChannel("K2450_B", "V_source", "V_tg1", 1, 0.5, -10, 10); % 1V/s ramp rate, 10mV threshold
     rack.addChannel("K2450_B", "I_measure", "I_tg1");
     rack.addChannel("K2450_B", "VI", "VI_tg1");
 end
@@ -340,7 +325,7 @@ if K2450_C_Use
     
     % Add to rack and configure channels
     rack.addInstrument(handle_K2450_C, "K2450_C");
-    rack.addChannel("K2450_C", "V_source", "V_tg", 1, 0.5); % 1V/s ramp rate, 10mV threshold
+    rack.addChannel("K2450_C", "V_source", "V_tg", 1, 0.5, -10, 10); % 1V/s ramp rate, 10mV threshold
     rack.addChannel("K2450_C", "I_measure", "I_tg");
     rack.addChannel("K2450_C", "VI", "VI_tg");
 end
@@ -366,8 +351,8 @@ if K2400_A_Use
     
     % Add to rack and configure channels
     rack.addInstrument(handle_K2400_A, "K2400_A");
-    rack.addChannel("K2400_A", "V_source", "V_sd", 1, 1); % 1V/s ramp rate, 1V threshold
-    rack.addChannel("K2400_A", "I_measure", "I_sd");
+    rack.addChannel("K2400_A", "V_source", "V_tg", 1, 1, -10, 10); % 1V/s ramp rate, 1V threshold
+    rack.addChannel("K2400_A", "I_measure", "I_tg");
     rack.addChannel("K2400_A", "VI", "VI_sd");
 end
 
@@ -392,9 +377,31 @@ if K2400_B_Use
     
     % Add to rack and configure channels
     rack.addInstrument(handle_K2400_B, "K2400_B");
-    rack.addChannel("K2400_B", "V_source", "V_tg", 1, 1); % 1V/s ramp rate, 1V threshold
-    rack.addChannel("K2400_B", "I_measure", "I_tg");
+    rack.addChannel("K2400_B", "V_source", "V_bg", 1, 1, -10, 10); % 1V/s ramp rate, 1V threshold
+    rack.addChannel("K2400_B", "I_measure", "I_bg");
     rack.addChannel("K2400_B", "VI", "VI_tg");
+end
+
+if K10CR1_Use
+    handle_K10CR1 = instrument_K10CR1(K10CR1_Serial);
+    rack.addInstrument(handle_K10CR1, "K10CR1");
+    rack.addChannel("K10CR1", "position_deg", "K10CR1_position_deg");
+end
+
+if Andor_Use
+    handle_AndorSpectrometer = instrument_AndorSpectrometer("AndorSpectrometer");
+    % check handle_AndorSpectrometer for properties
+    rack.batchGetTimeout = minutes(10);
+    rack.addInstrument(handle_AndorSpectrometer, "AndorSpectrometer");
+    rack.addChannel("AndorSpectrometer", "temperature_C", "CCD_T_C"); % cooler temperature in C
+    rack.addChannel("AndorSpectrometer", "exposure_time", "exposure"); % in seconds
+    rack.addChannel("AndorSpectrometer", "accumulations", "accumulations"); % number of accumulations per acquisition
+    rack.addChannel("AndorSpectrometer", "center_wavelength_nm", "center_wavelength_nm"); % center wavelength in nm
+    rack.addChannel("AndorSpectrometer", "grating", "grating"); % spectrograph grating index
+    rack.addChannel("AndorSpectrometer", "pixel_index", "pixel_index"); % pixel index for readout
+    rack.addChannel("AndorSpectrometer", "wavelength_nm", "wavelength_nm"); % wavelength corresponding to current pixel
+    rack.addChannel("AndorSpectrometer", "counts", "CCD_counts");
+    handle_AndorSpectrometer.currentGratingInfo();
 end
 
 if K2400_C_Use
@@ -598,17 +605,53 @@ if Opticool_Use
     rack.addChannel("Opticool", "B", "B");
 end
 
-%% wrap up setup
-%flush all instrument buffers to remove instrument introduction messages
-rack.flush();
-fprintf("Main rack starts.\n");
-disp(rack)
-fprintf("Main rack ends.\n");
-bridge = smguiBridge(rack);
-bridge.initializeSmdata();
-% Make rack available globally for the new smset/smget functions
-instrumentRackGlobal = rack;
+if Attodry2100_Use
+    handle_attodry2100 = instrument_attodry2100(Attodry2100_Address);
+    rack.addInstrument(handle_attodry2100, "Attodry2100");
+    rack.addChannel("Attodry2100", "T", "T");
+    rack.addChannel("Attodry2100", "B", "B");
+end
 
-%% start GUI
-smgui_small_new();
-sm;
+if virtual_del_V_Use
+    % Sets V_set according to V_set = V_get + del_V on the master instrument rack provided at construction time.
+    handle_virtual_del_V = virtualInstrument_del_V("virtual_delta", rack, ...
+        vGetChannelName = "V_WSe2", vSetChannelName = "V_tg");
+    rack.addInstrument(handle_virtual_del_V, "virtual_delta");
+    rack.addChannel("virtual_delta", "del_V", "del_V", [], [], -10, 10); % No ramp rate, no threshold, limits -10V to +10V
+end
+
+if virtual_hysteresis_Use
+    handle_virtual_hysteresis = virtualInstrument_hysteresis("virtual_hysteresis1", rack, ...
+        setChannelName = "V_tg", ...
+        min = -5, ...
+        max = 5);
+    rack.addInstrument(handle_virtual_hysteresis, "virtual_hysteresis1");
+    rack.addChannel("virtual_hysteresis1", "hysteresis", "hys_V_tg", [], [], 0, 1);
+end
+
+if virtual_nonlinear_T_Use
+    handle_virtual_nonlinear_T = virtualInstrument_nonlinear_T("virtual_nonlinear_T", rack, ...
+        tSetChannelName = virtual_nonlinear_T_TargetChannel, ...
+        tMin = 4, ...
+        tMax = 200);
+    rack.addInstrument(handle_virtual_nonlinear_T, "virtual_nonlinear_T");
+    rack.addChannel("virtual_nonlinear_T", "nonlinear_T", "T_normalized", [], [], 0, 1);
+end
+
+if virtual_nE_Use
+    handle_virtual_nE = virtualInstrument_nE("virtual_nE", rack, ...
+        vTgChannelName = virtual_nE_vTgChannelName, ...
+        vBgChannelName = virtual_nE_vBgChannelName, ...
+        vTgLimits = virtual_nE_vTgLimits, ...
+        vBgLimits = virtual_nE_vBgLimits, ...
+        cnpTg1 = virtual_nE_cnp_tg_1, ...
+        cnpBg1 = virtual_nE_cnp_bg_1, ...
+        cnpTg2 = virtual_nE_cnp_tg_2, ...
+        cnpBg2 = virtual_nE_cnp_bg_2);
+    rack.addInstrument(handle_virtual_nE, "virtual_nE");
+    rack.addChannel("virtual_nE", "n", "n_normalized", [], [], 0, 1);
+    rack.addChannel("virtual_nE", "E", "E_normalized", [], [], 0, 1);
+end
+
+%% wrap up setup
+smready(rack);

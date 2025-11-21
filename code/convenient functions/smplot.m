@@ -1,309 +1,535 @@
-function smplot(filename, varargin)
-% SMPLOT - Recreate plots from saved smrun_new data files
-% 
-% Usage:
-%   smplot(filename)              - Plot with default settings
-%   smplot(filename, 'figure', N) - Use specific figure number
-%   smplot(filename, 'disp', D)   - Override display configuration
-%
-% Inputs:
-%   filename - Path to .mat file saved by smrun_new
-%   varargin - Optional parameter/value pairs:
-%     'figure' - Figure number to use (default: 2000)
-%     'disp'   - Display configuration structure to override scan.disp
-%
-% Example:
-%   smplot('021_scan_fast.mat')
-%   smplot('data.mat', 'figure', 100)
+function smplot(folderOrSource, fileNum, nThMatch, varargin)
+% SMPLOT Replicates the final smrun_new figure from saved scan data.
 
-global smdata;
-
-% Parse input arguments
-p = inputParser;
-addRequired(p, 'filename', @ischar);
-addParameter(p, 'figure', 2000, @isnumeric);
-addParameter(p, 'disp', [], @isstruct);
-parse(p, filename, varargin{:});
-
-figurenumber = p.Results.figure;
-override_disp = p.Results.disp;
-
-% Load the data file
-if ~exist(filename, 'file')
-    error('File %s does not exist', filename);
+if nargin == 0
+    error('smplot requires at least a folder or save payload.');
 end
 
-try
-    loaded_data = load(filename);
-catch ME
-    error('Failed to load file %s: %s', filename, ME.message);
-end
-
-% Extract required variables
-if ~isfield(loaded_data, 'scan')
-    error('File does not contain scan structure');
-end
-if ~isfield(loaded_data, 'data')
-    error('File does not contain data');
-end
-
-scan = loaded_data.scan;
-data = loaded_data.data;
-
-% Use override display if provided, otherwise use scan.disp
-if ~isempty(override_disp)
-    disp = override_disp;
-elseif isfield(scan, 'disp') && ~isempty(scan.disp)
-    disp = scan.disp;
+legacyInvocation = (nargin == 1) && (ischar(folderOrSource) || isstring(folderOrSource) || isstruct(folderOrSource));
+if legacyInvocation
+    opts = parseOptions(varargin{:});
+    [scan, data, sourceLabel] = loadSaveData(folderOrSource);
 else
-    % Create default display for all channels
-    disp = struct('loop', {}, 'channel', {}, 'dim', {});
-    num_channels = length(data);
-    for i = 1:num_channels
-        disp(i).channel = i;
-        disp(i).dim = 1;  % Default to 1D plots
-        disp(i).loop = 1; % Default to first loop
+    if nargin < 2
+        error('smplot requires folder and fileNum when using the new interface.');
     end
+
+    additionalArgs = varargin;
+    if nargin < 3 || isempty(nThMatch)
+        nThMatch = 1;
+    elseif ischar(nThMatch) || isstring(nThMatch) || isstruct(nThMatch)
+        additionalArgs = [{nThMatch}, additionalArgs];
+        nThMatch = 1;
+    end
+
+    validateattributes(fileNum, {'numeric'}, {'scalar', 'real', 'finite', 'nonnegative'}, mfilename, 'fileNum');
+    validateattributes(nThMatch, {'numeric'}, {'scalar', 'real', 'finite', 'positive'}, mfilename, 'nThMatch');
+
+    opts = parseOptions(additionalArgs{:});
+    resolvedFile = locateSaveFile(folderOrSource, fileNum, nThMatch);
+    [scan, data, sourceLabel] = loadSaveData(resolvedFile);
 end
 
-% Validate that we have smdata for channel information
-if isempty(smdata) || ~isfield(smdata, 'channels')
-    warning('smdata not available - channel names will be generic');
-    channel_names_available = false;
-else
-    channel_names_available = true;
+if ~isstruct(scan) || ~isfield(scan, 'loops')
+    error('Scan structure is missing loop definitions.');
 end
 
-% Extract scan parameters
 scandef = scan.loops;
-nloops = length(scandef);
+nloops = numel(scandef);
+if nloops == 0
+    error('Scan definition contains no loops.');
+end
 
-% Initialize arrays similar to smrun_new
-npoints = [scandef.npoints];
-ngetchan = zeros(1, nloops);
-datadim = zeros(length(data), 5);
-ndim = zeros(1, length(data));
-dataloop = zeros(1, length(data));
-
-% Build getch for channel information (if available)
-if channel_names_available
-    all_getchans = {scandef.getchan};
-    nonempty_mask = ~cellfun(@isempty, all_getchans);
-    if any(nonempty_mask)
-        getch = vertcat(all_getchans{nonempty_mask});
+npoints = zeros(1, nloops);
+for loopIdx = 1:nloops
+    if isfield(scandef(loopIdx), 'npoints') && ~isempty(scandef(loopIdx).npoints)
+        npoints(loopIdx) = double(scandef(loopIdx).npoints);
     else
-        getch = [];
+        error('Loop %d is missing npoints.', loopIdx);
     end
+end
+
+[channelNames, dataloop] = extractChannelMetadata(scandef);
+numChannels = numel(channelNames);
+if numel(data) ~= numChannels
+    error('Channel count in data does not match scan definition.');
+end
+
+dispStruct = resolveDisplay(opts.dispOverride, scan, dataloop);
+
+[axisValues, axisLabels] = buildAxes(scandef, npoints);
+
+figNum = chooseFigureNumber(opts.figureOverride, scan);
+figHandle = figure(figNum); %#ok<LFIG>
+clf(figHandle);
+try
+    figHandle.WindowState = 'maximized';
+catch
+end
+
+[sourcePath, sourceName, sourceExt] = fileparts(sourceLabel);
+if isempty(sourceName)
+    titleRoot = char(sourceLabel);
 else
-    getch = [];
+    titleRoot = char(fullfile(sourcePath, [sourceName sourceExt]));
 end
 
-% Calculate channel counts per loop
-for i = 1:nloops
-    if isfield(scandef(i), 'getchan')
-        ngetchan(i) = length(scandef(i).getchan);
-    else
-        ngetchan(i) = 0;
-    end
-end
+subplotShape = determineLayout(numel(dispStruct));
+sgtitle(figHandle, sprintf('Data from: %s', titleRoot), 'Interpreter', 'none');
 
-% Determine data dimensions and loop associations
-for i = 1:length(data)
-    if ~isempty(data{i})
-        data_size = size(data{i});
-        
-        % Find which loop this data belongs to
-        cumulative_channels = cumsum(ngetchan);
-        dataloop(i) = find(i <= cumulative_channels, 1);
-        
-        % Determine data dimensions
-        if length(data_size) <= 2 && all(data_size <= max(npoints))
-            ndim(i) = 0;  % Scalar data
-        else
-            % Find last dimension > 1 that's not a scan dimension
-            scan_dims = length(npoints) - dataloop(i) + 1;
-            if length(data_size) > scan_dims
-                remaining_dims = data_size(scan_dims+1:end);
-                ndim(i) = find(remaining_dims > 1, 1, 'last');
-                if isempty(ndim(i))
-                    ndim(i) = 0;
-                else
-                    datadim(i, 1:ndim(i)) = remaining_dims(1:ndim(i));
-                end
-            else
-                ndim(i) = 0;
-            end
-        end
-    end
-end
+axisLabelFontSize = 14;
+axisTickFontSize = 12;
 
-% Set default display loops if not specified
-if ~isfield(disp, 'loop')
-    for i = 1:length(disp)
-        if disp(i).channel <= length(dataloop)
-            disp(i).loop = max(1, dataloop(disp(i).channel) - 1);
-        else
-            disp(i).loop = 1;
-        end
-    end
-end
-
-% Determine subplot layout
-switch length(disp)
-    case 1,         sbpl = [1 1];         
-    case 2,         sbpl = [1 2];
-    case {3, 4},    sbpl = [2 2];
-    case {5, 6},    sbpl = [2 3];
-    case {7, 8, 9}, sbpl = [3 3];
-    case {10, 11, 12}, sbpl = [3 4];
-    case {13, 14, 15, 16}, sbpl = [4 4];
-    case {17, 18, 19, 20}, sbpl = [4 5];
-    case {21, 22, 23, 24, 25}, sbpl = [5 5];
-    case {26, 27, 28, 29, 30}, sbpl = [5 6];
-    otherwise,      sbpl = [6 6]; disp(36:end) = [];
-end
-
-% Create or clear figure
-if ~ishandle(figurenumber)
-    figureHandle = figure(figurenumber);
-    figureHandle.WindowState = 'maximized';
-else
-    figure(figurenumber);
-    clf;
-end
-
-% Add title with filename
-[~, fname, ext] = fileparts(filename);
-sgtitle(sprintf('Data from: %s%s', fname, ext), 'Interpreter', 'none');
-
-% Create plots
-s.type = '()';
-for i = 1:length(disp)
-    if disp(i).channel > length(data)
-        warning('Display channel %d exceeds available data channels (%d)', ...
-            disp(i).channel, length(data));
+for dispIdx = 1:numel(dispStruct)
+    subplot(subplotShape(1), subplotShape(2), dispIdx, 'Parent', figHandle);
+    entry = dispStruct(dispIdx);
+    currentAxes = gca;
+    set(currentAxes, 'FontSize', axisTickFontSize);
+    chanIdx = entry.channel;
+    if chanIdx < 1 || chanIdx > numChannels
+        title(sprintf('Display %d (invalid channel)', dispIdx));
         continue;
     end
-    
-    subplot(sbpl(1), sbpl(2), i);
-    dc = disp(i).channel;
-    
-    if isempty(data{dc})
-        title(sprintf('Channel %d (No Data)', dc));
+
+    raw = data{chanIdx};
+    if isempty(raw)
+        title(sprintf('Channel %d (no data)', chanIdx));
         continue;
     end
-    
-    % Build subsref structure for data extraction
-    s.subs = num2cell(ones(1, nloops - dataloop(dc) + 1 + ndim(dc)));
-    [s.subs{end-disp(i).dim+1:end}] = deal(':');
-    
-    % Determine x-axis
-    if dataloop(dc) - ndim(dc) < 1 
-        if ndim(dc) > 0
-            x = 1:datadim(dc, ndim(dc));
+
+    channelLoop = dataloop(chanIdx);
+    dimSetting = entry.dim;
+
+    if dimSetting == 2
+        [isSurface, zData, loopX, loopY] = extractSurface(raw, channelLoop);
+        if isSurface
+            xAxis = buildAxis(loopX, size(zData, 2), axisValues);
+            yAxis = buildAxis(loopY, size(zData, 1), axisValues);
+            imagesc(xAxis, yAxis, zData);
+            set(gca, 'YDir', 'normal');
+            cb = colorbar;
+            set(cb, 'FontSize', axisTickFontSize);
+            set(gca, 'XLim', computeAxisLimits(xAxis), 'YLim', computeAxisLimits(yAxis));
+            applyAxisLabel(gca, 'x', formatLabel(loopX, axisLabels));
+            applyAxisLabel(gca, 'y', formatLabel(loopY, axisLabels));
         else
-            x = 1:size(data{dc}, end);
+            [lineData, loopUsed] = extractLine(raw, channelLoop, entry.loop);
+            xAxis = buildAxis(loopUsed, numel(lineData), axisValues);
+            plot(xAxis, lineData);
+            set(gca, 'XLim', computeAxisLimits(xAxis));
+            applyAxisLabel(gca, 'x', formatLabel(loopUsed, axisLabels));
+            applyAxisLabel(gca, 'y', channelTitle(chanIdx, channelNames));
         end
-        xlab = 'n';
     else
-        loop_idx = dataloop(dc) - ndim(dc);
-        if loop_idx <= length(scandef) && isfield(scandef(loop_idx), 'rng')
-            x = scandef(loop_idx).rng;
-        else
-            x = 1:npoints(loop_idx);
-        end
-        
-        % Get x-axis label
-        if channel_names_available && loop_idx <= length(scandef) && ...
-           isfield(scandef(loop_idx), 'setchan') && ~isempty(scandef(loop_idx).setchan)
-            try
-                xlab = smdata.channels(scandef(loop_idx).setchan(1)).name;
-            catch
-                xlab = sprintf('Loop %d', loop_idx);
-            end
-        else
-            xlab = sprintf('Loop %d', loop_idx);
-        end
+        [lineData, loopUsed] = extractLine(raw, channelLoop, entry.loop);
+        xAxis = buildAxis(loopUsed, numel(lineData), axisValues);
+        plot(xAxis, lineData);
+        set(gca, 'XLim', computeAxisLimits(xAxis));
+        applyAxisLabel(gca, 'x', formatLabel(loopUsed, axisLabels));
+        applyAxisLabel(gca, 'y', channelTitle(chanIdx, channelNames));
     end
 
-    % Create plot based on dimension
-    if disp(i).dim == 2        
-        % 2D plot (imagesc)
-        if dataloop(dc) - ndim(dc) < 0
-            if ndim(dc) > 1
-                y = 1:datadim(dc, ndim(dc)-1);
-            else
-                y = 1:size(data{dc}, end-1);
-            end
-            ylab = 'n';
-        else
-            loop_idx = dataloop(dc) - ndim(dc) + 1;
-            if loop_idx <= length(scandef) && isfield(scandef(loop_idx), 'rng')
-                y = scandef(loop_idx).rng;
-            else
-                y = 1:npoints(loop_idx);
-            end
-            
-            % Get y-axis label
-            if channel_names_available && loop_idx <= length(scandef) && ...
-               isfield(scandef(loop_idx), 'setchan') && ~isempty(scandef(loop_idx).setchan)
-                try
-                    ylab = smdata.channels(scandef(loop_idx).setchan(1)).name;
-                catch
-                    ylab = sprintf('Loop %d', loop_idx);
-                end
-            else
-                ylab = sprintf('Loop %d', loop_idx);
-            end
-        end
-        
-        try
-            z = subsref(data{dc}, s);
-            imagesc(x, y, z);
-            set(gca, 'ydir', 'normal');
-            colorbar;
-            xlabel(strrep(xlab, '_', '\_'));
-            ylabel(strrep(ylab, '_', '\_'));
-        catch ME
-            plot(1, 1, 'r*');
-            title(sprintf('Channel %d (Plot Error)', dc));
-            warning('Error plotting 2D data for channel %d: %s', dc, ME.message);
-        end
-    else
-        % 1D plot
-        try
-            y = subsref(data{dc}, s);
-            plot(x, y);
-            xlim(sort(x([1, end])));
-            xlabel(strrep(xlab, '_', '\_'));
-        catch ME
-            plot(1, 1, 'r*');
-            warning('Error plotting 1D data for channel %d: %s', dc, ME.message);
-        end
-    end
-    
-    % Set title (channel name if available)
-    if channel_names_available && dc <= length(getch) && getch(dc) <= length(smdata.channels)
-        try
-            title(strrep(smdata.channels(getch(dc)).name, '_', '\_'));
-        catch
-            title(sprintf('Channel %d', dc));
-        end
-    else
-        title(sprintf('Channel %d', dc));
-    end
+    set(gca, 'FontSize', axisTickFontSize);
+    title(channelTitle(chanIdx, channelNames));
 end
 
-% Display scan information if available
 if isfield(scan, 'comments') && ~isempty(scan.comments)
     if iscell(scan.comments)
-        comment_str = strjoin(scan.comments, '; ');
+        commentText = strjoin(scan.comments, '; ');
     else
-        comment_str = char(scan.comments);
+        commentText = char(scan.comments);
     end
-    fprintf('Scan comments: %s\n', comment_str);
+    fprintf('Scan comments: %s\n', commentText);
 end
 
-fprintf('Plot created from: %s\n', filename);
+fprintf('Plot created from: %s\n', char(sourceLabel));
 
+    function optsOut = parseOptions(varargin)
+        optsOut.figureOverride = [];
+        optsOut.dispOverride = [];
+        idx = 1;
+        while idx <= numel(varargin)
+            key = lower(string(varargin{idx}));
+            if idx == numel(varargin)
+                error('Missing value for parameter %s.', key);
+            end
+            value = varargin{idx + 1};
+            switch char(key)
+                case 'figure'
+                    if ~(isnumeric(value) && isscalar(value))
+                        error('Figure parameter must be a numeric scalar.');
+                    end
+                    optsOut.figureOverride = double(value);
+                case 'disp'
+                    if ~isstruct(value)
+                        error('Disp override must be a struct array.');
+                    end
+                    optsOut.dispOverride = value;
+                otherwise
+                    error('Unknown parameter %s.', key);
+            end
+            idx = idx + 2;
+        end
+    end
+
+    function [scanOut, dataOut, labelOut] = loadSaveData(source)
+        if isstruct(source)
+            payload = source;
+            labelOut = 'struct input';
+        else
+            if isstring(source)
+                source = char(source);
+            end
+            if ~(ischar(source) || isstring(source))
+                error('Filename must be a character vector or string.');
+            end
+            if ~exist(source, 'file')
+                error('File %s does not exist.', source);
+            end
+            try
+                payload = load(source);
+            catch ME
+                error('Failed to load %s (%s).', source, ME.message);
+            end
+            labelOut = char(source);
+        end
+        if ~isfield(payload, 'scan') || ~isfield(payload, 'data')
+            error('Save data must contain scan and data fields.');
+        end
+        scanOut = payload.scan;
+        dataOut = payload.data;
+    end
+
+    function filenameOut = locateSaveFile(folderInput, fileNumber, matchIndex)
+        folderStr = string(folderInput);
+        if strlength(folderStr) == 0
+            listing = dir('*.mat');
+            basePath = string('');
+        else
+            listing = dir(fullfile(folderStr, '*.mat'));
+            basePath = folderStr;
+        end
+
+        if isempty(listing)
+            error('No .mat files found in %s.', chooseDisplayPath(basePath));
+        end
+
+        names = {listing.name};
+        prefix = sprintf('%03u', round(fileNumber));
+        matches = find(startsWith(names, prefix));
+
+        if isempty(matches)
+            error('No matching data file found for %s in %s.', prefix, chooseDisplayPath(basePath));
+        end
+        if numel(matches) < matchIndex
+            error('Requested match %d exceeds available files (%d).', matchIndex, numel(matches));
+        end
+
+        targetEntry = listing(matches(matchIndex));
+        if strlength(basePath) == 0
+            filenameOut = targetEntry.name;
+        else
+            filenameOut = fullfile(basePath, targetEntry.name);
+        end
+        disp("loading " + filenameOut);
+    end
+
+    function displayPath = chooseDisplayPath(pathInput)
+        if strlength(pathInput) == 0
+            displayPath = '.';
+        else
+            displayPath = char(pathInput);
+        end
+    end
+
+    function [names, loops] = extractChannelMetadata(definition)
+        names = {};
+        loops = [];
+        for defIdx = 1:numel(definition)
+            loopChans = ensureCell(definition(defIdx).getchan);
+            names = [names, loopChans]; %#ok<AGROW>
+            loops = [loops, repmat(defIdx, 1, numel(loopChans))]; %#ok<AGROW>
+        end
+    end
+
+    function cellArray = ensureCell(value)
+        if isempty(value)
+            cellArray = {};
+        elseif iscell(value)
+            cellArray = value;
+        elseif isstring(value)
+            cellArray = cellstr(value(:).');
+        else
+            cellArray = {value};
+        end
+        for idx = 1:numel(cellArray)
+            if isstring(cellArray{idx})
+                cellArray{idx} = char(cellArray{idx});
+            end
+        end
+    end
+
+    function dispOut = resolveDisplay(overrideDisp, scanStruct, loopMap)
+        if ~isempty(overrideDisp)
+            dispOut = overrideDisp;
+        elseif isfield(scanStruct, 'disp') && ~isempty(scanStruct.disp)
+            dispOut = scanStruct.disp;
+        else
+            dispOut = struct('channel', {}, 'dim', {}, 'loop', {});
+            for idx = 1:numel(loopMap)
+                dispOut(idx).channel = idx;
+                dispOut(idx).dim = 1;
+                dispOut(idx).loop = max(1, loopMap(idx));
+            end
+        end
+        if ~isstruct(dispOut)
+            error('Display override must be a struct array.');
+        end
+        dispOut = dispOut(:).';
+        for idx = 1:numel(dispOut)
+            if ~isfield(dispOut(idx), 'channel') || isempty(dispOut(idx).channel)
+                dispOut(idx).channel = idx;
+            end
+            if ~isfield(dispOut(idx), 'dim') || isempty(dispOut(idx).dim)
+                dispOut(idx).dim = 1;
+            end
+            if ~isfield(dispOut(idx), 'loop') || isempty(dispOut(idx).loop)
+                chanIdx = dispOut(idx).channel;
+                if chanIdx >= 1 && chanIdx <= numel(loopMap)
+                    dispOut(idx).loop = max(1, loopMap(chanIdx));
+                else
+                    dispOut(idx).loop = 1;
+                end
+            end
+            dispOut(idx).dim = max(1, round(dispOut(idx).dim));
+        end
+    end
+
+    function [valuesOut, labelsOut] = buildAxes(definition, pointCounts)
+        valuesOut = cell(1, numel(definition));
+        labelsOut = cell(1, numel(definition));
+        for defIdx = 1:numel(definition)
+            loopDef = definition(defIdx);
+            valuesOut{defIdx} = calculateAxis(loopDef, pointCounts(defIdx));
+            labelsOut{defIdx} = axisLabel(loopDef, defIdx);
+        end
+    end
+
+    function vals = calculateAxis(loopDef, count)
+        vals = [];
+        if isfield(loopDef, 'setchanranges') && ~isempty(loopDef.setchanranges)
+            firstRange = loopDef.setchanranges{1};
+            if numel(firstRange) >= 2
+                vals = linspace(firstRange(1), firstRange(2), count);
+            elseif numel(firstRange) == 1
+                vals = repmat(firstRange(1), 1, count);
+            end
+        elseif isfield(loopDef, 'rng') && ~isempty(loopDef.rng)
+            vals = double(loopDef.rng(:).');
+        end
+        if isempty(vals)
+            vals = 1:count;
+        else
+            vals = double(vals(:).');
+            if numel(vals) ~= count
+                vals = linspace(vals(1), vals(end), count);
+            end
+        end
+    end
+
+    function lbl = axisLabel(loopDef, loopNumber)
+        lbl = '';
+        if isfield(loopDef, 'setchan') && ~isempty(loopDef.setchan)
+            chanNames = ensureCell(loopDef.setchan);
+            if ~isempty(chanNames)
+                lbl = char(chanNames{1});
+            end
+        end
+        if isempty(lbl)
+            lbl = sprintf('Loop %d', loopNumber);
+        end
+    end
+
+    function figValue = chooseFigureNumber(overrideValue, scanStruct)
+        if ~isempty(overrideValue)
+            figValue = overrideValue;
+            return;
+        end
+        if isfield(scanStruct, 'figure') && ~isempty(scanStruct.figure)
+            figValue = double(scanStruct.figure);
+            if isnan(figValue)
+                figValue = 2000;
+            end
+        else
+            figValue = 2000;
+        end
+    end
+
+    function layout = determineLayout(count)
+        switch count
+            case 0
+                layout = [1 1];
+            case 1
+                layout = [1 1];
+            case 2
+                layout = [1 2];
+            case {3,4}
+                layout = [2 2];
+            case {5,6}
+                layout = [2 3];
+            case {7,8,9}
+                layout = [3 3];
+            case {10,11,12}
+                layout = [3 4];
+            case {13,14,15,16}
+                layout = [4 4];
+            case {17,18,19,20}
+                layout = [4 5];
+            case {21,22,23,24,25}
+                layout = [5 5];
+            case {26,27,28,29,30}
+                layout = [5 6];
+            otherwise
+                layout = [6 6];
+        end
+    end
+
+    function [loopForDim, dimForLoop] = dimensionMaps(channelLoop, rawData)
+        sizeVector = size(rawData);
+        dimCount = numel(sizeVector);
+        loopForDim = zeros(1, dimCount);
+        loopsDesc = nloops:-1:channelLoop;
+        limit = min(numel(loopsDesc), dimCount);
+        loopForDim(1:limit) = loopsDesc(1:limit);
+        dimForLoop = zeros(1, nloops);
+        for dimIdx = 1:dimCount
+            loopNumber = loopForDim(dimIdx);
+            if loopNumber ~= 0
+                dimForLoop(loopNumber) = dimIdx;
+            end
+        end
+    end
+
+    function [lineValues, loopUsed] = extractLine(rawData, channelLoop, preferredLoop)
+        [~, dimForLoop] = dimensionMaps(channelLoop, rawData);
+        availableLoops = find(dimForLoop > 0);
+        if isempty(availableLoops)
+            lineValues = double(rawData(:).');
+            loopUsed = 0;
+            return;
+        end
+        loopCandidate = preferredLoop;
+        if ~(loopCandidate >= 1 && loopCandidate <= nloops && dimForLoop(loopCandidate) > 0)
+            loopCandidate = availableLoops(1);
+        end
+        dimIdx = dimForLoop(loopCandidate);
+        permOrder = [dimIdx, setdiff(1:ndims(rawData), dimIdx, 'stable')];
+        permuted = permute(rawData, permOrder);
+        idx = repmat({':'}, 1, ndims(permuted));
+        for d = 2:ndims(permuted)
+            idx{d} = size(permuted, d);
+        end
+        slice = squeeze(permuted(idx{:}));
+        lineValues = double(slice(:).');
+        loopUsed = loopCandidate;
+    end
+
+    function [isSurface, surfaceData, loopX, loopY] = extractSurface(rawData, channelLoop)
+        [~, dimForLoop] = dimensionMaps(channelLoop, rawData);
+        availableLoops = find(dimForLoop > 0);
+        if numel(availableLoops) < 2
+            isSurface = false;
+            surfaceData = [];
+            loopX = 0;
+            loopY = 0;
+            return;
+        end
+        loopX = availableLoops(1);
+        loopY = availableLoops(2);
+        dimX = dimForLoop(loopX);
+        dimY = dimForLoop(loopY);
+        permOrder = [dimY, dimX, setdiff(1:ndims(rawData), [dimY, dimX], 'stable')];
+        permuted = permute(rawData, permOrder);
+        idx = repmat({':'}, 1, ndims(permuted));
+        for d = 3:ndims(permuted)
+            idx{d} = size(permuted, d);
+        end
+        slice = squeeze(permuted(idx{:}));
+        surfaceData = double(slice);
+        isSurface = true;
+    end
+
+    function axisVals = buildAxis(loopIdx, expectedLength, allAxes)
+        if loopIdx >= 1 && loopIdx <= numel(allAxes) && ~isempty(allAxes{loopIdx})
+            axisVals = allAxes{loopIdx};
+        else
+            axisVals = [];
+        end
+        if isempty(axisVals)
+            axisVals = 1:expectedLength;
+        else
+            axisVals = double(axisVals(:).');
+            if numel(axisVals) ~= expectedLength && expectedLength > 1
+                axisVals = linspace(axisVals(1), axisVals(end), expectedLength);
+            elseif numel(axisVals) ~= expectedLength
+                axisVals = repmat(axisVals(1), 1, expectedLength);
+            end
+        end
+    end
+
+    function lbl = formatLabel(loopIdx, labelsCell)
+        if loopIdx >= 1 && loopIdx <= numel(labelsCell) && ~isempty(labelsCell{loopIdx})
+            lbl = strrep(labelsCell{loopIdx}, '_', '\_');
+        else
+            if loopIdx > 0
+                lbl = sprintf('Loop %d', loopIdx);
+            else
+                lbl = '';
+            end
+        end
+    end
+
+    function lbl = channelTitle(idx, namesCell)
+        if idx >= 1 && idx <= numel(namesCell) && ~isempty(namesCell{idx})
+            lbl = strrep(char(namesCell{idx}), '_', '\_');
+        else
+            lbl = sprintf('Channel %d', idx);
+        end
+    end
+
+    function limits = computeAxisLimits(axisValues)
+        axisValues = double(axisValues(:));
+        if isempty(axisValues)
+            limits = [0 1];
+        else
+            minVal = min(axisValues);
+            maxVal = max(axisValues);
+            if minVal == maxVal
+                delta = max(abs(minVal) * 0.05, 1);
+                if delta == 0
+                    delta = 1;
+                end
+                limits = [minVal - delta, maxVal + delta];
+            else
+                limits = [minVal, maxVal];
+            end
+        end
+    end
+
+    function applyAxisLabel(axHandle, axisIdentifier, labelText)
+        if nargin < 3 || isempty(labelText)
+            labelText = '';
+        end
+        switch axisIdentifier
+            case 'x'
+                labelHandle = xlabel(axHandle, labelText);
+            case 'y'
+                labelHandle = ylabel(axHandle, labelText);
+            otherwise
+                return;
+        end
+        if isgraphics(labelHandle)
+            set(labelHandle, 'FontSize', axisLabelFontSize);
+        end
+    end
 end

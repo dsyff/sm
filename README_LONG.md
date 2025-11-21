@@ -98,6 +98,13 @@ virtualField = instrument_VirtualField(topGateKeithley, bottomGateKeithley, toph
 virtualLogRamp = instrument_VirtualLogRamp(keithley2400, startV, endV);
 ```
 
+**Implementation notes:**
+
+- The abstract base lives at `code/sm2/virtualInstrumentInterface.m`; concrete virtual instruments belong in `code/instruments/` alongside physical drivers.
+- Virtual channels are excluded from the hardware batch scheduler. `rackGet` processes all physical channels first, then invokes each virtual channel's `virtualGetChannelRead`.
+- Override `virtualGetChannelRead` to expose readbacks; the base implementation raises a descriptive error so missing read logic is obvious.
+- Use `instrument_demo.m` as the formatting template—keep constructors concise, rely on default tolerances from `addChannel`, and only override `setCheckChannelHelper` when you need behaviour beyond the rack's default verification.
+
 ### 2. GETWRITE/GETREAD SEPARATION 🚀
 **The key performance optimization in SM1.5**
 
@@ -112,8 +119,7 @@ sm1.5:        [cmd1, cmd2, cmd3] → [read1, read2, read3]   (parallel)
 - **Implementation**: All new instruments must implement both methods
 
 **Intelligent Timing Optimization:**
-- **Response Time Measurement**: During `addChannel()`, system measures each channel's 
-  response delay (5 trials, median time) and stores in `getReadTimes`
+- **Response Time Measurement**: During `addChannel()`, the rack measures each physical channel's response delay (median of five trials). Virtual channels store `NaN` delays because they never participate in the physical batch ordering.
 - **Smart Ordering**: In `rackGet()`, channels sorted by response time (longest first)
 - **"First to Write, Last to Read"**: 
   - Longest delay channels get `getWrite` commands first
@@ -125,6 +131,11 @@ sm1.5:        [cmd1, cmd2, cmd3] → [read1, read2, read3]   (parallel)
   Order of getRead:  [K2400, SR830]  ← Read fast instrument first
   Total time: ~50ms instead of 60ms  ← 17% improvement
   ```
+
+#### ⚠️ Avoid Nested `rackGet` Calls
+- The rack holds a software lock while hardware channels are mid-flight and rejects any attempt to start a second batch during that window.
+- Virtual instruments run after the lock is released, so they may safely call back into the rack from inside `virtualGetChannelRead`. Physical drivers must still rely on the rack to drive `getWrite`/`getRead` pairs.
+- Direct calls to `instrument.getWriteChannel` / `getReadChannel` outside `instrumentRack` are blocked; use `getChannel` or let the rack orchestrate batch operations.
 
 ### 3. SETWRITE/SETCHECK SEPARATION ⚡
 **Batch optimization for setting instrument parameters**
@@ -161,6 +172,16 @@ scan.loops(2).rng = [-1, 1];
 scan.loops(2).npoints = 21;
 ```
 
+#### Real-time Plot Axes
+
+`smrun_new` fixes the axis choice without relying on any “display loop” concept:
+
+- Let `m` be the loop index that acquires the channel (`dataloop(channel)`) and `n` the total number of loops.
+- For **1D plots** the x-axis always corresponds to loop `m`; no other loop is considered.
+- For **2D plots** the channel must be collected no deeper than loop `n-1` so that a second varying loop exists. The y-axis is taken from the first remaining loop in the data tensor that differs from `m`. If no such loop is available, the code raises a descriptive `LoopMappingError`.
+
+The initial plot composition and the streaming refresh path both reuse these loop selections, keeping updates fast while surfacing misconfigurations immediately.
+
 ### 5. TOLERANCES AND VERIFICATION
 
 ```matlab
@@ -179,6 +200,7 @@ obj.addChannel("frequency", setTolerances = 0.01);   % 10mHz tolerance
 - **Batch-optimized communications** with proper getWrite/getRead separation
 - **Pre-computed variables** and cached validation for inner scan loops
 - **Optimized figure management** (reuses figure 1000, prevents accumulation)
+- **Andor CCD accumulate mode** defaults to two-frame averaging with status polling instead of blocking waits for improved robustness
 
 ### Reliability Enhancements:
 - **Unique temporary file numbering** prevents overwrites during concurrent scans
@@ -186,6 +208,8 @@ obj.addChannel("frequency", setTolerances = 0.01);   % 10mHz tolerance
 - **Robust PowerPoint integration** with ActiveX compatibility fixes
 - **Silent GUI operation** (removed console output for clean user experience)
 - **Data format compatibility** ensures existing analysis scripts work unchanged
+- **Andor CCD watchdog** replaces SDK `WaitForAcquisition` with exposure-aware polling to avoid indefinite hangs
+- **K10CR1 homing logs** print informative `fprintf` messages whenever the rotator homes
 
 ### Code Quality:
 - **Comprehensive error handling** with try-catch blocks and fallback mechanisms
@@ -206,6 +230,18 @@ obj.addChannel("frequency", setTolerances = 0.01);   % 10mHz tolerance
     - SR830 uses 1-based indexing (X=1, Y=2, R=3, Theta=4)
     - SR860 uses 0-based indexing (X=0, Y=1, R=2, Theta=3)
     - Optimized for single SCPI command efficiency with robust error handling
+- **K10CR1**: Thorlabs cage rotator (position control)
+  - Migrated from legacy NET-based driver with blocking move semantics
+  - Provides degree-based position channel with tolerance-aware set verification
+  - Automatically loads Kinesis assemblies and homes device on startup
+  - Emits informative homing messages for easier lab debugging
+- **AndorCCD**: Full-vertical-binning CCD spectrometer (SDK2)
+  - Default configuration now uses accumulate mode with configurable `accumulations` channel
+  - Exposure updates automatically invalidate cached spectra and respect status polling
+  - Cosmic ray filtering enabled by default with saturation checks scaled per accumulation
+  - Exposes temperature, exposure_time, accumulations, pixel_index, and counts channels aligned with demos
+  - `currentGratingInfo()` surfaces `ATSpectrographGetGratingInfo` details for the active grating at initialization time
+  - Setting `pixel_index` calls into `prepareCounts(newIndex)` which both refreshes the spectrum (if required) and caches wavelength/count pairs so consecutive `smget` calls reuse the same acquisition until the index or acquisition parameters change
 
 - **strainController**: Persistent strain control system (migrated from v1.3)
   - **Parallel processing**: Real-time PID control loop running on worker thread
@@ -479,5 +515,5 @@ end
 
 ---
 
-✨ **SM 1.5 Complete Documentation Guide** - Last Updated: 2025-07-19  
+✨ **SM 1.5 Complete Documentation Guide** - Last Updated: 2025-11-11  
    Prepared for optimal Copilot productivity and user experience
