@@ -619,6 +619,9 @@ function UpdateToGUI
             set(smaux.sm.smusers_lbh,'String',{smaux.users.name});
             set(smaux.sm.smusers_lbh,'Value',find(cell2mat({smaux.users.notifyon})));
         end
+        
+        % Force pending GUI updates to render before returning.
+        drawnow;
     catch ME
         % Create detailed error message
         errorMsg = sprintf('Error in UpdateToGUI:\n\n%s\n\nFile: %s\nLine: %d\n\nStack trace:\n', ...
