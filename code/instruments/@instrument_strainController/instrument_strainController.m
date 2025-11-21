@@ -5,7 +5,7 @@ classdef instrument_strainController < instrumentInterface
             "V_str_o", "V_str_i", "I_str_o", "I_str_i", "activeControl"];
         dogGetTimeout duration = seconds(15);
         dogCheckTimeout duration = seconds(60);
-        rack_strainController;
+        rack_strainController string = "";
     end
 
     properties (Access = protected)
@@ -82,25 +82,21 @@ classdef instrument_strainController < instrumentInterface
 
             obj.setTimeout = hours(3);
 
-            obj.rack_strainController = dogGet(obj.handle_strainWatchdog, "rack");
+            obj.rack_strainController = string(dogGet(obj.handle_strainWatchdog, "rack"));
         end
 
         function delete(obj)
             % Ask the watchdog to stop
-            try
-                if ~isempty(obj.handle_strainWatchdog)
-                    dogSend(obj.handle_strainWatchdog, "STOP");
-                    pause(5);
-                end
-            catch
-                % ignore cleanup errors
-            end
+            obj.stop();
         end
 
         function stop(obj)
             if ~isempty(obj.handle_strainWatchdog)
-                dogSend(obj.handle_strainWatchdog, "STOP");
-                pause(5);
+                try
+                    dogSend(obj.handle_strainWatchdog, "STOP");
+                    pause(5);
+                catch
+                end
                 obj.handle_strainWatchdog = [];
             end
         end
@@ -123,10 +119,10 @@ classdef instrument_strainController < instrumentInterface
             rack_strainController = obj.rack_strainController;
         end
 
-        function plotLastSession(~, options)
+        function plotLastSession(obj, options)
             % Plot the most recent watchdog session data saved by the worker.
             arguments
-                ~
+                obj instrument_strainController
                 options.dataFolder (1,1) string = "dogTimetable";
                 options.plotBranchNum (1,1) logical = true;
             end
@@ -181,7 +177,7 @@ classdef instrument_strainController < instrumentInterface
                     hold(ax2, "on");
                     plot(ax2, sessionTimetable.Time, sessionTimetable.V_str_o, "r", LineWidth = 1);
                     plot(ax2, sessionTimetable.Time, sessionTimetable.V_str_i, "b", LineWidth = 1);
-                    [V_str_o_min, V_str_o_max, V_str_i_min, V_str_i_max] = updateStrainVoltageBounds(sessionTimetable.T);
+                    [V_str_o_min, V_str_o_max, V_str_i_min, V_str_i_max] = obj.updateStrainVoltageBounds(sessionTimetable.T);
                     plot(ax2, sessionTimetable.Time, V_str_o_min, "--r", LineWidth = 1, HandleVisibility = "off");
                     plot(ax2, sessionTimetable.Time, V_str_o_max, "--r", LineWidth = 1, HandleVisibility = "off");
                     plot(ax2, sessionTimetable.Time, V_str_i_min, "--b", LineWidth = 1, HandleVisibility = "off");
@@ -212,7 +208,7 @@ classdef instrument_strainController < instrumentInterface
         end
 
 
-        function [min, max] = strainVoltageBounds(T)
+    function [min, max] = strainVoltageBounds(~, T)
 
             min = nan(size(T));
             max = nan(size(T));
@@ -235,10 +231,10 @@ classdef instrument_strainController < instrumentInterface
 
         end
 
-        function [V_str_o_min, V_str_o_max, V_str_i_min, V_str_i_max] = updateStrainVoltageBounds(T)
+        function [V_str_o_min, V_str_o_max, V_str_i_min, V_str_i_max] = updateStrainVoltageBounds(obj, T)
             temperatureSafeMargin = 3;
             voltageBoundFraction = 0.9;
-            [V_min, V_max] = strainVoltageBounds(T + temperatureSafeMargin);
+            [V_min, V_max] = obj.strainVoltageBounds(T + temperatureSafeMargin);
 
             % outer voltages are connected so that positive corresponds to
             % stretch
