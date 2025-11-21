@@ -2,7 +2,7 @@ classdef instrument_attodry2100 < instrumentInterface
     % Minimal Attodry2100 integration supporting temperature and field reads
     properties (Access = private)
         hasMagnet (1, 1) logical = false
-        magnetChannel (1, 1) double = 1
+        magnetChannel (1, 1) double = 0
         lastTemperature double = NaN
         lastField double = NaN
     end
@@ -20,8 +20,8 @@ classdef instrument_attodry2100 < instrumentInterface
             obj.communicationHandle = connect(char(address));
             obj.initializeMagnet(options.magnetChannel);
 
-            obj.addChannel("T");
-            obj.addChannel("B");
+            obj.addChannel("T", setTolerances = 0.1);
+            obj.addChannel("B", setTolerances = 1E-2);
         end
 
         function delete(obj)
@@ -38,9 +38,17 @@ classdef instrument_attodry2100 < instrumentInterface
         function getWriteChannelHelper(obj, channelIndex)
             switch channelIndex
                 case 1
-                    obj.lastTemperature = obj.readSampleTemperature();
+                    [errorNumber, rawTemperature] = sample_getTemperature(obj.communicationHandle);
+                    obj.assertNoError(errorNumber, "sample_getTemperature");
+                    obj.lastTemperature = double(rawTemperature);
                 case 2
-                    obj.lastField = obj.readMagneticField();
+                    if ~obj.hasMagnet
+                        error("instrument_attodry2100:MagnetUnavailable", ...
+                            "Magnetic field channel is not available on this system.");
+                    end
+                    [errorNumber, rawField] = magnet_getH(obj.communicationHandle, obj.magnetChannel);
+                    obj.assertNoError(errorNumber, "magnet_getH");
+                    obj.lastField = double(rawField);
             end
         end
 
@@ -52,25 +60,31 @@ classdef instrument_attodry2100 < instrumentInterface
                     getValues = obj.lastField;
             end
         end
+
+        function setWriteChannelHelper(obj, channelIndex, setValues)
+            handle = obj.communicationHandle;
+            switch channelIndex
+                case 1
+                    errorNumber = sample_setSetPoint(handle, setValues);
+                    obj.assertNoError(errorNumber, "sample_setSetPoint");
+                    if setValues > 1.5
+                        errorNumber = sample_startTempControl(handle);
+                        obj.assertNoError(errorNumber, "sample_startTempControl");
+                    else
+                        errorNumber = sample_stopTempControl(handle);
+                        obj.assertNoError(errorNumber, "sample_stopTempControl");
+                    end
+                case 2
+                    errorNumber = magnet_setHSetPoint(handle, obj.magnetChannel, setValues);
+                    obj.assertNoError(errorNumber, "magnet_setHSetPoint");
+                    errorNumber = magnet_startFieldControl(handle, obj.magnetChannel);
+                    obj.assertNoError(errorNumber, "magnet_startFieldControl");
+                    
+            end
+        end
     end
 
     methods (Access = private)
-        function temp = readSampleTemperature(obj)
-            [errorNumber, rawTemperature] = sample_getTemperature(obj.communicationHandle);
-            obj.assertNoError(errorNumber, "sample_getTemperature");
-            temp = double(rawTemperature);
-        end
-
-        function field = readMagneticField(obj)
-            if ~obj.hasMagnet
-                error("instrument_attodry2100:MagnetUnavailable", ...
-                    "Magnetic field channel is not available on this system.");
-            end
-            [errorNumber, rawField] = magnet_getH(obj.communicationHandle, obj.magnetChannel);
-            obj.assertNoError(errorNumber, "magnet_getH");
-            field = double(rawField);
-        end
-
         function initializeMagnet(obj, requestedChannel)
             requestedChannel = double(requestedChannel);
             try
@@ -88,15 +102,18 @@ classdef instrument_attodry2100 < instrumentInterface
                     "Cryostat reports zero magnet channels.");
             end
 
-            channel = min(channelCount, requestedChannel);
+            channel = min(channelCount - 1, requestedChannel);
             obj.magnetChannel = channel;
             obj.hasMagnet = true;
         end
 
-        function assertNoError(~, errorNumber, operation)
+        function assertNoError(obj, errorNumber, operation)
             if errorNumber ~= 0
+                errStr  = system_errorNumberToString(obj.communicationHandle, errorNumber);
+
                 error("instrument_attodry2100:CommandFailed", ...
-                    "%s returned error %d.", operation, errorNumber);
+                    "%s returned error %d: %s", ...
+                    operation, errorNumber, string(errStr));
             end
         end
     end
