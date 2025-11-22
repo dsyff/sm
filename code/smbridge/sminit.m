@@ -1,4 +1,10 @@
 global instrumentRackGlobal smscan smaux smdata bridge tareData;
+
+% Check MATLAB version (R2024a or newer required)
+if isMATLABReleaseOlderThan('R2024a')
+    error("sminit: MATLAB version is too old. SM1.5 requires MATLAB R2024a or newer. Current version: " + version('-release'));
+end
+
 close all;
 selection = questdlg("Has Windows Update been postponed? Updates can interrupt long measurements.", ...
     "Postpone Windows Update", "Yes", "Not Yet", "Not Yet");
