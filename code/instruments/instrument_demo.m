@@ -23,9 +23,9 @@ classdef instrument_demo < instrumentInterface
             % add channels here. channelSize is how many inputs/outputs the
             % channel has. Set channelSize to 1 if only one value at a time
             % is handled by the channel
-            obj.addChannel("channelName1");
+            obj.addChannel("channelName1", setTolerances = 1e-3);
             obj.addChannel("channelName2");
-            obj.addChannel("channelName3DualInputOutput", 2);
+            obj.addChannel("channelName3DualInputOutput", 2, setTolerances = [1e-3; 1e-3]);
             obj.addChannel("channelName4TriInputOutput", 3, setTolerances = [1;1;1]*1E-8);
         end
 
@@ -98,17 +98,7 @@ classdef instrument_demo < instrumentInterface
             end
         end
 
-        function TF = setCheckChannelHelper(obj, channelIndex, channelLastSetValues)
-            % Verify set values are within tolerance - called after setWriteChannelHelper
-            % returns a single logical indicating if all values are within tolerance
-            %
-            % Note: channelIndex is guaranteed to be a valid index of a channel
-            % in obj.channelTable. channelLastSetValues is guaranteed to be the
-            % last value set to the channel.
-            channel = obj.channelTable.channels(channelIndex);
-            getValues = obj.getChannel(channel);
-            TF = all(abs(getValues - channelLastSetValues) <= obj.setTolerances{channelIndex});
-        end
+
 
     end
 
