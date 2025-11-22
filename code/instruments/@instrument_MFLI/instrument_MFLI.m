@@ -77,13 +77,13 @@ classdef instrument_MFLI < instrumentInterface
 
                 % Create Channels
                 % Amplitude_n
-                obj.addChannel(sprintf("Amplitude_%d", i));
+                obj.addChannel(sprintf("Amplitude_%d", i), setTolerances = 1e-3);
 
                 % Phase_n
-                obj.addChannel(sprintf("Phase_%d", i));
+                obj.addChannel(sprintf("Phase_%d", i), setTolerances = 1e-2);
 
                 % Frequency_n
-                obj.addChannel(sprintf("Frequency_%d", i));
+                obj.addChannel(sprintf("Frequency_%d", i), setTolerances = 1e-3);
 
                 % Harmonic_n
                 obj.addChannel(sprintf("Harmonic_%d", i));
@@ -157,27 +157,6 @@ classdef instrument_MFLI < instrumentInterface
                 case 4 % On
                     path = sprintf('/%s/sigouts/0/enables/%d', obj.device_id, group_idx);
                     ziDAQ('setInt', path, int64(setValues));
-            end
-        end
-
-        function TF = setCheckChannelHelper(obj, channelIndex, channelLastSetValues)
-            % Verify set values are within tolerance
-            getValues = obj.getReadChannelHelper(channelIndex); % Re-use getRead logic
-
-            % Tolerance check
-            if isempty(obj.setTolerances{channelIndex})
-                % Default tolerance if not set? Or strict equality for Ints?
-                % Check if type is On (4) or Harmonic (3)
-                idx_zero = channelIndex - 1;
-                type_idx = mod(idx_zero, 5);
-
-                if type_idx == 3 || type_idx == 4
-                    TF = (getValues == channelLastSetValues);
-                else
-                    TF = abs(getValues - channelLastSetValues) < 1e-9; % Default small tolerance
-                end
-            else
-                TF = all(abs(getValues - channelLastSetValues) <= obj.setTolerances{channelIndex});
             end
         end
 
