@@ -38,7 +38,7 @@ E4980AL_GPIB = 6; %E4980AL LCR meter for strain controller
 Montana2_IP = "136.167.55.165";
 Opticool_IP = "127.0.0.1";
 Attodry2100_Address = "192.168.1.1";
-MFLI_Address = "dev1234";
+MFLI_Address = "dev30037";
 
 K10CR1_Serial = ""; % Leave blank to use the first detected device
 BK889B_Serial = "COM3";
@@ -634,7 +634,7 @@ if MFLI_Use
     rack.addInstrument(handle_MFLI, "MFLI");
     % Add channels for MFLI (4 sine generators)
     for i = 1:4
-        rack.addChannel("MFLI", sprintf("Amplitude_%d", i), sprintf("MFLI_Amp_%d", i));
+        rack.addChannel("MFLI", sprintf("Amplitude_%d", i), sprintf("MFLI_Amp_%d", i), [], [], -2, 2);
         rack.addChannel("MFLI", sprintf("Phase_%d", i), sprintf("MFLI_Phase_%d", i));
         rack.addChannel("MFLI", sprintf("Frequency_%d", i), sprintf("MFLI_Freq_%d", i));
         rack.addChannel("MFLI", sprintf("Harmonic_%d", i), sprintf("MFLI_Harm_%d", i));

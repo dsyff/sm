@@ -9,34 +9,12 @@ classdef instrument_MFLI < instrumentInterface
 
     methods
         function obj = instrument_MFLI(address)
-            % address is the serial number, e.g., 'dev1234'
+            % address is the serial number, e.g., 'dev30037'
             obj@instrumentInterface();
 
-            % Auto-connect if address is empty
+            % Check if address is provided
             if nargin < 1 || isempty(address) || address == ""
-                % Connect to server to discover devices (Port 8004 for MFLI)
-                try
-                    ziDAQ('connect', 'localhost', 8004, 6);
-                catch
-                    error("Failed to connect to Zurich Instruments Data Server on localhost:8004 for auto-discovery.");
-                end
-
-                devices = ziDevices();
-                found = false;
-                for i = 1:length(devices)
-                    dev = devices{i};
-                    props = ziDAQ('discoveryGet', dev);
-                    if contains(props.devicetype, 'MFLI')
-                        address = dev;
-                        found = true;
-                        fprintf("Auto-connected to MFLI device: %s\n", address);
-                        break;
-                    end
-                end
-
-                if ~found
-                    error("No MFLI device found connected to the Data Server.");
-                end
+                error("MFLI address must be specified (e.g., 'dev30037'). Auto-connect does not work for MFLI.");
             end
 
             obj.address = address;
