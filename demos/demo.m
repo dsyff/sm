@@ -635,7 +635,7 @@ if MFLI_Use
     % Add channels for MFLI (4 sine generators)
     for i = 1:4
         rack.addChannel("MFLI", sprintf("Amplitude_%d", i), sprintf("MFLI_Amp_%d", i), [], [], -2, 2);
-        rack.addChannel("MFLI", sprintf("Phase_%d", i), sprintf("MFLI_Phase_%d", i));
+        rack.addChannel("MFLI", sprintf("Phase_%d", i), sprintf("MFLI_Phase_%d", i)); %degrees
         rack.addChannel("MFLI", sprintf("Frequency_%d", i), sprintf("MFLI_Freq_%d", i));
         rack.addChannel("MFLI", sprintf("Harmonic_%d", i), sprintf("MFLI_Harm_%d", i));
         rack.addChannel("MFLI", sprintf("On_%d", i), sprintf("MFLI_On_%d", i));
