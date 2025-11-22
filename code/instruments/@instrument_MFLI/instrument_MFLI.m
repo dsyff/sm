@@ -11,11 +11,40 @@ classdef instrument_MFLI < instrumentInterface
         function obj = instrument_MFLI(address)
             % address is the serial number, e.g., 'dev1234'
             obj@instrumentInterface();
+
+            % Auto-connect if address is empty
+            if nargin < 1 || isempty(address) || address == ""
+                % Connect to server to discover devices (Port 8004 for MFLI)
+                try
+                    ziDAQ('connect', 'localhost', 8004, 6);
+                catch
+                    error("Failed to connect to Zurich Instruments Data Server on localhost:8004 for auto-discovery.");
+                end
+
+                devices = ziDevices();
+                found = false;
+                for i = 1:length(devices)
+                    dev = devices{i};
+                    props = ziDAQ('discoveryGet', dev);
+                    if contains(props.devicetype, 'MFLI')
+                        address = dev;
+                        found = true;
+                        fprintf("Auto-connected to MFLI device: %s\n", address);
+                        break;
+                    end
+                end
+
+                if ~found
+                    error("No MFLI device found connected to the Data Server.");
+                end
+            end
+
             obj.address = address;
 
             % Connect to the instrument
             % ziCreateAPISession is in private/ folder
-            [obj.device_id, obj.props] = ziCreateAPISession(char(address), 6); % API Level 6 for MFLI
+            % Enforce MFLI device type
+            [obj.device_id, obj.props] = ziCreateAPISession(char(address), 6, 'required_devtype', 'MFLI');
 
             % Initialize configuration
             % - 1 signal output with differential output
@@ -81,79 +110,68 @@ classdef instrument_MFLI < instrumentInterface
         end
 
         function getValues = getReadChannelHelper(obj, channelIndex)
-            channelName = obj.channelTable.channels(channelIndex);
-            parts = split(channelName, "_");
-            type = parts(1);
-            idx = str2double(parts(2)); % 1-based index
-            zero_idx = idx - 1;
+            % Optimized channel handling using modular arithmetic
+            % Channel order: Amplitude, Phase, Frequency, Harmonic, On (per generator)
 
-            path = "";
-            switch type
-                case "Amplitude"
-                    % /devN/sigouts/0/amplitudes/i
-                    path = sprintf('/%s/sigouts/0/amplitudes/%d', obj.device_id, zero_idx);
-                case "Phase"
-                    % /devN/demods/i/phaseshift
-                    path = sprintf('/%s/demods/%d/phaseshift', obj.device_id, zero_idx);
-                case "Frequency"
-                    % /devN/oscs/i/freq
-                    path = sprintf('/%s/oscs/%d/freq', obj.device_id, zero_idx);
-                case "Harmonic"
-                    % /devN/demods/i/harmonic
-                    path = sprintf('/%s/demods/%d/harmonic', obj.device_id, zero_idx);
-                case "On"
-                    % /devN/sigouts/0/enables/i
-                    path = sprintf('/%s/sigouts/0/enables/%d', obj.device_id, zero_idx);
-            end
+            idx_zero = channelIndex - 1;
+            group_idx = floor(idx_zero / 5); % 0-3 (Generator Index)
+            type_idx = mod(idx_zero, 5);     % 0-4 (Channel Type)
 
-            if path ~= ""
-                if type == "On" || type == "Harmonic"
-                    getValues = double(ziDAQ('getInt', path));
-                else
+            switch type_idx
+                case 0 % Amplitude
+                    path = sprintf('/%s/sigouts/0/amplitudes/%d', obj.device_id, group_idx);
                     getValues = ziDAQ('getDouble', path);
-                end
-            else
-                error("Unknown channel: %s", channelName);
+                case 1 % Phase
+                    path = sprintf('/%s/demods/%d/phaseshift', obj.device_id, group_idx);
+                    getValues = ziDAQ('getDouble', path);
+                case 2 % Frequency
+                    path = sprintf('/%s/oscs/%d/freq', obj.device_id, group_idx);
+                    getValues = ziDAQ('getDouble', path);
+                case 3 % Harmonic
+                    path = sprintf('/%s/demods/%d/harmonic', obj.device_id, group_idx);
+                    getValues = double(ziDAQ('getInt', path));
+                case 4 % On
+                    path = sprintf('/%s/sigouts/0/enables/%d', obj.device_id, group_idx);
+                    getValues = double(ziDAQ('getInt', path));
             end
         end
 
         function setWriteChannelHelper(obj, channelIndex, setValues)
-            channelName = obj.channelTable.channels(channelIndex);
-            parts = split(channelName, "_");
-            type = parts(1);
-            idx = str2double(parts(2)); % 1-based index
-            zero_idx = idx - 1;
+            idx_zero = channelIndex - 1;
+            group_idx = floor(idx_zero / 5); % 0-3 (Generator Index)
+            type_idx = mod(idx_zero, 5);     % 0-4 (Channel Type)
 
-            path = "";
-            switch type
-                case "Amplitude"
-                    path = sprintf('/%s/sigouts/0/amplitudes/%d', obj.device_id, zero_idx);
+            switch type_idx
+                case 0 % Amplitude
+                    path = sprintf('/%s/sigouts/0/amplitudes/%d', obj.device_id, group_idx);
                     ziDAQ('setDouble', path, setValues);
-                case "Phase"
-                    path = sprintf('/%s/demods/%d/phaseshift', obj.device_id, zero_idx);
+                case 1 % Phase
+                    path = sprintf('/%s/demods/%d/phaseshift', obj.device_id, group_idx);
                     ziDAQ('setDouble', path, setValues);
-                case "Frequency"
-                    path = sprintf('/%s/oscs/%d/freq', obj.device_id, zero_idx);
+                case 2 % Frequency
+                    path = sprintf('/%s/oscs/%d/freq', obj.device_id, group_idx);
                     ziDAQ('setDouble', path, setValues);
-                case "Harmonic"
-                    path = sprintf('/%s/demods/%d/harmonic', obj.device_id, zero_idx);
+                case 3 % Harmonic
+                    path = sprintf('/%s/demods/%d/harmonic', obj.device_id, group_idx);
                     ziDAQ('setInt', path, int64(setValues));
-                case "On"
-                    path = sprintf('/%s/sigouts/0/enables/%d', obj.device_id, zero_idx);
+                case 4 % On
+                    path = sprintf('/%s/sigouts/0/enables/%d', obj.device_id, group_idx);
                     ziDAQ('setInt', path, int64(setValues));
             end
         end
 
         function TF = setCheckChannelHelper(obj, channelIndex, channelLastSetValues)
             % Verify set values are within tolerance
-            % For MFLI, we can read back the value.
-            channel = obj.channelTable.channels(channelIndex);
             getValues = obj.getReadChannelHelper(channelIndex); % Re-use getRead logic
 
             % Tolerance check
             if isempty(obj.setTolerances{channelIndex})
                 % Default tolerance if not set? Or strict equality for Ints?
-                if contains(channel, "On") || contains(channel, "Harmonic")
+                % Check if type is On (4) or Harmonic (3)
+                idx_zero = channelIndex - 1;
+                type_idx = mod(idx_zero, 5);
+
+                if type_idx == 3 || type_idx == 4
                     TF = (getValues == channelLastSetValues);
                 else
                     TF = abs(getValues - channelLastSetValues) < 1e-9; % Default small tolerance
