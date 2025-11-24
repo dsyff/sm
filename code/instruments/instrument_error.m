@@ -9,7 +9,7 @@ classdef instrument_error < instrumentInterface
             obj.communicationHandle = [];
             
             % Add a test channel
-            obj.addChannel("error_channel", setTolerances = 1e-3);
+            obj.addChannel("error_channel");
         end
         
         function delete(obj)
@@ -20,17 +20,17 @@ classdef instrument_error < instrumentInterface
     methods (Access = ?instrumentInterface)
         function getWriteChannelHelper(obj, channelIndex)
             % Simulate a write error
-            error("instrument_error:WriteError", "Simulated write error for channel %d", channelIndex);
+            error("instrument_error:GetWriteError", "Simulated getWrite error for channel %d", channelIndex);
         end
 
         function getValues = getReadChannelHelper(obj, channelIndex)
             % Simulate a read error
-            error("instrument_error:ReadError", "Simulated read error for channel %d", channelIndex);
+            error("instrument_error:GetReadError", "Simulated getRead error for channel %d", channelIndex);
         end
 
         function setWriteChannelHelper(obj, channelIndex, setValues)
             % Simulate a set error
-            error("instrument_error:SetError", "Simulated set error for channel %d", channelIndex);
+            error("instrument_error:SetWriteError", "Simulated setWrite error for channel %d", channelIndex);
         end
     end
 end
