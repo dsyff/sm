@@ -247,13 +247,17 @@ classdef (Sealed) instrumentRack < handle
                     if tries >= obj.tryTimes
                         obj.dispLine()
                         obj.dispTime()
-                        warning("An error occured during rackGet");
+                        fprintf("An error occured during rackGet\n");
                         rethrow(ME);
                     else
                         obj.dispLine()
                         obj.dispTime()
-                        warning("An error occured during rackGet");
-                        disp(getReport(ME, "extended"));
+                        fprintf("An error occured during rackGet\n");
+                        report = getReport(ME, "extended", "hyperlinks", "off");
+                        reportLines = splitlines(report);
+                        % Display only the first few lines of the report to avoid clutter
+                        numLinesToDisplay = min(length(reportLines), 3);
+                        disp(join(reportLines(1:numLinesToDisplay), newline));
                         obj.dispTime()
                         obj.dispLine()
                     end
@@ -301,12 +305,16 @@ classdef (Sealed) instrumentRack < handle
                     tries = tries + 1;
                     if tries >= obj.tryTimes
                         obj.dispTime()
-                        warning("An error occured during rackSetWrite");
+                        fprintf("An error occured during rackSetWrite\n");
                         rethrow(ME);
                     else
                         obj.dispTime()
-                        warning("An error occured during rackSetWrite");
-                        disp(getReport(ME,"extended"));
+                        fprintf("An error occured during rackSetWrite\n");
+                        report = getReport(ME, "extended", "hyperlinks", "off");
+                        reportLines = splitlines(report);
+                        % Display only the first few lines of the report to avoid clutter
+                        numLinesToDisplay = min(length(reportLines), 3);
+                        disp(join(reportLines(1:numLinesToDisplay), newline));
                     end
                     if obj.tryInterval > 0
                         pause(seconds(obj.tryInterval));
@@ -362,12 +370,16 @@ classdef (Sealed) instrumentRack < handle
                     tries = tries + 1;
                     if tries >= obj.tryTimes
                         obj.dispTime()
-                        warning("An error occured during rackSetWrite");
+                        fprintf("An error occured during rackSetWrite\n");
                         rethrow(ME);
                     else
                         obj.dispTime()
-                        warning("An error occured during rackSetWrite");
-                        disp(getReport(ME,"extended"));
+                        fprintf("An error occured during rackSetWrite\n");
+                        report = getReport(ME, "extended", "hyperlinks", "off");
+                        reportLines = splitlines(report);
+                        % Display only the first few lines of the report to avoid clutter
+                        numLinesToDisplay = min(length(reportLines), 3);
+                        disp(join(reportLines(1:numLinesToDisplay), newline));
                     end
                     if obj.tryInterval > 0
                         pause(seconds(obj.tryInterval));
@@ -394,12 +406,16 @@ classdef (Sealed) instrumentRack < handle
                     tries = tries + 1;
                     if tries >= obj.tryTimes
                         obj.dispTime()
-                        warning("An error occured during rackSetWrite");
+                        fprintf("An error occured during rackSetWrite\n");
                         rethrow(ME);
                     else
                         obj.dispTime()
-                        warning("An error occured during rackSetWrite");
-                        disp(getReport(ME,"extended"));
+                        fprintf("An error occured during rackSetWrite\n");
+                        report = getReport(ME, "extended", "hyperlinks", "off");
+                        reportLines = splitlines(report);
+                        % Display only the first few lines of the report to avoid clutter
+                        numLinesToDisplay = min(length(reportLines), 3);
+                        disp(join(reportLines(1:numLinesToDisplay), newline));
                     end
                     if obj.tryInterval > 0
                         pause(seconds(obj.tryInterval));
@@ -473,12 +489,16 @@ classdef (Sealed) instrumentRack < handle
                     tries = tries + 1;
                     if tries >= obj.tryTimes
                         obj.dispTime()
-                        warning("An error occured during rackGet");
+                        fprintf("An error occured during rackGet\n");
                         rethrow(ME);
                     else
                         obj.dispTime()
-                        warning("An error occured during rackGet");
-                        disp(getReport(ME,"extended"));
+                        fprintf("An error occured during rackGet\n");
+                        report = getReport(ME, "extended", "hyperlinks", "off");
+                        reportLines = splitlines(report);
+                        % Display only the first few lines of the report to avoid clutter
+                        numLinesToDisplay = min(length(reportLines), 3);
+                        disp(join(reportLines(1:numLinesToDisplay), newline));
                     end
                     if obj.tryInterval > 0
                         pause(seconds(obj.tryInterval));
