@@ -240,6 +240,9 @@ classdef (Sealed) instrumentRack < handle
                     values = vertcat(getTableFull.getValues{:});
                     break;
                 catch ME
+                    if exist('lockGuard', 'var')
+                        clear lockGuard;
+                    end
                     tries = tries + 1;
                     if tries >= obj.tryTimes
                         obj.dispLine()
