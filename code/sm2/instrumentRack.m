@@ -156,9 +156,12 @@ classdef (Sealed) instrumentRack < handle
                     end
                     readDelay = median(readDelayArray);
                 catch ME
-                    warning("instrumentRack:ReadDelayMeasurementFailed", ...
-                        "Failed to measure read delay for %s/%s: %s", ...
-                        instrumentFriendlyName, channel, ME.message);
+                    obj.dispLine()
+                    obj.dispTime()
+                    fprintf("Failed to read %s/%s.\n", instrumentFriendlyName, channel);
+                    obj.dispPartialStackTrace(ME);
+                    obj.dispTime()
+                    obj.dispLine()
                     readDelay = inf;
                 end
             end
@@ -244,23 +247,7 @@ classdef (Sealed) instrumentRack < handle
                         clear lockGuard;
                     end
                     tries = tries + 1;
-                    if tries >= obj.tryTimes
-                        obj.dispLine()
-                        obj.dispTime()
-                        fprintf("An error occured during rackGet\n");
-                        rethrow(ME);
-                    else
-                        obj.dispLine()
-                        obj.dispTime()
-                        fprintf("An error occured during rackGet\n");
-                        report = getReport(ME, "extended", "hyperlinks", "off");
-                        reportLines = splitlines(report);
-                        % Display only the first few lines of the report to avoid clutter
-                        numLinesToDisplay = min(length(reportLines), 3);
-                        disp(join(reportLines(1:numLinesToDisplay), newline));
-                        obj.dispTime()
-                        obj.dispLine()
-                    end
+                    obj.handleRetryError(ME, "rackGet", tries);
                     if obj.tryInterval > 0
                         pause(seconds(obj.tryInterval));
                     end
@@ -303,19 +290,7 @@ classdef (Sealed) instrumentRack < handle
                     break;
                 catch ME
                     tries = tries + 1;
-                    if tries >= obj.tryTimes
-                        obj.dispTime()
-                        fprintf("An error occured during rackSetWrite\n");
-                        rethrow(ME);
-                    else
-                        obj.dispTime()
-                        fprintf("An error occured during rackSetWrite\n");
-                        report = getReport(ME, "extended", "hyperlinks", "off");
-                        reportLines = splitlines(report);
-                        % Display only the first few lines of the report to avoid clutter
-                        numLinesToDisplay = min(length(reportLines), 3);
-                        disp(join(reportLines(1:numLinesToDisplay), newline));
-                    end
+                    obj.handleRetryError(ME, "rackSetWrite", tries);
                     if obj.tryInterval > 0
                         pause(seconds(obj.tryInterval));
                     end
@@ -368,19 +343,7 @@ classdef (Sealed) instrumentRack < handle
                     break;
                 catch ME
                     tries = tries + 1;
-                    if tries >= obj.tryTimes
-                        obj.dispTime()
-                        fprintf("An error occured during rackSetWrite\n");
-                        rethrow(ME);
-                    else
-                        obj.dispTime()
-                        fprintf("An error occured during rackSetWrite\n");
-                        report = getReport(ME, "extended", "hyperlinks", "off");
-                        reportLines = splitlines(report);
-                        % Display only the first few lines of the report to avoid clutter
-                        numLinesToDisplay = min(length(reportLines), 3);
-                        disp(join(reportLines(1:numLinesToDisplay), newline));
-                    end
+                    obj.handleRetryError(ME, "rackSetWrite", tries);
                     if obj.tryInterval > 0
                         pause(seconds(obj.tryInterval));
                     end
@@ -404,19 +367,7 @@ classdef (Sealed) instrumentRack < handle
                     break;
                 catch ME
                     tries = tries + 1;
-                    if tries >= obj.tryTimes
-                        obj.dispTime()
-                        fprintf("An error occured during rackSetWrite\n");
-                        rethrow(ME);
-                    else
-                        obj.dispTime()
-                        fprintf("An error occured during rackSetWrite\n");
-                        report = getReport(ME, "extended", "hyperlinks", "off");
-                        reportLines = splitlines(report);
-                        % Display only the first few lines of the report to avoid clutter
-                        numLinesToDisplay = min(length(reportLines), 3);
-                        disp(join(reportLines(1:numLinesToDisplay), newline));
-                    end
+                    obj.handleRetryError(ME, "rackSetWrite", tries);
                     if obj.tryInterval > 0
                         pause(seconds(obj.tryInterval));
                     end
@@ -479,34 +430,7 @@ classdef (Sealed) instrumentRack < handle
                 instrument.flush();
             end
         end
-        
-        function dummy(obj)
-            % for copy pasting
-            tries = 0;
-            while tries < obj.tryTimes
-                try
-                catch ME %#ok<UNRCH>
-                    tries = tries + 1;
-                    if tries >= obj.tryTimes
-                        obj.dispTime()
-                        fprintf("An error occured during rackGet\n");
-                        rethrow(ME);
-                    else
-                        obj.dispTime()
-                        fprintf("An error occured during rackGet\n");
-                        report = getReport(ME, "extended", "hyperlinks", "off");
-                        reportLines = splitlines(report);
-                        % Display only the first few lines of the report to avoid clutter
-                        numLinesToDisplay = min(length(reportLines), 3);
-                        disp(join(reportLines(1:numLinesToDisplay), newline));
-                    end
-                    if obj.tryInterval > 0
-                        pause(seconds(obj.tryInterval));
-                    end
-                end
-            end
-        end
-        
+               
     end
     
     methods (Access = private)
@@ -694,8 +618,51 @@ classdef (Sealed) instrumentRack < handle
             limitedValues = min(max(limitedValues, minLimits), maxLimits);
         end
         
+        function handleRetryError(obj, ME, locationName, tries)
+            if tries >= obj.tryTimes
+                obj.dispLine()
+                obj.dispTime()
+                fprintf("An error occured during %s\n", locationName);
+                rethrow(ME);
+            else
+                obj.dispLine()
+                obj.dispTime()
+                fprintf("An error occured during %s\n", locationName);
+                
+                obj.dispPartialStackTrace(ME);
+                
+                obj.dispTime()
+                obj.dispLine()
+            end
+        end
+        
     end
     methods (Static, Access = private)
+        
+        function dispPartialStackTrace(ME)
+            % Displays the error message and the first few stack frames with hyperlinks
+            
+            % Get full extended report with hyperlinks
+            report = getReport(ME, "extended", "hyperlinks", "on");
+            
+            % Split into lines and convert to string array for easier handling
+            reportLines = string(splitlines(report));
+            
+            % Identify entries (Error using ... / Error in ...)
+            isEntryStart = startsWith(reportLines, "Error using ") | startsWith(reportLines, "Error in ");
+            entryStartIndices = find(isEntryStart);
+            
+            % Keep first 3 entries
+            if length(entryStartIndices) > 3
+                cutoff = entryStartIndices(4);
+                reportLines = reportLines(1:cutoff-1);
+                % Add note about hidden trace
+                reportLines(end+1) = "Partial stack trace shown. Further stack trace has been hidden.";
+            end
+            
+            % Display
+            disp(join(reportLines, newline));
+        end
         
         function dispLine()
             disp(join(repelem("=", 120), ""));
