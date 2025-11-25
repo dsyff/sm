@@ -83,6 +83,26 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
             % Override in specific instruments if flushing is needed
         end
     end
+    
+    methods (Access = ?instrumentRack, Sealed)
+
+        function getWriteChannel(obj, channel)
+            arguments
+                obj;
+                channel (1, 1) string {mustBeNonzeroLengthText};
+            end
+            obj.performGetWrite(channel);
+        end
+
+        function getValues = getReadChannel(obj, channel)
+            arguments
+                obj;
+                channel (1, 1) string {mustBeNonzeroLengthText};
+            end
+            getValues = obj.performGetRead(channel);
+        end
+
+    end
 
     methods (Sealed)
 
@@ -286,26 +306,6 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
             obj.channelTable = [obj.channelTable; {channel, channelSize}];
             obj.lastSetValues = cell(height(obj.channelTable), 1);
             obj.setTolerances = [obj.setTolerances, {NameValueArgs.setTolerances}];
-        end
-
-    end
-
-    methods (Access = ?instrumentRack, Sealed)
-
-        function getWriteChannel(obj, channel)
-            arguments
-                obj;
-                channel (1, 1) string {mustBeNonzeroLengthText};
-            end
-            obj.performGetWrite(channel);
-        end
-
-        function getValues = getReadChannel(obj, channel)
-            arguments
-                obj;
-                channel (1, 1) string {mustBeNonzeroLengthText};
-            end
-            getValues = obj.performGetRead(channel);
         end
 
     end

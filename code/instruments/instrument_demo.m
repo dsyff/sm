@@ -23,9 +23,9 @@ classdef instrument_demo < instrumentInterface
             % add channels here. channelSize is how many inputs/outputs the
             % channel has. Set channelSize to 1 if only one value at a time
             % is handled by the channel
-            obj.addChannel("channelName1");
+            obj.addChannel("channelName1", setTolerances = 1e-3);
             obj.addChannel("channelName2");
-            obj.addChannel("channelName3DualInputOutput", 2);
+            obj.addChannel("channelName3DualInputOutput", 2, setTolerances = [1e-3; 1e-3]);
             obj.addChannel("channelName4TriInputOutput", 3, setTolerances = [1;1;1]*1E-8);
         end
 
@@ -41,16 +41,19 @@ classdef instrument_demo < instrumentInterface
         end
 
     end
-    
+
     methods (Access = ?instrumentInterface)
 
         %% REQUIRED METHODS - must implement these two methods
-        
+
         function getWriteChannelHelper(obj, channelIndex)
             % Send commands to instrument - separated from reading for optimal batching
             % This allows instrumentRack to minimize reading time by sending all
             % getWrite commands first, then reading all results in sequence.
             % Many instruments need time to physically settle after receiving commands.
+            %
+            % Note: channelIndex is guaranteed to be a valid index of a channel
+            % in obj.channelTable.
             handle = obj.communicationHandle;
             switch channelIndex
                 case 1
@@ -62,6 +65,9 @@ classdef instrument_demo < instrumentInterface
         function getValues = getReadChannelHelper(obj, channelIndex)
             % Read responses from instrument - called after getWriteChannelHelper
             % getValues should preferably be a column vector
+            %
+            % Note: channelIndex is guaranteed to be a valid index of a channel
+            % in obj.channelTable.
             handle = obj.communicationHandle;
             switch channelIndex
                 case 1
@@ -72,12 +78,16 @@ classdef instrument_demo < instrumentInterface
         end
 
         %% OPTIONAL OVERRIDE METHODS - remove if not needed
-        
+
         function setWriteChannelHelper(obj, channelIndex, setValues)
             % Send set commands to instrument - separated from verification for optimal batching
             % This allows instrumentRack to send all set commands first, then verify
             % all values have settled in batch. Critical for slow-settling instruments.
             % setValues is a column vector
+            %
+            % Note: channelIndex is guaranteed to be a valid index of a channel
+            % in obj.channelTable. setValues is guaranteed to be a column vector
+            % of the correct size for the channel, and contains no NaNs.
             handle = obj.communicationHandle;
             switch channelIndex
                 case 1
@@ -88,13 +98,7 @@ classdef instrument_demo < instrumentInterface
             end
         end
 
-        function TF = setCheckChannelHelper(obj, channelIndex, channelLastSetValues)
-            % Verify set values are within tolerance - called after setWriteChannelHelper
-            % returns a single logical indicating if all values are within tolerance
-            channel = obj.channelTable.channels(channelIndex);
-            getValues = obj.getChannel(channel);
-            TF = all(abs(getValues - channelLastSetValues) <= obj.setTolerances{channelIndex});
-        end
+
 
     end
 
