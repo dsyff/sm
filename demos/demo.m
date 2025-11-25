@@ -93,6 +93,21 @@ MFLI_Use = 0;
 %% Create instrumentRack
 rack = instrumentRack(false); % TF to skip safety dialog for setup script
 
+%% Instrument Setup Guide
+% -------------------------------------------------------------------------
+%
+% 1. Add Instrument to Rack:
+%    rack.addInstrument(instrumentHandle, "instrumentFriendlyName");
+%
+% 2. Add Channel to Rack:
+%    rack.addChannel("instrumentFriendlyName", "channelName", "channelFriendlyName", ...
+%                    rampRate, rampThreshold, softMin, softMax);
+%    % Note: rampRate, rampThreshold, softMin, softMax are optional.
+%
+% For a complete guide and examples, see: demos/INSTRUMENT_SETUP_GUIDE.txt
+%
+% -------------------------------------------------------------------------
+
 
 %% Create strain controller first (if enabled) - manages K2450s A&B and cryostat internally
 if strainController_Use
