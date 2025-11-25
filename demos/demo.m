@@ -1,6 +1,7 @@
 global instrumentRackGlobal smscan smaux smdata bridge tareData; %#ok<NUSED>
 %#ok<*GVMIS,*UNRCH>
 
+
 %% initialize
 path(pathdef);
 username = getenv("USERNAME");
@@ -18,6 +19,7 @@ else
 end
 sminit; % shared setup script keeps demo logic concise
 
+
 %% instrument addresses
 SR860_1_GPIB = 7; %sd
 SR830_1_GPIB = 7; %sd
@@ -27,7 +29,7 @@ SR830_4_GPIB = 10; %vxx3
 
 K2450_A_GPIB = 17; %strain cell outer
 K2450_B_GPIB = 18; %strain cell inner
-K2450_C_GPIB = 19; 
+K2450_C_GPIB = 19;
 
 K2400_A_GPIB = 23; %sd
 K2400_B_GPIB = 24; %vtg
@@ -38,13 +40,17 @@ E4980AL_GPIB = 6; %E4980AL LCR meter for strain controller
 Montana2_IP = "136.167.55.165";
 Opticool_IP = "127.0.0.1";
 Attodry2100_Address = "192.168.1.1";
+MFLI_Address = "dev30037";
 
 K10CR1_Serial = ""; % Leave blank to use the first detected device
+BK889B_Serial = "COM3";
+
 
 %% GPIB Adaptor Indices - change these to match your setup
 % use visadevlist() to find out gpib addresses
 adaptorIndex = 0;        % Standard instruments
 adaptorIndex_strain = 2; % Strain controller instruments
+
 
 %% instrument usage flags
 counter_Use = 1;
@@ -54,14 +60,6 @@ virtual_del_V_Use = 0;
 virtual_hysteresis_Use = 0;
 virtual_nonlinear_T_Use = 0;
 virtual_nE_Use = 0;
-virtual_nE_vTgChannelName = "V_tg";
-virtual_nE_vBgChannelName = "V_bg";
-virtual_nE_vTgLimits = [-6, 6];
-virtual_nE_vBgLimits = [-60, 60];
-virtual_nE_cnp_tg_1 = 0;
-virtual_nE_cnp_bg_1 = -20;
-virtual_nE_cnp_tg_2 = 2;
-virtual_nE_cnp_bg_2 = -10;
 
 SR860_1_Use = 0;
 SR830_1_Use = 0;
@@ -87,89 +85,14 @@ K10CR1_Use = 0;
 Andor_Use = 0;
 Attodry2100_Use = 0;
 
-%% INSTRUMENT SETUP GUIDE
-% This section explains the standard pattern for adding instruments and channels
-% to the instrument rack. Follow this pattern for consistent setup.
-%
-% STEP 1: Create Instrument Object
-% ===============================
-% Syntax: handle = instrument_ClassName(address)
-% Examples:
-%   handle_clock = instrument_clock("address_string");
-%   handle_K2450 = instrument_K2450(gpibAddress(18, 0));
-%   handle_SR830 = instrument_SR830(gpibAddress(7, 0));
-%   handle_Montana = instrument_Montana2("192.168.1.100");
-%
-% STEP 2: Add Instrument to Rack
-% ===============================
-% Syntax: rack.addInstrument(instrumentHandle, "friendlyName")
-% - instrumentHandle: The object created in Step 1
-% - friendlyName: A unique string to identify this instrument in the rack
-% Examples:
-%   rack.addInstrument(handle_clock, "clock");
-%   rack.addInstrument(handle_K2450, "K2450_C");
-%   rack.addInstrument(handle_SR830, "SR860_1");
-%
-% STEP 3: Add Channels from Instrument
-% ====================================
-% Syntax: rack.addChannel("instrumentFriendlyName", "instrumentChannel", "channelFriendlyName", rampRate, rampThreshold)
-% - instrumentFriendlyName: Must match the name used in addInstrument
-% - instrumentChannel: The actual channel name from the instrument class
-% - channelFriendlyName: A unique name for this channel (used in smset/smget)
-% - rampRate: (optional) Maximum rate of change (units/second)
-% - rampThreshold: (optional) Minimum step size for ramping
-% Examples:
-%   rack.addChannel("clock", "timeStamp", "time");
-%   rack.addChannel("K2450_C", "V_source", "V_tg", 1, 0.5);  % 1V/s rate, 0.5V threshold
-%   rack.addChannel("SR860_1", "X", "Ixx_X");
-%
-% STEP 4: Send Custom Commands to Hardware (Optional)
-% ===================================================
-% For advanced configuration, you can send custom SCPI/GPIB commands directly to the hardware
-% by accessing the instrument's communication handle.
-%
-% Syntax: h = instrumentHandle.communicationHandle;
-% Then use: writeline(h, "command"); or response = writeread(h, "query?");
-%
-% Examples:
-%   % Configure K2450 current measurement settings
-%   h = handle_K2450.communicationHandle;
-%   writeline(h, ":sense:current:range 1e-7");        % Set current range
-%   writeline(h, "source:voltage:Ilimit 1e-7");       % Set current limit
-%   writeline(h, ":OUTP ON");                         % Turn output on
-%
-%   % Configure SR830 lock-in amplifier settings
-%   h = handle_SR830.communicationHandle;
-%   writeline(h, "isrc 1");                           % Set input to A-B
-%   writeline(h, "ignd 1");                           % Set input grounding
-%   sensitivity = writeread(h, "sens?");              % Query sensitivity
-%
-%   % Query instrument identification
-%   h = handle_instrument.communicationHandle;
-%   id_string = writeread(h, "*IDN?");                % Get instrument ID
-%
-% IMPORTANT NOTES FOR CUSTOM COMMANDS:
-% - Only use this for settings not available through instrument class methods
-% - Always check instrument manual for correct SCPI command syntax
-% - Use writeline() for commands that don't return data
-% - Use writeread() for queries that return responses
-% - Be careful with timing - some instruments need delays between commands
-% - Custom configuration should be done AFTER adding instrument to rack but BEFORE operation
-%
-% IMPORTANT NOTES:
-% - All names must be unique within their scope (instrument names, channel names)
-% - The instrument must be added to rack before adding its channels
-% - Channel names from the instrument class can be found in the instrument's documentation
-% - Ramping parameters are optional and default to infinite (instant set)
-%
-% COMMON MISTAKES TO AVOID:
-% - Wrong parameter order in addInstrument: use (handle, "name"), not ("name", handle)
-% - Mismatched friendly names between addInstrument and addChannel
-% - Using non-existent channel names from the instrument class
-% - Duplicate friendly names for instruments or channels
+BK889B_Use = 0;
+E4980AL_Use = 0;
+MFLI_Use = 0;
+
 
 %% Create instrumentRack
 rack = instrumentRack(false); % TF to skip safety dialog for setup script
+
 
 %% Create strain controller first (if enabled) - manages K2450s A&B and cryostat internally
 if strainController_Use
@@ -206,7 +129,7 @@ if strainController_Use
         address_Opticool = Opticool_IP, ...
         cryostat = strain_cryostat, ...
         strainCellNumber = strainCellNumber_default);
-    
+
     if exist("tareData", "var") && isempty(tareData)
         tareData = handle_strainController.tare();
     else
@@ -226,14 +149,14 @@ if strainController_Use
     rack.addChannel("strain", "I_str_o", "I_str_o");
     rack.addChannel("strain", "I_str_i", "I_str_i");
     rack.addChannel("strain", "activeControl", "activeControl");
-    
+
     fprintf("Strain controller rack starts.\n");
     strainControllerRackSummary = handle_strainController.getRack();
     disp(strainControllerRackSummary);
     fprintf("Strain controller rack ends.\n");
     fprintf("Strain controller initialized and tared.\n");
-    
 end
+
 
 %% Create other instruments using new sm2
 if counter_Use
@@ -253,7 +176,7 @@ if K2450_A_Use
     handle_K2450_A = instrument_K2450(gpibAddress(K2450_A_GPIB, adaptorIndex));
     handle_K2450_A.requireSetCheck = false; %dose not wait for instrument to reach set value
     %handle_K2450_A.reset(); % only reset if output ramped to zero
-    
+
     % Configure instrument communication and settings
     h = handle_K2450_A.communicationHandle;
 
@@ -266,12 +189,12 @@ if K2450_A_Use
     writeline(h,"NPLcycles 0.2"); %number of power line cycles per measurement
     writeline(h,":OUTP ON");
     pause(2);
-    %andle_K2450_A.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
+    %handle_K2450_A.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
     %handle_K2450_A.setSetTolerances("V_source", 5E-3); %used to determine if voltage has been reached
-    
+
     % Add to rack and configure channels
     rack.addInstrument(handle_K2450_A, "K2450_A");
-    rack.addChannel("K2450_A", "V_source", "V_tg0", 1, 0.5, -10, 10); % 1V/s ramp rate, 10mV threshold
+    rack.addChannel("K2450_A", "V_source", "V_tg0", 1, 0.5, -10, 10); % 1V/s ramp rate, 0.5V threshold
     rack.addChannel("K2450_A", "I_measure", "I_tg0");
     rack.addChannel("K2450_A", "VI", "VI_tg0");
 end
@@ -280,7 +203,7 @@ if K2450_B_Use
     handle_K2450_B = instrument_K2450(gpibAddress(K2450_B_GPIB, adaptorIndex));
     handle_K2450_B.requireSetCheck = false; %dose not wait for instrument to reach set value
     %handle_K2450_B.reset(); % only reset if output ramped to zero
-    
+
     % Configure instrument communication and settings
     h = handle_K2450_B.communicationHandle;
 
@@ -293,12 +216,12 @@ if K2450_B_Use
     writeline(h,"NPLcycles 0.2"); %number of power line cycles per measurement
     writeline(h,":OUTP ON");
     pause(2);
-    %andle_K2450_B.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
+    %handle_K2450_B.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
     %handle_K2450_B.setSetTolerances("V_source", 5E-3); %used to determine if voltage has been reached
-    
+
     % Add to rack and configure channels
     rack.addInstrument(handle_K2450_B, "K2450_B");
-    rack.addChannel("K2450_B", "V_source", "V_tg1", 1, 0.5, -10, 10); % 1V/s ramp rate, 10mV threshold
+    rack.addChannel("K2450_B", "V_source", "V_tg1", 1, 0.5, -10, 10); % 1V/s ramp rate, 0.5V threshold
     rack.addChannel("K2450_B", "I_measure", "I_tg1");
     rack.addChannel("K2450_B", "VI", "VI_tg1");
 end
@@ -307,7 +230,7 @@ if K2450_C_Use
     handle_K2450_C = instrument_K2450(gpibAddress(K2450_C_GPIB, adaptorIndex));
     handle_K2450_C.requireSetCheck = false; %dose not wait for instrument to reach set value
     %handle_K2450_C.reset(); % only reset if output ramped to zero
-    
+
     % Configure instrument communication and settings
     h = handle_K2450_C.communicationHandle;
 
@@ -320,12 +243,12 @@ if K2450_C_Use
     writeline(h,"NPLcycles 0.2"); %number of power line cycles per measurement
     writeline(h,":OUTP ON");
     pause(2);
-    %andle_K2450_C.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
+    %handle_K2450_C.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
     %handle_K2450_C.setSetTolerances("V_source", 5E-3); %used to determine if voltage has been reached
-    
+
     % Add to rack and configure channels
     rack.addInstrument(handle_K2450_C, "K2450_C");
-    rack.addChannel("K2450_C", "V_source", "V_tg", 1, 0.5, -10, 10); % 1V/s ramp rate, 10mV threshold
+    rack.addChannel("K2450_C", "V_source", "V_tg", 1, 0.5, -10, 10); % 1V/s ramp rate, 0.5V threshold
     rack.addChannel("K2450_C", "I_measure", "I_tg");
     rack.addChannel("K2450_C", "VI", "VI_tg");
 end
@@ -334,7 +257,7 @@ if K2400_A_Use
     handle_K2400_A = instrument_K2400(gpibAddress(K2400_A_GPIB, adaptorIndex));
     handle_K2400_A.requireSetCheck = false; %dose not wait for instrument to reach set value
     %handle_K2400_A.reset(); % only reset if output ramped to zero
-    
+
     % Configure instrument communication and settings
     h = handle_K2400_A.communicationHandle;
 
@@ -346,9 +269,9 @@ if K2400_A_Use
     writeline(h,":CURRent:NPLCycles 0.2"); %number of power line cycles per measurement
     writeline(h,":output on");
     pause(2);
-    %andle_K2400_A.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
+    %handle_K2400_A.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
     %handle_K2400_A.setSetTolerances("V_source", 5E-3); %used to determine if voltage has been reached
-    
+
     % Add to rack and configure channels
     rack.addInstrument(handle_K2400_A, "K2400_A");
     rack.addChannel("K2400_A", "V_source", "V_tg", 1, 1, -10, 10); % 1V/s ramp rate, 1V threshold
@@ -360,7 +283,7 @@ if K2400_B_Use
     handle_K2400_B = instrument_K2400(gpibAddress(K2400_B_GPIB, adaptorIndex));
     handle_K2400_B.requireSetCheck = false; %dose not wait for instrument to reach set value
     %handle_K2400_B.reset(); % only reset if output ramped to zero
-    
+
     % Configure instrument communication and settings
     h = handle_K2400_B.communicationHandle;
 
@@ -372,9 +295,9 @@ if K2400_B_Use
     writeline(h,":CURRent:NPLCycles 0.2"); %number of power line cycles per measurement
     writeline(h,":output on");
     pause(2);
-    %andle_K2400_B.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
+    %handle_K2400_B.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
     %handle_K2400_B.setSetTolerances("V_source", 5E-3); %used to determine if voltage has been reached
-    
+
     % Add to rack and configure channels
     rack.addInstrument(handle_K2400_B, "K2400_B");
     rack.addChannel("K2400_B", "V_source", "V_bg", 1, 1, -10, 10); % 1V/s ramp rate, 1V threshold
@@ -408,7 +331,7 @@ if K2400_C_Use
     handle_K2400_C = instrument_K2400(gpibAddress(K2400_C_GPIB, adaptorIndex));
     handle_K2400_C.requireSetCheck = false; %dose not wait for instrument to reach set value
     %handle_K2400_C.reset(); % only reset if output ramped to zero
-    
+
     % Configure instrument communication and settings
     h = handle_K2400_C.communicationHandle;
 
@@ -420,9 +343,9 @@ if K2400_C_Use
     writeline(h,":CURRent:NPLCycles 0.2"); %number of power line cycles per measurement
     writeline(h,":output on");
     pause(2);
-    %andle_K2400_C.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
+    %handle_K2400_C.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
     %handle_K2400_C.setSetTolerances("V_source", 5E-3); %used to determine if voltage has been reached
-    
+
     % Add to rack and configure channels
     rack.addInstrument(handle_K2400_C, "K2400_C");
     rack.addChannel("K2400_C", "V_source", "V_tg", 1, 1); % 1V/s ramp rate, 1V threshold
@@ -433,7 +356,7 @@ end
 if SR860_1_Use
     handle_SR860_1 = instrument_SR860(gpibAddress(SR860_1_GPIB, adaptorIndex));
     handle_SR860_1.requireSetCheck = false;
-    
+
     % Configure instrument (based on legacy setup)
     h = handle_SR860_1.communicationHandle;
     % Uncomment and modify settings as needed:
@@ -472,14 +395,16 @@ end
 if SR830_1_Use
     handle_SR830_1 = instrument_SR830(gpibAddress(SR830_1_GPIB, adaptorIndex));
     handle_SR830_1.requireSetCheck = false;
-    
+
     % Configure instrument (based on legacy setup)
     h = handle_SR830_1.communicationHandle;
     % Uncomment and modify settings as needed:
-    %writeline(h, "isrc 0"); % Input source: 0=A, 1=A-B
-    %writeline(h, "ivmd 0"); % Input source: 0=voltage, 1=current
+    %writeline(h, "isrc 0"); % Input source: 0=A, 1=A-B, 2=I(1MOhm), 3=I(100MOhm)
     %writeline(h, "ignd 1"); % Input grounding: 0=float, 1=ground
     %writeline(h, "icpl 0"); % Input coupling: 0=AC, 1=DC
+    %writeline(h, "ilin 0"); % Input line notch filter: 0=none, 1=line, 2=2xline, 3=both
+    %writeline(h, "rmod 0"); % Reserve mode: 0=high, 1=normal, 2=low
+    %writeline(h, "slp 0"); % Output filter slope: 0=6dB, 1=12dB, 2=18dB, 3=24dB
 
     % Add to rack and configure channels
     rack.addInstrument(handle_SR830_1, "SR830_1");
@@ -511,17 +436,17 @@ end
 if SR830_2_Use
     handle_SR830_2 = instrument_SR830(gpibAddress(SR830_2_GPIB, adaptorIndex));
     handle_SR830_2.requireSetCheck = false;
-    
+
     % Configure instrument (based on legacy setup)
     h = handle_SR830_2.communicationHandle;
-    writeline(h, "isrc 1"); % sets input to A-B
-    % Uncomment and modify additional settings as needed:
+    % Uncomment and modify settings as needed:
+    %writeline(h, "isrc 0"); % Input source: 0=A, 1=A-B, 2=I(1MOhm), 3=I(100MOhm)
     %writeline(h, "ignd 1"); % Input grounding: 0=float, 1=ground
     %writeline(h, "icpl 0"); % Input coupling: 0=AC, 1=DC
     %writeline(h, "ilin 0"); % Input line notch filter: 0=none, 1=line, 2=2xline, 3=both
     %writeline(h, "rmod 0"); % Reserve mode: 0=high, 1=normal, 2=low
     %writeline(h, "slp 0"); % Output filter slope: 0=6dB, 1=12dB, 2=18dB, 3=24dB
-    
+
     % Add to rack and configure channels
     rack.addInstrument(handle_SR830_2, "SR830_2");
     %rack.addChannel("SR830_2", "X", "Vxx1_X");
@@ -551,7 +476,7 @@ end
 if SR830_3_Use
     handle_SR830_3 = instrument_SR830(gpibAddress(SR830_3_GPIB, adaptorIndex));
     handle_SR830_3.requireSetCheck = false;
-    
+
     % Configure instrument (based on legacy setup)
     h = handle_SR830_3.communicationHandle;
     % Uncomment and modify settings as needed:
@@ -561,7 +486,7 @@ if SR830_3_Use
     %writeline(h, "ilin 0"); % Input line notch filter: 0=none, 1=line, 2=2xline, 3=both
     %writeline(h, "rmod 0"); % Reserve mode: 0=high, 1=normal, 2=low
     %writeline(h, "slp 0"); % Output filter slope: 0=6dB, 1=12dB, 2=18dB, 3=24dB
-    
+
     % Add to rack and configure channels
     rack.addInstrument(handle_SR830_3, "SR830_3");
     %rack.addChannel("SR830_3", "R", "Vxx2_R");
@@ -588,6 +513,59 @@ if SR830_3_Use
     %rack.addChannel("SR830_3", "RTheta", "Vxx2_RTheta");
 end
 
+if SR830_4_Use
+    handle_SR830_4 = instrument_SR830(gpibAddress(SR830_4_GPIB, adaptorIndex));
+    handle_SR830_4.requireSetCheck = false;
+
+    % Configure instrument (based on legacy setup)
+    h = handle_SR830_4.communicationHandle;
+    % Uncomment and modify settings as needed:
+    %writeline(h, "isrc 0"); % Input source: 0=A, 1=A-B, 2=I(1MOhm), 3=I(100MOhm)
+    %writeline(h, "ignd 1"); % Input grounding: 0=float, 1=ground
+    %writeline(h, "icpl 0"); % Input coupling: 0=AC, 1=DC
+    %writeline(h, "ilin 0"); % Input line notch filter: 0=none, 1=line, 2=2xline, 3=both
+    %writeline(h, "rmod 0"); % Reserve mode: 0=high, 1=normal, 2=low
+    %writeline(h, "slp 0"); % Output filter slope: 0=6dB, 1=12dB, 2=18dB, 3=24dB
+
+    % Add to rack and configure channels
+    rack.addInstrument(handle_SR830_4, "SR830_4");
+    %rack.addChannel("SR830_4", "R", "Vxx3_R");
+    %rack.addChannel("SR830_4", "X", "Vxx3_X");
+    %rack.addChannel("SR830_4", "Theta", "Vxx3_Th");
+    %rack.addChannel("SR830_4", "Y", "Vxx3_Y");
+    %rack.addChannel("SR830_4", "frequency", "Vxx3_Freq");
+    %rack.addChannel("SR830_4", "amplitude", "Vxx3_Amp");
+    %rack.addChannel("SR830_4", "phase", "Vxx3_Phase");
+    %rack.addChannel("SR830_4", "aux_in_1", "Vxx3_AuxIn1");
+    %rack.addChannel("SR830_4", "aux_in_2", "Vxx3_AuxIn2");
+    %rack.addChannel("SR830_4", "aux_in_3", "Vxx3_AuxIn3");
+    %rack.addChannel("SR830_4", "aux_in_4", "Vxx3_AuxIn4");
+    %rack.addChannel("SR830_4", "aux_out_1", "Vxx3_AuxOut1");
+    %rack.addChannel("SR830_4", "aux_out_2", "Vxx3_AuxOut2");
+    %rack.addChannel("SR830_4", "aux_out_3", "Vxx3_AuxOut3");
+    %rack.addChannel("SR830_4", "aux_out_4", "Vxx3_AuxOut4");
+    rack.addChannel("SR830_4", "sensitivity", "Vxx3_Sens"); % in volts; multiply by 1E-6 for amps
+    %rack.addChannel("SR830_4", "time_constant", "Vxx3_TimeConst");
+    %rack.addChannel("SR830_4", "sync_filter", "Vxx3_SyncFilter");
+    %rack.addChannel("SR830_4", "XY", "Vxx3_XY");
+    rack.addChannel("SR830_4", "XTheta", "Vxx3_XTheta");
+    %rack.addChannel("SR830_4", "YTheta", "Vxx3_YTheta");
+    %rack.addChannel("SR830_4", "RTheta", "Vxx3_RTheta");
+end
+
+if MFLI_Use
+    handle_MFLI = instrument_MFLI(MFLI_Address);
+    rack.addInstrument(handle_MFLI, "MFLI");
+    % Add channels for MFLI (4 sine generators)
+    for i = 1:4
+        rack.addChannel("MFLI", sprintf("Amplitude_%d", i), sprintf("MFLI_Amp_%d", i), [], [], -2, 2);
+        rack.addChannel("MFLI", sprintf("Phase_%d", i), sprintf("MFLI_Phase_%d", i)); %degrees
+        rack.addChannel("MFLI", sprintf("Frequency_%d", i), sprintf("MFLI_Freq_%d", i));
+        rack.addChannel("MFLI", sprintf("Harmonic_%d", i), sprintf("MFLI_Harm_%d", i));
+        rack.addChannel("MFLI", sprintf("On_%d", i), sprintf("MFLI_On_%d", i));
+    end
+end
+
 if Montana2_Use
     handle_Montana2 = instrument_Montana2(Montana2_IP);
     handle_Montana2.requireSetCheck = true;
@@ -612,7 +590,27 @@ if Attodry2100_Use
     rack.addChannel("Attodry2100", "B", "B");
 end
 
+if BK889B_Use
+    handle_BK889B = instrument_BK889B(BK889B_Serial);
+    rack.addInstrument(handle_BK889B, "BK889B");
+    rack.addChannel("BK889B", "Cp", "BK_Cp");
+    rack.addChannel("BK889B", "Q", "BK_Q");
+    rack.addChannel("BK889B", "CpQ", "BK_CpQ");
+end
+
+if E4980AL_Use
+    % Note: E4980AL is typically used with the strain controller, but can be used independently.
+    handle_E4980AL = instrument_E4980AL(gpibAddress(E4980AL_GPIB, adaptorIndex_strain));
+    rack.addInstrument(handle_E4980AL, "E4980AL");
+    rack.addChannel("E4980AL", "Cp", "E4980_Cp");
+    rack.addChannel("E4980AL", "Q", "E4980_Q");
+    rack.addChannel("E4980AL", "CpQ", "E4980_CpQ");
+end
+
+%% Virtual Instruments
+
 if virtual_del_V_Use
+
     % Sets V_set according to V_set = V_get + del_V on the master instrument rack provided at construction time.
     handle_virtual_del_V = virtualInstrument_del_V("virtual_delta", rack, ...
         vGetChannelName = "V_WSe2", vSetChannelName = "V_tg");
@@ -640,18 +638,20 @@ end
 
 if virtual_nE_Use
     handle_virtual_nE = virtualInstrument_nE("virtual_nE", rack, ...
-        vTgChannelName = virtual_nE_vTgChannelName, ...
-        vBgChannelName = virtual_nE_vBgChannelName, ...
-        vTgLimits = virtual_nE_vTgLimits, ...
-        vBgLimits = virtual_nE_vBgLimits, ...
-        cnpTg1 = virtual_nE_cnp_tg_1, ...
-        cnpBg1 = virtual_nE_cnp_bg_1, ...
-        cnpTg2 = virtual_nE_cnp_tg_2, ...
-        cnpBg2 = virtual_nE_cnp_bg_2);
+        vTgChannelName = "V_tg", ...
+        vBgChannelName = "V_bg", ...
+        vTgLimits = [-6, 6], ...
+        vBgLimits = [-6, 6], ...
+        cnpTg1 = -1, ...
+        cnpBg1 = 1, ...
+        cnpTg2 = -2, ...
+        cnpBg2 = 2);
     rack.addInstrument(handle_virtual_nE, "virtual_nE");
     rack.addChannel("virtual_nE", "n", "n_normalized", [], [], 0, 1);
     rack.addChannel("virtual_nE", "E", "E_normalized", [], [], 0, 1);
 end
+
+
 
 %% wrap up setup
 smready(rack);
