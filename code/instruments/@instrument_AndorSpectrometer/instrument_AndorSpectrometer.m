@@ -442,7 +442,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
 
             fprintf("instrument_AndorSpectrometer: Loading ATSpectrograph DLL and probing devices...\n");
             if ~libisloaded(libAlias)
-                loadlibrary(dllPath, headerPath, 'alias', char(libAlias));
+                [~, ~] = loadlibrary(dllPath, headerPath, 'alias', char(libAlias));
                 %[notfoundSymbols, loadWarnings] = loadlibrary(dllPath, headerPath, 'alias', char(libAlias));
                 % if ~isempty(loadWarnings)
                 %     warningLines = strtrim(cellstr(loadWarnings));
