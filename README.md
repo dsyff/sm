@@ -12,7 +12,7 @@
 - **E4980AL** - Precision LCR meter  
 - **K2400, K2450** - Keithley
 - **K10CR1** - Thorlabs cage rotator
-- **AndorCCD** - SDK2-compatible CCD spectrometer with accumulate mode
+- **AndorCCD** - SDK2-compatible CCD spectrometer (single-scan, single/double/triple counts channels)
 - **Montana2, Opticool** - Cryostats
 - **SR830, SR860** - Stanford Research lock-in amplifiers
 - **strainController** - Parallel strain control system
@@ -37,4 +37,4 @@
 ---
 
 📖 **For complete documentation, see [README_LONG.md](README_LONG.md)**  
-📅 **Last Updated**: 2025-11-11
+📅 **Last Updated**: 2025-12-06

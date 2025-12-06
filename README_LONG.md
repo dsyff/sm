@@ -200,7 +200,7 @@ obj.addChannel("frequency", setTolerances = 0.01);   % 10mHz tolerance
 - **Batch-optimized communications** with proper getWrite/getRead separation
 - **Pre-computed variables** and cached validation for inner scan loops
 - **Optimized figure management** (reuses figure 1000, prevents accumulation)
-- **Andor CCD accumulate mode** defaults to two-frame averaging with status polling instead of blocking waits for improved robustness
+- **Andor CCD** now runs single-scan mode with selectable multi-acquisition reads (`counts_single`, `counts_double`, `counts_triple`) and streamlined cache invalidation
 
 ### Reliability Enhancements:
 - **Unique temporary file numbering** prevents overwrites during concurrent scans
@@ -208,7 +208,7 @@ obj.addChannel("frequency", setTolerances = 0.01);   % 10mHz tolerance
 - **Robust PowerPoint integration** with ActiveX compatibility fixes
 - **Silent GUI operation** (removed console output for clean user experience)
 - **Data format compatibility** ensures existing analysis scripts work unchanged
-- **Andor CCD watchdog** replaces SDK `WaitForAcquisition` with exposure-aware polling to avoid indefinite hangs
+- **Andor CCD** watchdog replaces SDK `WaitForAcquisition` with exposure-aware polling to avoid indefinite hangs; cache invalidation tracks requested pixel and acquisition count
 - **K10CR1 homing logs** print informative `fprintf` messages whenever the rotator homes
 
 ### Code Quality:
@@ -236,12 +236,12 @@ obj.addChannel("frequency", setTolerances = 0.01);   % 10mHz tolerance
   - Automatically loads Kinesis assemblies and homes device on startup
   - Emits informative homing messages for easier lab debugging
 - **AndorCCD**: Full-vertical-binning CCD spectrometer (SDK2)
-  - Default configuration now uses accumulate mode with configurable `accumulations` channel
-  - Exposure updates automatically invalidate cached spectra and respect status polling
-  - Cosmic ray filtering enabled by default with saturation checks scaled per accumulation
-  - Exposes temperature, exposure_time, accumulations, pixel_index, and counts channels aligned with demos
+  - Default configuration now uses single-scan mode; accumulation channel removed
+  - Supports multi-acquisition reads via `counts_single`, `counts_double`, `counts_triple`
+  - Exposure/grating/wavelength updates invalidate caches; cache invalidation also tracks requested pixel and required acquisition depth
+  - Exposes temperature, exposure_time, pixel_index, wavelength_nm, and counts_* channels aligned with demos
   - `currentGratingInfo()` surfaces `ATSpectrographGetGratingInfo` details for the active grating at initialization time
-  - Setting `pixel_index` calls into `prepareCounts(newIndex)` which both refreshes the spectrum (if required) and caches wavelength/count pairs so consecutive `smget` calls reuse the same acquisition until the index or acquisition parameters change
+  - Setting `pixel_index` marks cache dirty for that pixel; the next counts_* request triggers an acquisition sized to the requested channel and refreshes wavelength data as needed
 
 - **strainController**: Persistent strain control system (migrated from v1.3)
   - **Parallel processing**: Real-time PID control loop running on worker thread
