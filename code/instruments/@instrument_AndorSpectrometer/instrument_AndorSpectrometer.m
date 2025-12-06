@@ -2,8 +2,9 @@ classdef instrument_AndorSpectrometer < instrumentInterface
     % Andor CCD's that are supported by Andor SDK2 in full vertical binning mode
     % Supports indexed access to the spectrum captured from the CCD.
     % Setting the "pixel_index" channel stores the requested index. Getting
-    % "counts" returns the corresponding pixel counts. Repeated
-    % requests for the same index trigger a fresh acquisition.
+    % "counts_single", "counts_double", or "counts_triple" returns the
+    % corresponding pixel counts. Repeated requests for the same index trigger
+    % a fresh acquisition sized to the requested channel.
     
     properties (Constant, Access = private)
         %vertical and horizontal shift speeds. faster means better fidelity at last pixels to read. slower means lower noise
@@ -18,15 +19,12 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         % DEFAULT_VSAMPLITUDE = int32(0);
         DEFAULT_EXPOSURE = 0.1; % seconds
         DEFAULT_TRIGGER_MODE = int32(0); % Internal trigger
-        DEFAULT_ACCUMULATIONS = double(2);
-        DEFAULT_FILTER_MODE = int32(2); % Cosmic ray filter on
-        FILTER_MODE_OFF = int32(0); % Cosmic ray filter off
         STATUS_POLL_DELAY = 0.05; % matlab pause in loop waiting for acquisition
         
         % Andor SDK constants. do not change
         READ_MODE_FVB = int32(0);       % Full vertical binning
         READ_MODE_IMAGE = int32(4);     % Full image readout
-        ACQ_MODE_ACCUMULATE = int32(2);
+        ACQ_MODE_SINGLE_SCAN = int32(1);
 
         DRV_SUCCESS = int32(20002);
         TEMP_STATUS_MIN = int32(20034);
@@ -44,11 +42,12 @@ classdef instrument_AndorSpectrometer < instrumentInterface
     
     properties (Access = private)
         exposureTime (1, 1) double = instrument_AndorSpectrometer.DEFAULT_EXPOSURE;
-        accumulations (1, 1) double = instrument_AndorSpectrometer.DEFAULT_ACCUMULATIONS;
         initialized logical = false;
         currentIndex (1, 1) double = 1;
         requestedMask logical = [];
-        spectrumData double = [];
+        spectrumData_1 double = [];
+        spectrumData_2 double = [];
+        spectrumData_3 double = [];
         wavelengthData double = [];
         pixelCount (1, 1) uint32 = 0;
         pendingCounts double = NaN;
@@ -59,7 +58,8 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         currentGrating (1, 1) double = NaN;
         spectrographDevice (1, 1) int32 = int32(0);
         spectrographInitialized (1, 1) logical = false;
-        currentFilterMode (1, 1) int32 = int32(-1);
+        needsAcquisition (1, 1) logical = true;
+        cachedAcquisitionCount (1, 1) double = 0;
     end
     
     properties (GetAccess = public, SetAccess = private)
@@ -121,12 +121,13 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             fprintf("instrument_AndorSpectrometer: Startup complete—temperature, wavelength, and grating channels ready.\n");
             obj.addChannel("temperature_C", setTolerances = 2);
             obj.addChannel("exposure_time");
-            obj.addChannel("accumulations");
             obj.addChannel("center_wavelength_nm", setTolerances = 1E-2);
             obj.addChannel("grating");
             obj.addChannel("pixel_index");
             obj.addChannel("wavelength_nm");
-            obj.addChannel("counts");
+            obj.addChannel("counts_single");
+            obj.addChannel("counts_double", uint64(2));
+            obj.addChannel("counts_triple", uint64(3));
             
         end
         
@@ -198,23 +199,6 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     "Cannot flush the CCD because the camera communication handle is unavailable.");
             end
 
-            originalExposure = obj.exposureTime;
-            originalAccumulations = obj.accumulations;
-            originalFilterMode = obj.currentFilterMode;
-
-            cleanup = onCleanup(@() obj.restoreAcquisitionSettings(originalExposure, originalAccumulations, originalFilterMode));
-
-            obj.checkCCDStatus(handle.SetExposureTime(0), "SetExposureTimeFlush");
-            obj.exposureTime = 0;
-
-            obj.checkCCDStatus(handle.SetNumberAccumulations(int32(1)), "SetNumberAccumulationsFlush");
-            obj.accumulations = 1;
-            obj.updateCosmicRayFilterForAccumulations();
-
-            obj.invalidateSpectrumCache();
-            obj.acquireSpectrum();
-
-            ccdCounts = obj.spectrumData;
         end
 
     end
@@ -234,15 +218,21 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     obj.currentTemperature = double(temperature);
                 case 2 % exposure_time
                     obj.refreshExposureTime();
-                case 3 % accumulations
-                    obj.refreshAccumulations();
-                case 4 % center_wavelength_nm
+                case 3 % center_wavelength_nm
                     obj.refreshSpectrographCenterWavelength();
-                case 5 % grating
+                case 4 % grating
                     obj.refreshSpectrographGrating();
-                case 6 % pixel_index
+                case 5 % pixel_index
                     % Nothing required before returning the current index
-                case {7, 8} % wavelength_nm/counts
+                case 6 % wavelength_nm
+                    obj.ensureWavelengthCache();
+                    obj.pendingWavelength = obj.wavelengthData(obj.currentIndex);
+                case 7 % counts_single
+                    obj.prepareCountsForChannel(1);
+                case 8 % counts_double
+                    obj.prepareCountsForChannel(2);
+                case 9 % counts_triple
+                    obj.prepareCountsForChannel(3);
             end
         end
         
@@ -252,18 +242,16 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     getValues = obj.currentTemperature;
                 case 2 % exposure_time
                     getValues = obj.exposureTime;
-                case 3 % accumulations
-                    getValues = obj.accumulations;
-                case 4 % center_wavelength_nm
+                case 3 % center_wavelength_nm
                     getValues = obj.currentCenterWavelength;
-                case 5 % grating
+                case 4 % grating
                     getValues = obj.currentGrating;
-                case 6 % pixel_index
+                case 5 % pixel_index
                     getValues = obj.currentIndex;
-                case 7 % wavelength_nm
+                case 6 % wavelength_nm
                     getValues = obj.pendingWavelength;
                     obj.pendingWavelength = NaN;
-                case 8 % counts
+                case {7, 8, 9} % counts_single/counts_double/counts_triple
                     getValues = obj.pendingCounts;
                     obj.pendingCounts = NaN;
             end
@@ -286,17 +274,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     handle = obj.communicationHandle;
                     obj.checkCCDStatus(handle.SetExposureTime(obj.exposureTime), "SetExposureTime");
                     obj.invalidateSpectrumCache();
-                case 3 % accumulations
-                    newAccumulations = setValues(1);
-                    assert(newAccumulations == round(newAccumulations) && newAccumulations >= 1, ...
-                        "instrument_AndorSpectrometer:InvalidAccumulations", ...
-                        "Number of accumulations must be a positive integer.");
-                    obj.accumulations = newAccumulations;
-                    handle = obj.communicationHandle;
-                    obj.checkCCDStatus(handle.SetNumberAccumulations(int32(obj.accumulations)), "SetNumberAccumulations");
-                    obj.updateCosmicRayFilterForAccumulations();
-                    obj.invalidateSpectrumCache();
-                case 4 % center_wavelength_nm
+                case 3 % center_wavelength_nm
                     newCenter = setValues(1);
                     isValidCenter = isscalar(newCenter) && isfinite(newCenter) && newCenter > 0;
                     assert(isValidCenter, ...
@@ -307,7 +285,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     obj.currentCenterWavelength = newCenter;
                     obj.invalidateSpectrumCache();
                     obj.updateWavelengthCache();
-                case 5 % grating
+                case 4 % grating
                     newGrating = setValues(1);
                     assert(newGrating == round(newGrating), ...
                         "instrument_AndorSpectrometer:InvalidGrating", ...
@@ -319,7 +297,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     obj.currentGrating = double(candidate);
                     obj.invalidateSpectrumCache();
                     obj.updateWavelengthCache();
-                case 6 % pixel_index
+                case 5 % pixel_index
                     idx = setValues(1);
                     assert(idx == round(idx), ...
                         "instrument_AndorSpectrometer:InvalidIndex", ...
@@ -358,18 +336,15 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             obj.initialized = true;
 
             obj.checkCCDStatus(handle.SetReadMode(obj.READ_MODE_FVB), "SetReadMode");
-            obj.checkCCDStatus(handle.SetAcquisitionMode(obj.ACQ_MODE_ACCUMULATE), "SetAcquisitionMode");
+            obj.checkCCDStatus(handle.SetAcquisitionMode(obj.ACQ_MODE_SINGLE_SCAN), "SetAcquisitionMode");
             obj.checkCCDStatus(handle.SetTriggerMode(obj.DEFAULT_TRIGGER_MODE), "SetTriggerMode");
             obj.checkCCDStatus(handle.SetExposureTime(obj.exposureTime), "SetExposureTime");
             obj.exposureTime = instrument_AndorSpectrometer.DEFAULT_EXPOSURE;
-            obj.checkCCDStatus(handle.SetNumberAccumulations(int32(obj.accumulations)), "SetNumberAccumulations");
-            obj.accumulations = instrument_AndorSpectrometer.DEFAULT_ACCUMULATIONS;
             obj.checkCCDStatus(handle.SetVSSpeed(obj.DEFAULT_VSSpeed), "SetVSSpeed");
             obj.checkCCDStatus(handle.SetADChannel(obj.DEFAULT_AD_CHANNEL), "SetADChannel");
             % obj.checkCCDStatus(handle.SetVSAmplitude(obj.DEFAULT_VSAMPLITUDE), "SetVSAmplitude");
             obj.checkCCDStatus(handle.SetHSSpeed(obj.DEFAULT_OUTAMP_TYPE, obj.DEFAULT_HSSPEED), "SetHSSpeed");
             obj.checkCCDStatus(handle.SetPreAmpGain(obj.DEFAULT_PREAMP_GAIN), "SetPreAmpGain");
-            obj.applyCosmicRayFilterMode(obj.DEFAULT_FILTER_MODE);
 
             detectorX = int32(0);
             detectorY = int32(0);
@@ -430,10 +405,14 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             obj.pixelSizeY = double(ySize);
 
             obj.requestedMask = false(obj.pixelCount, 1);
-            obj.spectrumData = nan(obj.pixelCount, 1);
+            obj.spectrumData_1 = nan(obj.pixelCount, 1);
+            obj.spectrumData_2 = nan(obj.pixelCount, 1);
+            obj.spectrumData_3 = nan(obj.pixelCount, 1);
             obj.wavelengthData = [];
             obj.pendingCounts = NaN;
             obj.pendingWavelength = NaN;
+            obj.needsAcquisition = true;
+            obj.cachedAcquisitionCount = 0;
 
             obj.checkCCDStatus(handle.SetTemperature(-90), "SetTemperature");
             obj.checkCCDStatus(handle.CoolerON(), "CoolerON");
@@ -452,30 +431,6 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             obj.exposureTime = double(exposureSeconds);
         end
 
-        function refreshAccumulations(obj)
-            persistent accumulationQueryWarningIssued
-            handle = obj.communicationHandle;
-            if isempty(handle)
-                error("instrument_AndorSpectrometer:CameraHandleUnavailable", ...
-                    "Cannot refresh accumulations because the camera communication handle is unavailable.");
-            end
-
-            if ~ismethod(handle, "GetNumberAccumulations")
-                if isempty(accumulationQueryWarningIssued) || ~accumulationQueryWarningIssued
-                    warning("instrument_AndorSpectrometer:GetNumberAccumulationsUnsupported", ...
-                        "CCD reports no GetNumberAccumulations method; cached accumulation count may be stale.");
-                    accumulationQueryWarningIssued = true;
-                end
-                return;
-            end
-
-            accumulationCount = int32(0);
-            [ret, accumulationCount] = handle.GetNumberAccumulations(accumulationCount);
-            obj.checkCCDStatus(ret, "GetNumberAccumulations");
-            obj.accumulations = double(accumulationCount);
-        end
-
-
         function initializeSpectrograph(obj)
             libAlias = instrument_AndorSpectrometer.ATSPECTROGRAPH_LIB_ALIAS;
             headerPath = obj.getSpectrographHeaderPath();
@@ -487,16 +442,17 @@ classdef instrument_AndorSpectrometer < instrumentInterface
 
             fprintf("instrument_AndorSpectrometer: Loading ATSpectrograph DLL and probing devices...\n");
             if ~libisloaded(libAlias)
-                [notfoundSymbols, loadWarnings] = loadlibrary(dllPath, headerPath, 'alias', char(libAlias));
-                if ~isempty(loadWarnings)
-                    warningLines = strtrim(cellstr(loadWarnings));
-                    warning("instrument_AndorSpectrometer:SpectrographLoadWarning", ...
-                        "loadlibrary emitted warnings:\n%s", strjoin(warningLines, newline));
-                end
-                if ~isempty(notfoundSymbols)
-                    warning("instrument_AndorSpectrometer:SpectrographLoadMissing", ...
-                        "loadlibrary reported unresolved symbols: %s", strjoin(cellstr(notfoundSymbols), ", "));
-                end
+                [~, ~] = loadlibrary(dllPath, headerPath, 'alias', char(libAlias));
+                %[notfoundSymbols, loadWarnings] = loadlibrary(dllPath, headerPath, 'alias', char(libAlias));
+                % if ~isempty(loadWarnings)
+                %     warningLines = strtrim(cellstr(loadWarnings));
+                %     warning("instrument_AndorSpectrometer:SpectrographLoadWarning", ...
+                %         "loadlibrary emitted warnings:\n%s", strjoin(warningLines, newline));
+                % end
+                % if ~isempty(notfoundSymbols)
+                %     warning("instrument_AndorSpectrometer:SpectrographLoadMissing", ...
+                %         "loadlibrary reported unresolved symbols: %s", strjoin(cellstr(notfoundSymbols), ", "));
+                % end
             end
 
             status = calllib(libAlias, 'ATSpectrographInitialize', '');
@@ -685,54 +641,131 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                 error("instrument_AndorSpectrometer:IndexOutOfRange", "Current index %d is outside detector range 1:%d.", idx, obj.pixelCount);
             end
 
-            needsAcquisition = isempty(obj.spectrumData) || numel(obj.spectrumData) ~= obj.pixelCount;
-            if ~needsAcquisition
-                needsAcquisition = obj.requestedMask(idx) || isnan(obj.spectrumData(idx));
-            end
-
-            if needsAcquisition
-                obj.acquireSpectrum();
-                obj.ensureWavelengthCache();
+            obj.currentIndex = idx;
+            if isempty(obj.requestedMask)
                 obj.requestedMask = false(obj.pixelCount, 1);
             end
 
-            obj.currentIndex = idx;
-            obj.pendingCounts = obj.spectrumData(idx);
-            obj.pendingWavelength = obj.wavelengthData(idx);
-            obj.requestedMask(idx) = true;
+            if obj.requestedMask(idx)
+                obj.invalidateSpectrumCache();
+            end
+
+            if isempty(obj.spectrumData_1) || numel(obj.spectrumData_1) ~= obj.pixelCount
+                obj.invalidateSpectrumCache();
+            end
         end
         
-        function acquireSpectrum(obj)
-            handle = obj.communicationHandle;
-            obj.checkCCDStatus(handle.StartAcquisition(), "StartAcquisition");
-            obj.waitForAcquisitionCompletion(handle, "GetStatus");
-            
-            buffer = NET.createArray("System.Int32", obj.pixelCount);
-            ret = handle.GetAcquiredData(buffer, uint32(obj.pixelCount));
-            obj.checkCCDStatus(ret, "GetAcquiredData");
-            
-            obj.spectrumData = double(buffer);
-            if ~iscolumn(obj.spectrumData)
-                obj.spectrumData = reshape(obj.spectrumData, [], 1);
+        function prepareCountsForChannel(obj, acquisitionCount)
+            if isempty(obj.currentIndex) || obj.currentIndex < 1 || obj.currentIndex > obj.pixelCount
+                error("instrument_AndorSpectrometer:IndexUnset", ...
+                    "Pixel index must be set before requesting counts.");
             end
+
+            if isempty(obj.requestedMask)
+                obj.requestedMask = false(obj.pixelCount, 1);
+            end
+
+            acquisitionCount = min(max(round(acquisitionCount), 1), 3);
+
+            obj.ensureWavelengthCache();
+            obj.ensureSpectrumAvailability(acquisitionCount);
+
+            if obj.needsAcquisition || obj.cachedAcquisitionCount < acquisitionCount
+                obj.acquireSpectrum(acquisitionCount);
+            end
+
+            obj.pendingCounts = obj.extractCounts(acquisitionCount);
+            obj.pendingWavelength = obj.wavelengthData(obj.currentIndex);
+            obj.requestedMask(obj.currentIndex) = true;
+        end
+
+        function ensureSpectrumAvailability(obj, requiredCount)
+            if nargin < 2 || isempty(requiredCount)
+                requiredCount = 1;
+            end
+            requiredCount = min(max(round(requiredCount), 1), 3);
+
+            baseInvalid = obj.needsAcquisition ...
+                || isempty(obj.spectrumData_1) || numel(obj.spectrumData_1) ~= obj.pixelCount;
+
+            if requiredCount >= 2
+                baseInvalid = baseInvalid || isempty(obj.spectrumData_2) || numel(obj.spectrumData_2) ~= obj.pixelCount;
+            end
+            if requiredCount >= 3
+                baseInvalid = baseInvalid || isempty(obj.spectrumData_3) || numel(obj.spectrumData_3) ~= obj.pixelCount;
+            end
+
+            if baseInvalid
+                obj.invalidateSpectrumCache();
+                return;
+            end
+
+            if requiredCount > obj.cachedAcquisitionCount
+                obj.needsAcquisition = true;
+            end
+        end
+
+        function acquireSpectrum(obj, acquisitionCount)
+            if nargin < 2 || isempty(acquisitionCount)
+                acquisitionCount = 1;
+            end
+            acquisitionCount = min(max(round(acquisitionCount), 1), 3);
+
+            handle = obj.communicationHandle;
+            for scanIndex = 1:acquisitionCount
+                obj.checkCCDStatus(handle.StartAcquisition(), "StartAcquisition");
+                obj.waitForAcquisitionCompletion(handle, "GetStatus", 1);
+                
+                buffer = NET.createArray("System.Int32", obj.pixelCount);
+                ret = handle.GetAcquiredData(buffer, uint32(obj.pixelCount));
+                obj.checkCCDStatus(ret, "GetAcquiredData");
+                
+                data = double(buffer);
+                if ~iscolumn(data)
+                    data = reshape(data, [], 1);
+                end
+
+                switch scanIndex
+                    case 1
+                        obj.spectrumData_1 = data;
+                    case 2
+                        obj.spectrumData_2 = data;
+                    otherwise
+                        obj.spectrumData_3 = data;
+                end
+                obj.checkForSaturation(data, "Spectrum", 1);
+            end
+
+            if acquisitionCount < 2 && ~isempty(obj.spectrumData_2)
+                obj.spectrumData_2(:) = NaN;
+            end
+            if acquisitionCount < 3 && ~isempty(obj.spectrumData_3)
+                obj.spectrumData_3(:) = NaN;
+            end
+
             obj.ensureWavelengthCache();
             obj.requestedMask = false(obj.pixelCount, 1);
-            
-            obj.checkForSaturation(obj.spectrumData, "Spectrum");
+            obj.needsAcquisition = false;
+            obj.cachedAcquisitionCount = acquisitionCount;
+            obj.pendingCounts = NaN;
+            obj.pendingWavelength = NaN;
             
             try
                 handle.FreeInternalMemory();
             catch
-                % Some SDK versions don"t require explicit cleanup; ignore failures.
+                % Some SDK versions do not require explicit cleanup; ignore failures.
             end
         end
 
-        function waitForAcquisitionCompletion(obj, handle, actionLabel)
+        function waitForAcquisitionCompletion(obj, handle, actionLabel, acquisitionCount)
             if nargin < 3 || isempty(actionLabel)
                 actionLabel = "GetStatus";
             end
+            if nargin < 4 || isempty(acquisitionCount)
+                acquisitionCount = 1;
+            end
 
-            totalDelay = obj.exposureTime * obj.accumulations;
+            totalDelay = obj.exposureTime * max(acquisitionCount, 1);
             if totalDelay > 0
                 pause(totalDelay);
             end
@@ -771,22 +804,28 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         end
         
         function invalidateSpectrumCache(obj)
-            if ~isempty(obj.spectrumData)
-                obj.spectrumData(:) = NaN;
+            if ~isempty(obj.spectrumData_1)
+                obj.spectrumData_1(:) = NaN;
+            end
+            if ~isempty(obj.spectrumData_2)
+                obj.spectrumData_2(:) = NaN;
+            end
+            if ~isempty(obj.spectrumData_3)
+                obj.spectrumData_3(:) = NaN;
             end
             if ~isempty(obj.requestedMask)
-                obj.requestedMask(:) = true;
+                obj.requestedMask(:) = false;
             end
             obj.pendingCounts = NaN;
             obj.pendingWavelength = NaN;
+            obj.needsAcquisition = true;
+            obj.cachedAcquisitionCount = 0;
         end
 
-        function restoreAcquisitionSettings(obj, exposureTime, accumulations, filterMode)
+        function restoreExposureTime(obj, exposureTime)
             handle = obj.communicationHandle;
             if isempty(handle)
                 obj.exposureTime = exposureTime;
-                obj.accumulations = accumulations;
-                obj.currentFilterMode = int32(filterMode);
                 obj.invalidateSpectrumCache();
                 return;
             end
@@ -795,41 +834,29 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                 obj.checkCCDStatus(handle.SetExposureTime(exposureTime), "SetExposureTimeRestore");
             end
             obj.exposureTime = exposureTime;
-
-            if ~isequaln(obj.accumulations, accumulations)
-                obj.checkCCDStatus(handle.SetNumberAccumulations(int32(accumulations)), "SetNumberAccumulationsRestore");
-            end
-            obj.accumulations = accumulations;
-
-            if obj.currentFilterMode ~= int32(filterMode)
-                obj.applyCosmicRayFilterMode(int32(filterMode));
-            end
-
             obj.invalidateSpectrumCache();
         end
 
-        function updateCosmicRayFilterForAccumulations(obj)
-            if obj.accumulations <= 1
-                targetMode = obj.FILTER_MODE_OFF;
-            else
-                targetMode = obj.DEFAULT_FILTER_MODE;
+        function counts = extractCounts(obj, acquisitionCount)
+            acquisitionCount = min(max(round(acquisitionCount), 1), 3);
+            idx = obj.currentIndex;
+            switch acquisitionCount
+                case 1
+                    counts = obj.spectrumData_1(idx);
+                case 2
+                    counts = [
+                        obj.spectrumData_1(idx);
+                        obj.spectrumData_2(idx)
+                        ];
+                otherwise
+                    counts = [
+                        obj.spectrumData_1(idx);
+                        obj.spectrumData_2(idx);
+                        obj.spectrumData_3(idx)
+                        ];
             end
-            obj.applyCosmicRayFilterMode(targetMode);
         end
 
-        function applyCosmicRayFilterMode(obj, mode)
-            handle = obj.communicationHandle;
-            if isempty(handle)
-                error("instrument_AndorSpectrometer:CameraHandleUnavailable", ...
-                    "Cannot adjust filter mode because the camera communication handle is unavailable.");
-            end
-            if obj.currentFilterMode == int32(mode)
-                return;
-            end
-            obj.checkCCDStatus(handle.SetFilterMode(int32(mode)), "SetFilterMode");
-            obj.currentFilterMode = int32(mode);
-        end
-        
         function bits = deriveBitsPerPixel(obj, pixelModeBits)
             bits = obj.bitDepth;
             
@@ -852,12 +879,15 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             end
         end
         
-        function checkForSaturation(obj, data, context)
+        function checkForSaturation(obj, data, context, acquisitionCount)
+            if nargin < 4 || isempty(acquisitionCount)
+                acquisitionCount = 1;
+            end
             if obj.bitDepth == 0
                 return;
             end
             
-            accumulationCount = max(obj.accumulations, 1);
+            accumulationCount = max(acquisitionCount, 1);
 
             dataPerAccumulation = data ./ accumulationCount;
             saturationLevel = double(2.^double(obj.bitDepth) - 1);

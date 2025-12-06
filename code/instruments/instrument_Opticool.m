@@ -101,7 +101,7 @@ classdef instrument_Opticool < instrumentInterface
                     end
 
                     [~, obj.readValues, obj.temperatureStatus] = handle.GetTemperature(0, obj.temperatureStatus);
-                    TF = (obj.temperatureStatus == "Stable");
+                    TF = (string(obj.temperatureStatus) == "Stable");
                 case 2
                     targetMagneticField = channelLastSetValues;
                     if obj.enforceTargetMagneticField(targetMagneticField)
@@ -109,7 +109,7 @@ classdef instrument_Opticool < instrumentInterface
                     end
 
                     [~, obj.readValues, obj.fieldStatus] = handle.GetField(0, obj.fieldStatus);
-                    TF = (obj.fieldStatus == "StableDriven");
+                    TF = (string(obj.fieldStatus) == "StableDriven");
             end
         end
 
