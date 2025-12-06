@@ -93,6 +93,7 @@ MFLI_Use = 0;
 %% Create instrumentRack
 rack = instrumentRack(false); % TF to skip safety dialog for setup script
 
+
 %% Instrument Setup Guide
 % -------------------------------------------------------------------------
 %
@@ -107,7 +108,6 @@ rack = instrumentRack(false); % TF to skip safety dialog for setup script
 % For a complete guide and examples, see: demos/INSTRUMENT_SETUP_GUIDE.txt
 %
 % -------------------------------------------------------------------------
-
 
 %% Create strain controller first (if enabled) - manages K2450s A&B and cryostat internally
 if strainController_Use
@@ -333,12 +333,13 @@ if Andor_Use
     rack.addInstrument(handle_AndorSpectrometer, "AndorSpectrometer");
     rack.addChannel("AndorSpectrometer", "temperature_C", "CCD_T_C"); % cooler temperature in C
     rack.addChannel("AndorSpectrometer", "exposure_time", "exposure"); % in seconds
-    rack.addChannel("AndorSpectrometer", "accumulations", "accumulations"); % number of accumulations per acquisition
     rack.addChannel("AndorSpectrometer", "center_wavelength_nm", "center_wavelength_nm"); % center wavelength in nm
     rack.addChannel("AndorSpectrometer", "grating", "grating"); % spectrograph grating index
     rack.addChannel("AndorSpectrometer", "pixel_index", "pixel_index"); % pixel index for readout
     rack.addChannel("AndorSpectrometer", "wavelength_nm", "wavelength_nm"); % wavelength corresponding to current pixel
-    rack.addChannel("AndorSpectrometer", "counts", "CCD_counts");
+    rack.addChannel("AndorSpectrometer", "counts_single", "CCD_counts_1x");
+    rack.addChannel("AndorSpectrometer", "counts_double", "CCD_counts_2x");
+    rack.addChannel("AndorSpectrometer", "counts_triple", "CCD_counts_3x");
     handle_AndorSpectrometer.currentGratingInfo();
 end
 
@@ -583,14 +584,12 @@ end
 
 if Montana2_Use
     handle_Montana2 = instrument_Montana2(Montana2_IP);
-    handle_Montana2.requireSetCheck = true;
     rack.addInstrument(handle_Montana2, "Montana2");
     rack.addChannel("Montana2", "T", "T");
 end
 
 if Opticool_Use
     handle_Opticool = instrument_Opticool(Opticool_IP);
-    handle_Opticool.requireSetCheck = true;
     rack.addInstrument(handle_Opticool, "Opticool");
     if ~strainController_Use
         rack.addChannel("Opticool", "T", "T");
