@@ -27,13 +27,13 @@ SR830_2_GPIB = 8; %vxx1
 SR830_3_GPIB = 9; %vxx2
 SR830_4_GPIB = 10; %vxx3
 
-K2450_A_GPIB = 17; %strain cell outer
-K2450_B_GPIB = 18; %strain cell inner
-K2450_C_GPIB = 19;
+K2450_A_GPIB = 17; %vbg/strain cell outer
+K2450_B_GPIB = 18; %vtg/strain cell inner
+K2450_C_GPIB = 19; %vtg
 
-K2400_A_GPIB = 23; %sd
+K2400_A_GPIB = 23; %vbg
 K2400_B_GPIB = 24; %vtg
-K2400_C_GPIB = 19;
+K2400_C_GPIB = 25; %vtg
 
 E4980AL_GPIB = 6; %E4980AL LCR meter for strain controller
 
@@ -209,9 +209,9 @@ if K2450_A_Use
 
     % Add to rack and configure channels
     rack.addInstrument(handle_K2450_A, "K2450_A");
-    rack.addChannel("K2450_A", "V_source", "V_tg0", 1, 0.5, -10, 10); % 1V/s ramp rate, 0.5V threshold
-    rack.addChannel("K2450_A", "I_measure", "I_tg0");
-    rack.addChannel("K2450_A", "VI", "VI_tg0");
+    rack.addChannel("K2450_A", "V_source", "V_bg", 1, 0.5, -10, 10); % 1V/s ramp rate, 0.5V threshold
+    rack.addChannel("K2450_A", "I_measure", "I_bg");
+    rack.addChannel("K2450_A", "VI", "VI_bg");
 end
 
 if K2450_B_Use
@@ -236,9 +236,9 @@ if K2450_B_Use
 
     % Add to rack and configure channels
     rack.addInstrument(handle_K2450_B, "K2450_B");
-    rack.addChannel("K2450_B", "V_source", "V_tg1", 1, 0.5, -10, 10); % 1V/s ramp rate, 0.5V threshold
-    rack.addChannel("K2450_B", "I_measure", "I_tg1");
-    rack.addChannel("K2450_B", "VI", "VI_tg1");
+    rack.addChannel("K2450_B", "V_source", "V_tg", 1, 0.5, -10, 10); % 1V/s ramp rate, 0.5V threshold
+    rack.addChannel("K2450_B", "I_measure", "I_tg");
+    rack.addChannel("K2450_B", "VI", "VI_tg");
 end
 
 if K2450_C_Use
@@ -289,9 +289,9 @@ if K2400_A_Use
 
     % Add to rack and configure channels
     rack.addInstrument(handle_K2400_A, "K2400_A");
-    rack.addChannel("K2400_A", "V_source", "V_tg", 1, 1, -10, 10); % 1V/s ramp rate, 1V threshold
-    rack.addChannel("K2400_A", "I_measure", "I_tg");
-    rack.addChannel("K2400_A", "VI", "VI_sd");
+    rack.addChannel("K2400_A", "V_source", "V_bg", 1, 0.5, -10, 10); % 1V/s ramp rate, 0.5V threshold
+    rack.addChannel("K2400_A", "I_measure", "I_bg");
+    rack.addChannel("K2400_A", "VI", "VI_bg");
 end
 
 if K2400_B_Use
@@ -315,32 +315,9 @@ if K2400_B_Use
 
     % Add to rack and configure channels
     rack.addInstrument(handle_K2400_B, "K2400_B");
-    rack.addChannel("K2400_B", "V_source", "V_bg", 1, 1, -10, 10); % 1V/s ramp rate, 1V threshold
-    rack.addChannel("K2400_B", "I_measure", "I_bg");
+    rack.addChannel("K2400_B", "V_source", "V_tg", 1, 0.5, -10, 10); % 1V/s ramp rate, 0.5V threshold
+    rack.addChannel("K2400_B", "I_measure", "I_tg");
     rack.addChannel("K2400_B", "VI", "VI_tg");
-end
-
-if K10CR1_Use
-    handle_K10CR1 = instrument_K10CR1(K10CR1_Serial);
-    rack.addInstrument(handle_K10CR1, "K10CR1");
-    rack.addChannel("K10CR1", "position_deg", "K10CR1_position_deg");
-end
-
-if Andor_Use
-    handle_AndorSpectrometer = instrument_AndorSpectrometer("AndorSpectrometer");
-    % check handle_AndorSpectrometer for properties
-    rack.batchGetTimeout = minutes(10);
-    rack.addInstrument(handle_AndorSpectrometer, "AndorSpectrometer");
-    rack.addChannel("AndorSpectrometer", "temperature_C", "CCD_T_C"); % cooler temperature in C
-    rack.addChannel("AndorSpectrometer", "exposure_time", "exposure"); % in seconds
-    rack.addChannel("AndorSpectrometer", "center_wavelength_nm", "center_wavelength_nm"); % center wavelength in nm
-    rack.addChannel("AndorSpectrometer", "grating", "grating"); % spectrograph grating index
-    rack.addChannel("AndorSpectrometer", "pixel_index", "pixel_index"); % pixel index for readout
-    rack.addChannel("AndorSpectrometer", "wavelength_nm", "wavelength_nm"); % wavelength corresponding to current pixel
-    rack.addChannel("AndorSpectrometer", "counts_single", "CCD_counts_1x");
-    rack.addChannel("AndorSpectrometer", "counts_double", "CCD_counts_2x");
-    rack.addChannel("AndorSpectrometer", "counts_triple", "CCD_counts_3x");
-    handle_AndorSpectrometer.currentGratingInfo();
 end
 
 if K2400_C_Use
@@ -364,9 +341,33 @@ if K2400_C_Use
 
     % Add to rack and configure channels
     rack.addInstrument(handle_K2400_C, "K2400_C");
-    rack.addChannel("K2400_C", "V_source", "V_tg", 1, 1); % 1V/s ramp rate, 1V threshold
+    rack.addChannel("K2400_C", "V_source", "V_tg", 1, 0.5, -10, 10); % 1V/s ramp rate, 0.5V threshold
     rack.addChannel("K2400_C", "I_measure", "I_tg");
     rack.addChannel("K2400_C", "VI", "VI_tg");
+end
+
+
+if K10CR1_Use
+    handle_K10CR1 = instrument_K10CR1(K10CR1_Serial);
+    rack.addInstrument(handle_K10CR1, "K10CR1");
+    rack.addChannel("K10CR1", "position_deg", "K10CR1_position_deg");
+end
+
+if Andor_Use
+    handle_AndorSpectrometer = instrument_AndorSpectrometer("AndorSpectrometer");
+    % check handle_AndorSpectrometer for properties
+    rack.batchGetTimeout = minutes(10);
+    rack.addInstrument(handle_AndorSpectrometer, "AndorSpectrometer");
+    rack.addChannel("AndorSpectrometer", "temperature_C", "CCD_T_C"); % cooler temperature in C
+    rack.addChannel("AndorSpectrometer", "exposure_time", "exposure"); % in seconds
+    rack.addChannel("AndorSpectrometer", "center_wavelength_nm", "center_wavelength_nm"); % center wavelength in nm
+    rack.addChannel("AndorSpectrometer", "grating", "grating"); % spectrograph grating index
+    rack.addChannel("AndorSpectrometer", "pixel_index", "pixel_index"); % pixel index for readout
+    rack.addChannel("AndorSpectrometer", "wavelength_nm", "wavelength_nm"); % wavelength corresponding to current pixel
+    rack.addChannel("AndorSpectrometer", "counts_single", "CCD_counts_1x");
+    rack.addChannel("AndorSpectrometer", "counts_double", "CCD_counts_2x");
+    rack.addChannel("AndorSpectrometer", "counts_triple", "CCD_counts_3x");
+    handle_AndorSpectrometer.currentGratingInfo();
 end
 
 if SR860_1_Use
