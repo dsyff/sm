@@ -60,6 +60,11 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         spectrographInitialized (1, 1) logical = false;
         needsAcquisition (1, 1) logical = true;
         cachedAcquisitionCount (1, 1) double = 0;
+        lastAcquisitionTime = [];
+    end
+    
+    properties (Access = public)
+        minTimeBetweenAcquisitions_s (1, 1) double = 300;
     end
     
     properties (GetAccess = public, SetAccess = private)
@@ -713,8 +718,17 @@ classdef instrument_AndorSpectrometer < instrumentInterface
 
             handle = obj.communicationHandle;
             for scanIndex = 1:acquisitionCount
+                if ~isempty(obj.lastAcquisitionTime)
+                    elapsed = toc(obj.lastAcquisitionTime);
+                    if elapsed < obj.minTimeBetweenAcquisitions_s
+                        %fprintf("instrument_AndorSpectrometer: Waiting %.0f seconds for cooldown.\n", obj.minTimeBetweenAcquisitions_s - elapsed);
+                        pause(obj.minTimeBetweenAcquisitions_s - elapsed);
+                    end
+                end
+
                 obj.checkCCDStatus(handle.StartAcquisition(), "StartAcquisition");
                 obj.waitForAcquisitionCompletion(handle, "GetStatus", 1);
+                obj.lastAcquisitionTime = tic;
                 
                 buffer = NET.createArray("System.Int32", obj.pixelCount);
                 ret = handle.GetAcquiredData(buffer, uint32(obj.pixelCount));
