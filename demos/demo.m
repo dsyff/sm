@@ -355,6 +355,7 @@ end
 
 if Andor_Use
     handle_AndorSpectrometer = instrument_AndorSpectrometer("AndorSpectrometer");
+    handle_AndorSpectrometer.minTimeBetweenAcquisitions_s = 300;
     % check handle_AndorSpectrometer for properties
     rack.batchGetTimeout = minutes(10);
     rack.addInstrument(handle_AndorSpectrometer, "AndorSpectrometer");
