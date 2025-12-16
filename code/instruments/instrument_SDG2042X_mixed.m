@@ -157,7 +157,8 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
 
             maxAbsValue = max(abs(mixedData));
             if maxAbsValue == 0
-                error("Mixed waveform is identically zero; cannot scale/upload. Set at least one nonzero Amplitude_n.");
+                % If waveform is identically zero, do not upload anything.
+                return;
             end
 
             actualVpp = max(mixedData) - min(mixedData);
