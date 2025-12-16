@@ -121,6 +121,10 @@ classdef instrument_SDG2042X_mixed_TARB < instrumentInterface
             fs = obj.uploadSampleRateHz;
             fundamentalHz = obj.uploadFundamentalFrequencyHz;
 
+            if fs >= 1.2e9
+                error("uploadSampleRateHz must be < 1.2e9 Hz for TARB. Received %g Hz.", fs);
+            end
+
             pointsPerPeriod = fs / fundamentalHz;
             numPoints = round(pointsPerPeriod);
             tol = 10 * eps(max(1, abs(pointsPerPeriod)));
