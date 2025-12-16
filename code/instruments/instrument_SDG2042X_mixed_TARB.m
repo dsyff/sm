@@ -135,15 +135,14 @@ classdef instrument_SDG2042X_mixed_TARB < instrumentInterface
             end
 
             maxAbsValue = max(abs(mixedData));
-            if maxAbsValue == 0
-                % If waveform is identically zero, do not upload anything.
-                return;
-            end
-
             actualVpp = max(mixedData) - min(mixedData);
 
             dacFullScale = double(intmax("int16")); % 32767
-            dacScaleFactor = dacFullScale / maxAbsValue;
+            if maxAbsValue == 0
+                dacScaleFactor = 0;
+            else
+                dacScaleFactor = dacFullScale / maxAbsValue;
+            end
 
             dataCH1 = int16(round(mixedData * dacScaleFactor));
             dataCH2 = int16(round(-mixedData * dacScaleFactor));
