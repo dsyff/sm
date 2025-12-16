@@ -123,7 +123,7 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
         function resetSettingsOnInit(obj)
             handle = obj.communicationHandle;
             writeline(handle, "*RST");
-            pause(1.5);
+            pause(0.5);
 
             writeline(handle, "C1:OUTP OFF");
             writeline(handle, "C2:OUTP OFF");
