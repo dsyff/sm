@@ -127,7 +127,6 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
 
             writeline(handle, "C1:OUTP OFF");
             writeline(handle, "C2:OUTP OFF");
-            pause(0.3);
 
             writeline(handle, "C1:OUTP LOAD,HZ");
             writeline(handle, "C2:OUTP LOAD,HZ");
@@ -170,14 +169,11 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             dataCH2 = int16(round(-mixedData * dacScaleFactor));
 
             obj.uploadWaveformBinary("C1", obj.waveformNameCH1, dataCH1);
-            pause(1.5);
             obj.uploadWaveformBinary("C2", obj.waveformNameCH2, dataCH2);
-            pause(1.5);
 
             outputAmplitudeVpp = actualVpp;
 
             writeline(handle, "C1:OUTP OFF");
-            pause(0.3);
             writeline(handle, "C1:OUTP LOAD,HZ");
             writeline(handle, "C1:ARWV NAME," + obj.waveformNameCH1);
             writeline(handle, "C1:BSWV WVTP,ARB");
@@ -188,7 +184,6 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             writeline(handle, "C1:OUTP ON");
 
             writeline(handle, "C2:OUTP OFF");
-            pause(0.3);
             writeline(handle, "C2:OUTP LOAD,HZ");
             writeline(handle, "C2:ARWV NAME," + obj.waveformNameCH2);
             writeline(handle, "C2:BSWV WVTP,ARB");
