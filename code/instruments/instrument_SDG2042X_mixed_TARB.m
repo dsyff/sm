@@ -15,21 +15,45 @@ classdef instrument_SDG2042X_mixed_TARB < instrumentInterface
         cachedFrequencyHz (7, 1) double = zeros(7, 1);
         cachedGlobalPhaseOffsetDeg (1, 1) double = 0;
 
-        uploadSampleRateHz (1, 1) double {mustBePositive} = 1e6;
-        uploadFundamentalFrequencyHz (1, 1) double {mustBePositive} = 1;
-
         waveformNameCH1 (1, 1) string = "TARB_POS";
         waveformNameCH2 (1, 1) string = "TARB_NEG";
-        roscSource (1, 1) string = "INT"; % "INT" or "EXT"
+    end
+
+    properties (SetAccess = immutable, GetAccess = private)
+        uploadSampleRateHz (1, 1) double
+        uploadFundamentalFrequencyHz (1, 1) double
+        tarbNumPoints (1, 1) double
+        roscSource (1, 1) string
     end
 
     methods
-        function obj = instrument_SDG2042X_mixed_TARB(address)
+        function obj = instrument_SDG2042X_mixed_TARB(address, NameValueArgs)
+            arguments
+                address (1, 1) string {mustBeNonzeroLengthText}
+                NameValueArgs.uploadSampleRateHz (1, 1) double {mustBePositive} = 1e6
+                NameValueArgs.uploadFundamentalFrequencyHz (1, 1) double {mustBePositive} = 1
+                NameValueArgs.roscSource (1, 1) string {mustBeMember(NameValueArgs.roscSource, ["INT", "EXT"])} = "INT"
+            end
             obj@instrumentInterface();
 
-            if nargin < 1 || address == ""
-                error("SDG2042X address must be specified (e.g. ""USB0::...::INSTR"").");
+            fs = NameValueArgs.uploadSampleRateHz;
+            fundamentalHz = NameValueArgs.uploadFundamentalFrequencyHz;
+
+            if fs >= 1.2e9
+                error("uploadSampleRateHz must be < 1.2e9 Hz for TARB. Received %g Hz.", fs);
             end
+
+            pointsPerPeriod = fs / fundamentalHz;
+            numPoints = round(pointsPerPeriod);
+            tol = 10 * eps(max(1, abs(pointsPerPeriod)));
+            if abs(pointsPerPeriod - numPoints) > tol
+                error("TARB requires sampleRate/fundamentalHz to be an integer so the waveform covers exactly one fundamental period. Received sampleRate=%g Hz, fundamentalHz=%g Hz (ratio=%0.15g). Choose fundamentalHz so that sampleRate/fundamentalHz is an integer.", fs, fundamentalHz, pointsPerPeriod);
+            end
+
+            obj.uploadSampleRateHz = fs;
+            obj.uploadFundamentalFrequencyHz = fundamentalHz;
+            obj.tarbNumPoints = numPoints;
+            obj.roscSource = NameValueArgs.roscSource;
 
             handle = visadev(address);
             configureTerminator(handle, "LF");
@@ -119,18 +143,7 @@ classdef instrument_SDG2042X_mixed_TARB < instrumentInterface
             end
 
             fs = obj.uploadSampleRateHz;
-            fundamentalHz = obj.uploadFundamentalFrequencyHz;
-
-            if fs >= 1.2e9
-                error("uploadSampleRateHz must be < 1.2e9 Hz for TARB. Received %g Hz.", fs);
-            end
-
-            pointsPerPeriod = fs / fundamentalHz;
-            numPoints = round(pointsPerPeriod);
-            tol = 10 * eps(max(1, abs(pointsPerPeriod)));
-            if abs(pointsPerPeriod - numPoints) > tol
-                error("TARB requires sampleRate/fundamentalHz to be an integer so the waveform covers exactly one fundamental period. Received sampleRate=%g Hz, fundamentalHz=%g Hz (ratio=%0.15g). Choose fundamentalHz so that sampleRate/fundamentalHz is an integer.", fs, fundamentalHz, pointsPerPeriod);
-            end
+            numPoints = obj.tarbNumPoints;
 
             t = (0:numPoints-1) ./ fs; % seconds
             mixedData = zeros(1, numPoints);
