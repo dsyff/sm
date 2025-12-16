@@ -41,6 +41,7 @@ Montana2_IP = "136.167.55.165";
 Opticool_IP = "127.0.0.1";
 Attodry2100_Address = "192.168.1.1";
 MFLI_Address = "dev30037";
+SDG2042X_mixed_Address = "USB0::0xF4EC::0xEE38::0123456789::0::INSTR";
 
 K10CR1_Serial = ""; % Leave blank to use the first detected device
 BK889B_Serial = "COM3";
@@ -88,6 +89,7 @@ Attodry2100_Use = 0;
 BK889B_Use = 0;
 E4980AL_Use = 0;
 MFLI_Use = 0;
+SDG2042X_mixed_Use = 0;
 
 
 %% Create instrumentRack
@@ -582,6 +584,20 @@ if MFLI_Use
         rack.addChannel("MFLI", sprintf("Harmonic_%d", i), sprintf("MFLI_Harm_%d", i));
         rack.addChannel("MFLI", sprintf("On_%d", i), sprintf("MFLI_On_%d", i));
     end
+end
+
+if SDG2042X_mixed_Use
+    % SDG2042X mixed multi-tone output (uploads on every set)
+    handle_SDG2042X_mixed = instrument_SDG2042X_mixed(SDG2042X_mixed_Address);
+    handle_SDG2042X_mixed.requireSetCheck = false;
+
+    rack.addInstrument(handle_SDG2042X_mixed, "SDG2042X_mixed");
+    for i = 1:7
+        rack.addChannel("SDG2042X_mixed", string(sprintf("Amplitude_%d", i)), string(sprintf("SDG_Amp_%d", i)));
+        rack.addChannel("SDG2042X_mixed", string(sprintf("Phase_%d", i)), string(sprintf("SDG_Phase_%d", i)));
+        rack.addChannel("SDG2042X_mixed", string(sprintf("Frequency_%d", i)), string(sprintf("SDG_Freq_%d", i)));
+    end
+    rack.addChannel("SDG2042X_mixed", "global_phase_offset", "SDG_global_phase_offset");
 end
 
 if Montana2_Use
