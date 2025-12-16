@@ -38,11 +38,11 @@ classdef instrument_SDG2042X_mixed_TARB < instrumentInterface
             obj.communicationHandle = handle;
 
             for sineIndex = 1:7
-                obj.addChannel(string(sprintf("Amplitude_%d", sineIndex)), setTolerances = 1e-3);
-                obj.addChannel(string(sprintf("Phase_%d", sineIndex)), setTolerances = 1e-3);
-                obj.addChannel(string(sprintf("Frequency_%d", sineIndex)), setTolerances = 1e-3);
+                obj.addChannel(string(sprintf("Amplitude_%d", sineIndex)));
+                obj.addChannel(string(sprintf("Phase_%d", sineIndex)));
+                obj.addChannel(string(sprintf("Frequency_%d", sineIndex)));
             end
-            obj.addChannel("global_phase_offset", setTolerances = 1e-3);
+            obj.addChannel("global_phase_offset");
 
             obj.resetSettingsOnInit();
         end
