@@ -3,6 +3,10 @@ classdef smguiBridge < handle
     % This allows the GUI to work with the new sm2 architecture
     % while maintaining compatibility with the old smdata structure
     
+    properties (Access = public)
+        experimentRootPath = ''  % Stores the root path for experiment data/ppt
+    end
+    
     properties (Access = private)
         rack  % The instrumentRack instance
     end

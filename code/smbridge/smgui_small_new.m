@@ -1665,7 +1665,13 @@ function registerSmallGuiWithPptState()
         if isfield(smaux, 'pptsavefile') && ~isempty(smaux.pptsavefile)
             targetFile = smaux.pptsavefile;
         else
+            % Set default short name
             targetFile = 'log.ppt';
+            % Store pwd as experimentRootPath if not already set
+            global bridge;
+            if isempty(bridge.experimentRootPath)
+                bridge.experimentRootPath = pwd;
+            end
         end
     end
     if targetEnabled ~= currentEnabled || ~strcmp(char(targetFile), char(currentFile))

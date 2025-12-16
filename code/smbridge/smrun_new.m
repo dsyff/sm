@@ -869,6 +869,18 @@ function saveData()
                     text_data.body = '';
                 end
 
+                % Resolve PPT file path
+                if ~isempty(pptFile)
+                    % If path is relative, try to resolve using bridge.experimentRootPath
+                    [pptPath, pptName, pptExt] = fileparts(pptFile);
+                    if isempty(pptPath)
+                        global bridge;
+                        if ~isempty(bridge) && isprop(bridge, 'experimentRootPath') && ~isempty(bridge.experimentRootPath)
+                            pptFile = fullfile(bridge.experimentRootPath, [pptName pptExt]);
+                        end
+                    end
+                end
+
                 smsaveppt(pptFile, text_data, '-f1000');
             end
         end
