@@ -155,15 +155,14 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             end
 
             maxAbsValue = max(abs(mixedData));
-            if maxAbsValue == 0
-                % If waveform is identically zero, do not upload anything.
-                return;
-            end
-
             actualVpp = max(mixedData) - min(mixedData);
             % SDG2042X expects 16-bit two's-complement waveform samples.
             dacFullScale = double(intmax("int16")); % 32767
-            dacScaleFactor = dacFullScale / maxAbsValue;
+            if maxAbsValue == 0
+                dacScaleFactor = 0;
+            else
+                dacScaleFactor = dacFullScale / maxAbsValue;
+            end
 
             dataCH1 = int16(round(mixedData * dacScaleFactor));
             dataCH2 = int16(round(-mixedData * dacScaleFactor));
