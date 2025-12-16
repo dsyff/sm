@@ -16,7 +16,7 @@ classdef instrument_SDG2042X_mixed_TARB < instrumentInterface
         cachedGlobalPhaseOffsetDeg (1, 1) double = 0;
 
         uploadSampleRateHz (1, 1) double {mustBePositive} = 1e6;
-        uploadFundamentalFrequencyHz (1, 1) double {mustBePositive} = 1e6 / 4096; % ensures integer points by default
+        uploadFundamentalFrequencyHz (1, 1) double {mustBePositive} = 1;
 
         waveformNameCH1 (1, 1) string = "TARB_POS";
         waveformNameCH2 (1, 1) string = "TARB_NEG";
@@ -123,8 +123,9 @@ classdef instrument_SDG2042X_mixed_TARB < instrumentInterface
 
             pointsPerPeriod = fs / fundamentalHz;
             numPoints = round(pointsPerPeriod);
-            if abs(pointsPerPeriod - numPoints) > 1e-9
-                error("TARB requires sampleRate/fundamentalHz to be an integer so the waveform covers exactly one fundamental period. Received sampleRate=%g Hz, fundamentalHz=%g Hz (ratio=%0.15g).", fs, fundamentalHz, pointsPerPeriod);
+            tol = 10 * eps(max(1, abs(pointsPerPeriod)));
+            if abs(pointsPerPeriod - numPoints) > tol
+                error("TARB requires sampleRate/fundamentalHz to be an integer so the waveform covers exactly one fundamental period. Received sampleRate=%g Hz, fundamentalHz=%g Hz (ratio=%0.15g). Choose fundamentalHz so that sampleRate/fundamentalHz is an integer.", fs, fundamentalHz, pointsPerPeriod);
             end
 
             t = (0:numPoints-1) ./ fs; % seconds
