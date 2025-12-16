@@ -604,7 +604,10 @@ end
 
 if SDG2042X_mixed_TARB_Use
     % SDG2042X mixed multi-tone output using TrueArb (TARB) mode (uploads on every set)
-    handle_SDG2042X_mixed_TARB = instrument_SDG2042X_mixed_TARB(SDG2042X_mixed_TARB_Address);
+    handle_SDG2042X_mixed_TARB = instrument_SDG2042X_mixed_TARB(SDG2042X_mixed_TARB_Address, ...
+        uploadSampleRateHz = 1e6, ...
+        uploadFundamentalFrequencyHz = 1, ...
+        roscSource = "INT");
     handle_SDG2042X_mixed_TARB.requireSetCheck = false;
 
     rack.addInstrument(handle_SDG2042X_mixed_TARB, "SDG2042X_mixed_TARB");
