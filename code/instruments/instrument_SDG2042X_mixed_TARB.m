@@ -15,7 +15,7 @@ classdef instrument_SDG2042X_mixed_TARB < instrumentInterface
         cachedFrequencyHz (7, 1) double = zeros(7, 1);
         cachedGlobalPhaseOffsetDeg (1, 1) double = 0;
 
-        uploadSampleRateSaPerS (1, 1) double {mustBePositive} = 1e6;
+        uploadSampleRateHz (1, 1) double {mustBePositive} = 1e6;
         uploadFundamentalFrequencyHz (1, 1) double {mustBePositive} = 1e6 / 4096; % ensures integer points by default
 
         waveformNameCH1 (1, 1) string = "TARB_POS";
@@ -118,13 +118,13 @@ classdef instrument_SDG2042X_mixed_TARB < instrumentInterface
                 error("SDG2042X communicationHandle is empty; cannot upload waveform.");
             end
 
-            fs = obj.uploadSampleRateSaPerS;
+            fs = obj.uploadSampleRateHz;
             fundamentalHz = obj.uploadFundamentalFrequencyHz;
 
             pointsPerPeriod = fs / fundamentalHz;
             numPoints = round(pointsPerPeriod);
             if abs(pointsPerPeriod - numPoints) > 1e-9
-                error("TARB requires sampleRate/fundamentalHz to be an integer so the waveform covers exactly one fundamental period. Received sampleRate=%g Sa/s, fundamentalHz=%g Hz (ratio=%0.15g).", fs, fundamentalHz, pointsPerPeriod);
+                error("TARB requires sampleRate/fundamentalHz to be an integer so the waveform covers exactly one fundamental period. Received sampleRate=%g Hz, fundamentalHz=%g Hz (ratio=%0.15g).", fs, fundamentalHz, pointsPerPeriod);
             end
 
             t = (0:numPoints-1) ./ fs; % seconds
