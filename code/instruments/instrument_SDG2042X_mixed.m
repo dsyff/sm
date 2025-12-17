@@ -23,7 +23,7 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
         uploadSampleRateHz (1, 1) double
         uploadFundamentalFrequencyHz (1, 1) double
         waveformArraySize (1, 1) double
-        roscSource (1, 1) string
+        internalTimebase (1, 1) logical
     end
 
     methods
@@ -32,7 +32,7 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
                 address (1, 1) string {mustBeNonzeroLengthText}
                 NameValueArgs.waveformArraySize (1, 1) double {mustBePositive, mustBeInteger} = 2e5
                 NameValueArgs.uploadFundamentalFrequencyHz (1, 1) double {mustBePositive} = 1
-                NameValueArgs.roscSource (1, 1) string {mustBeMember(NameValueArgs.roscSource, ["INT", "EXT"])} = "INT"
+                NameValueArgs.internalTimebase (1, 1) logical = true
             end
             obj@instrumentInterface();
 
@@ -47,7 +47,7 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             obj.uploadSampleRateHz = fs;
             obj.uploadFundamentalFrequencyHz = fundamentalHz;
             obj.waveformArraySize = numPoints;
-            obj.roscSource = NameValueArgs.roscSource;
+            obj.internalTimebase = NameValueArgs.internalTimebase;
 
             handle = visadev(address);
             configureTerminator(handle, "LF");
@@ -170,7 +170,11 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
 
             % TrueArb configuration (per example_snippet_TARB.txt)
             writeline(handle, "C1:OUTP OFF");
-            writeline(handle, "C1:ROSC:SOUR " + obj.roscSource);
+            if obj.internalTimebase
+                writeline(handle, "C1:ROSC:SOUR INT");
+            else
+                writeline(handle, "C1:ROSC:SOUR EXT");
+            end
             writeline(handle, "C1:SRATE MODE,TARB");
             writeline(handle, string(sprintf("C1:SRATE VALUE,%e", fs)));
             writeline(handle, "C1:OUTP LOAD,HZ");
@@ -182,7 +186,11 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             writeline(handle, "C1:OUTP ON");
 
             writeline(handle, "C2:OUTP OFF");
-            writeline(handle, "C2:ROSC:SOUR " + obj.roscSource);
+            if obj.internalTimebase
+                writeline(handle, "C2:ROSC:SOUR INT");
+            else
+                writeline(handle, "C2:ROSC:SOUR EXT");
+            end
             writeline(handle, "C2:SRATE MODE,TARB");
             writeline(handle, string(sprintf("C2:SRATE VALUE,%e", fs)));
             writeline(handle, "C2:OUTP LOAD,HZ");

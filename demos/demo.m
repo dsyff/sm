@@ -42,6 +42,7 @@ Opticool_IP = "127.0.0.1";
 Attodry2100_Address = "192.168.1.1";
 MFLI_Address = "dev30037";
 SDG2042X_mixed_Address = "USB0::0xF4EC::0xEE38::0123456789::0::INSTR";
+SDG2042X_pure_Address = SDG2042X_mixed_Address;
 
 K10CR1_Serial = ""; % Leave blank to use the first detected device
 BK889B_Serial = "COM3";
@@ -90,6 +91,7 @@ BK889B_Use = 0;
 E4980AL_Use = 0;
 MFLI_Use = 0;
 SDG2042X_mixed_Use = 0;
+SDG2042X_pure_Use = 0;
 
 
 %% Create instrumentRack
@@ -591,7 +593,7 @@ if SDG2042X_mixed_Use
     handle_SDG2042X_mixed = instrument_SDG2042X_mixed(SDG2042X_mixed_Address, ...
         waveformArraySize = 2e5, ...
         uploadFundamentalFrequencyHz = 1, ...
-        roscSource = "INT");
+        internalTimebase = true);
     handle_SDG2042X_mixed.requireSetCheck = false;
 
     rack.addInstrument(handle_SDG2042X_mixed, "SDG2042X_mixed");
@@ -601,6 +603,23 @@ if SDG2042X_mixed_Use
         rack.addChannel("SDG2042X_mixed", string(sprintf("frequency_%d", i)), string(sprintf("mix_f_%d", i)));
     end
     rack.addChannel("SDG2042X_mixed", "global_phase_offset", "mix_Th");
+end
+
+if SDG2042X_pure_Use
+    % SDG2042X 2-channel pure sines using TrueArb (TARB) mode (uploads on every set)
+    handle_SDG2042X_pure = instrument_SDG2042X_pure(SDG2042X_pure_Address, ...
+        waveformArraySize = 2e5, ...
+        uploadFundamentalFrequencyHz = 1, ...
+        internalTimebase = true);
+    handle_SDG2042X_pure.requireSetCheck = false;
+
+    rack.addInstrument(handle_SDG2042X_pure, "SDG2042X_pure");
+    for i = 1:2
+        rack.addChannel("SDG2042X_pure", string(sprintf("amplitude_%d", i)), string(sprintf("pure_A_%d", i)));
+        rack.addChannel("SDG2042X_pure", string(sprintf("phase_%d", i)), string(sprintf("pure_Th_%d", i)));
+        rack.addChannel("SDG2042X_pure", string(sprintf("frequency_%d", i)), string(sprintf("pure_f_%d", i)));
+    end
+    rack.addChannel("SDG2042X_pure", "global_phase_offset", "pure_Th");
 end
 
 if Montana2_Use
