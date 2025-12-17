@@ -23,7 +23,7 @@ classdef instrument_SDG2042X_pure < instrumentInterface
         uploadSampleRateHz (1, 1) double
         uploadFundamentalFrequencyHz (1, 1) double
         waveformArraySize (1, 1) double
-        roscSource (1, 1) string
+        internalTimebase (1, 1) logical
     end
 
     methods
@@ -32,7 +32,7 @@ classdef instrument_SDG2042X_pure < instrumentInterface
                 address (1, 1) string {mustBeNonzeroLengthText}
                 NameValueArgs.waveformArraySize (1, 1) double {mustBePositive, mustBeInteger} = 2e5
                 NameValueArgs.uploadFundamentalFrequencyHz (1, 1) double {mustBePositive} = 1
-                NameValueArgs.roscSource (1, 1) string {mustBeMember(NameValueArgs.roscSource, ["INT", "EXT"])} = "INT"
+                NameValueArgs.internalTimebase (1, 1) logical = true
             end
             obj@instrumentInterface();
 
@@ -46,7 +46,7 @@ classdef instrument_SDG2042X_pure < instrumentInterface
             obj.uploadSampleRateHz = fs;
             obj.uploadFundamentalFrequencyHz = fundamentalHz;
             obj.waveformArraySize = numPoints;
-            obj.roscSource = NameValueArgs.roscSource;
+            obj.internalTimebase = NameValueArgs.internalTimebase;
 
             handle = visadev(address);
             configureTerminator(handle, "LF");
@@ -169,7 +169,11 @@ classdef instrument_SDG2042X_pure < instrumentInterface
         function configureChannelTARB(obj, channelPrefix, waveformName, fs, vpp)
             handle = obj.communicationHandle;
             writeline(handle, channelPrefix + ":OUTP OFF");
-            writeline(handle, channelPrefix + ":ROSC:SOUR " + obj.roscSource);
+            if obj.internalTimebase
+                writeline(handle, channelPrefix + ":ROSC:SOUR INT");
+            else
+                writeline(handle, channelPrefix + ":ROSC:SOUR EXT");
+            end
             writeline(handle, channelPrefix + ":SRATE MODE,TARB");
             writeline(handle, string(sprintf("%s:SRATE VALUE,%e", channelPrefix, fs)));
             writeline(handle, channelPrefix + ":OUTP LOAD,HZ");
