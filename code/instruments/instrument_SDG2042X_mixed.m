@@ -1,14 +1,11 @@
 classdef instrument_SDG2042X_mixed < instrumentInterface
-    % SDG2042X mixed multi-tone ARB uploader.
+    % SDG2042X mixed multi-tone uploader using TrueARB (TARB) sample-rate mode.
     %
     % Channels (all set-only; read returns cached values):
-    % - Amplitude_1..7 (V)
+    % - Amplitude_1..7 (Vpp)
     % - Phase_1..7 (deg)
     % - Frequency_1..7 (Hz)
     % - global_phase_offset (deg)
-    %
-    % Waveform definition for time vector t (seconds), returned as column:
-    % y(t) = sum_i A_i * sin(2*pi*F_i*t + deg2rad(Phase_i + global_offset))
     %
     % Upload happens every time any parameter is changed (setWrite).
 
@@ -18,19 +15,39 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
         cachedFrequencyHz (7, 1) double = zeros(7, 1);
         cachedGlobalPhaseOffsetDeg (1, 1) double = 0;
 
-        uploadNumPoints (1, 1) double {mustBePositive, mustBeInteger} = 4096;
-        uploadFundamentalFrequencyHz (1, 1) double {mustBePositive} = 1;
-        waveformNameCH1 (1, 1) string = "MULTI_POS";
-        waveformNameCH2 (1, 1) string = "MULTI_NEG";
+        waveformNameCH1 (1, 1) string = "TARB_POS";
+        waveformNameCH2 (1, 1) string = "TARB_NEG";
+    end
+
+    properties (SetAccess = immutable, GetAccess = private)
+        uploadSampleRateHz (1, 1) double
+        uploadFundamentalFrequencyHz (1, 1) double
+        waveformArraySize (1, 1) double
+        roscSource (1, 1) string
     end
 
     methods
-        function obj = instrument_SDG2042X_mixed(address)
+        function obj = instrument_SDG2042X_mixed(address, NameValueArgs)
+            arguments
+                address (1, 1) string {mustBeNonzeroLengthText}
+                NameValueArgs.waveformArraySize (1, 1) double {mustBePositive, mustBeInteger} = 2e5
+                NameValueArgs.uploadFundamentalFrequencyHz (1, 1) double {mustBePositive} = 1
+                NameValueArgs.roscSource (1, 1) string {mustBeMember(NameValueArgs.roscSource, ["INT", "EXT"])} = "INT"
+            end
             obj@instrumentInterface();
 
-            if nargin < 1 || address == ""
-                error("SDG2042X address must be specified (e.g. ""USB0::...::INSTR"").");
+            fundamentalHz = NameValueArgs.uploadFundamentalFrequencyHz;
+            numPoints = double(NameValueArgs.waveformArraySize);
+            fs = numPoints * fundamentalHz;
+
+            if fs >= 1.2e9
+                error("Computed sample rate must be < 1.2e9 Hz for TARB. Received %g Hz from waveformArraySize=%g and fundamentalHz=%g.", fs, numPoints, fundamentalHz);
             end
+
+            obj.uploadSampleRateHz = fs;
+            obj.uploadFundamentalFrequencyHz = fundamentalHz;
+            obj.waveformArraySize = numPoints;
+            obj.roscSource = NameValueArgs.roscSource;
 
             handle = visadev(address);
             configureTerminator(handle, "LF");
@@ -39,32 +56,13 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             obj.communicationHandle = handle;
 
             for sineIndex = 1:7
-                obj.addChannel(string(sprintf("Amplitude_%d", sineIndex)), setTolerances = 1e-3);
-                obj.addChannel(string(sprintf("Phase_%d", sineIndex)), setTolerances = 1e-3);
-                obj.addChannel(string(sprintf("Frequency_%d", sineIndex)), setTolerances = 1e-3);
+                obj.addChannel(string(sprintf("Amplitude_%d", sineIndex)));
+                obj.addChannel(string(sprintf("Phase_%d", sineIndex)));
+                obj.addChannel(string(sprintf("Frequency_%d", sineIndex)));
             end
-            obj.addChannel("global_phase_offset", setTolerances = 1e-3);
+            obj.addChannel("global_phase_offset");
 
             obj.resetSettingsOnInit();
-        end
-
-        function y = generateMixedSine(obj, t)
-            arguments
-                obj
-                t double {mustBeVector, mustBeNonempty}
-            end
-
-            if isrow(t)
-                t = t.';
-            end
-
-            % cachedAmplitude is interpreted as Vpp (consistent with SDG2042X demos)
-            phaseRad = deg2rad(obj.cachedPhaseDeg + obj.cachedGlobalPhaseOffsetDeg);
-            omega = 2 * pi * obj.cachedFrequencyHz;
-            y = zeros(size(t));
-            for sineIndex = 1:7
-                y = y + (obj.cachedAmplitude(sineIndex) ./ 2) .* sin(omega(sineIndex) .* t + phaseRad(sineIndex));
-            end
         end
     end
 
@@ -111,7 +109,7 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
                 obj.cachedGlobalPhaseOffsetDeg = setValues;
             end
 
-            obj.uploadMixedWaveform();
+            obj.uploadMixedWaveformTARB();
         end
 
         function TF = setCheckChannelHelper(~, ~, ~)
@@ -132,16 +130,16 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             writeline(handle, "C2:OUTP LOAD,HZ");
         end
 
-        function uploadMixedWaveform(obj)
+        function uploadMixedWaveformTARB(obj)
             handle = obj.communicationHandle;
             if isempty(handle)
                 error("SDG2042X communicationHandle is empty; cannot upload waveform.");
             end
 
-            numPoints = obj.uploadNumPoints;
-            fundamentalHz = obj.uploadFundamentalFrequencyHz;
+            fs = obj.uploadSampleRateHz;
+            numPoints = obj.waveformArraySize;
 
-            timeVector = (0:numPoints-1) ./ numPoints; % one period, normalized
+            t = (0:numPoints-1) ./ fs; % seconds
             mixedData = zeros(1, numPoints);
 
             globalOffsetDeg = obj.cachedGlobalPhaseOffsetDeg;
@@ -150,13 +148,13 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
                 freqHz = obj.cachedFrequencyHz(sineIndex);
                 phaseDeg = obj.cachedPhaseDeg(sineIndex);
                 phaseRad = (phaseDeg + globalOffsetDeg) * pi / 180;
-                tone = (ampVpp / 2) * sin(2 * pi * (freqHz / fundamentalHz) * timeVector + phaseRad);
+                tone = (ampVpp / 2) * sin(2 * pi * freqHz * t + phaseRad);
                 mixedData = mixedData + tone;
             end
 
             maxAbsValue = max(abs(mixedData));
             actualVpp = max(mixedData) - min(mixedData);
-            % SDG2042X expects 16-bit two's-complement waveform samples.
+
             dacFullScale = double(intmax("int16")); % 32767
             if maxAbsValue == 0
                 dacScaleFactor = 0;
@@ -170,24 +168,27 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             obj.uploadWaveformBinary("C1", obj.waveformNameCH1, dataCH1);
             obj.uploadWaveformBinary("C2", obj.waveformNameCH2, dataCH2);
 
-            outputAmplitudeVpp = actualVpp;
-
+            % TrueArb configuration (per example_snippet_TARB.txt)
             writeline(handle, "C1:OUTP OFF");
+            writeline(handle, "C1:ROSC:SOUR " + obj.roscSource);
+            writeline(handle, "C1:SRATE MODE,TARB");
+            writeline(handle, string(sprintf("C1:SRATE VALUE,%e", fs)));
             writeline(handle, "C1:OUTP LOAD,HZ");
             writeline(handle, "C1:ARWV NAME," + obj.waveformNameCH1);
             writeline(handle, "C1:BSWV WVTP,ARB");
-            writeline(handle, string(sprintf("C1:BSWV FRQ,%d", fundamentalHz)));
-            writeline(handle, string(sprintf("C1:BSWV AMP,%.4f", outputAmplitudeVpp * 2)));
+            writeline(handle, string(sprintf("C1:BSWV AMP,%.4f", actualVpp)));
             writeline(handle, "C1:BSWV OFST,0");
             writeline(handle, "C1:BSWV PHSE,0");
             writeline(handle, "C1:OUTP ON");
 
             writeline(handle, "C2:OUTP OFF");
+            writeline(handle, "C2:ROSC:SOUR " + obj.roscSource);
+            writeline(handle, "C2:SRATE MODE,TARB");
+            writeline(handle, string(sprintf("C2:SRATE VALUE,%e", fs)));
             writeline(handle, "C2:OUTP LOAD,HZ");
             writeline(handle, "C2:ARWV NAME," + obj.waveformNameCH2);
             writeline(handle, "C2:BSWV WVTP,ARB");
-            writeline(handle, string(sprintf("C2:BSWV FRQ,%d", fundamentalHz)));
-            writeline(handle, string(sprintf("C2:BSWV AMP,%.4f", outputAmplitudeVpp * 2)));
+            writeline(handle, string(sprintf("C2:BSWV AMP,%.4f", actualVpp)));
             writeline(handle, "C2:BSWV OFST,0");
             writeline(handle, "C2:BSWV PHSE,0");
             writeline(handle, "C2:OUTP ON");
