@@ -578,11 +578,11 @@ if MFLI_Use
     rack.addInstrument(handle_MFLI, "MFLI");
     % Add channels for MFLI (4 sine generators)
     for i = 1:4
-        rack.addChannel("MFLI", sprintf("Amplitude_%d", i), sprintf("MFLI_Amp_%d", i), [], [], -2, 2);
-        rack.addChannel("MFLI", sprintf("Phase_%d", i), sprintf("MFLI_Phase_%d", i)); %degrees
-        rack.addChannel("MFLI", sprintf("Frequency_%d", i), sprintf("MFLI_Freq_%d", i));
-        rack.addChannel("MFLI", sprintf("Harmonic_%d", i), sprintf("MFLI_Harm_%d", i));
-        rack.addChannel("MFLI", sprintf("On_%d", i), sprintf("MFLI_On_%d", i));
+        rack.addChannel("MFLI", sprintf("amplitude_%d", i), sprintf("A%d", i), [], [], -2, 2);
+        rack.addChannel("MFLI", sprintf("phase_%d", i), sprintf("Th%d", i)); % degrees
+        rack.addChannel("MFLI", sprintf("frequency_%d", i), sprintf("f%d", i));
+        rack.addChannel("MFLI", sprintf("harmonic_%d", i), sprintf("Harm%d", i));
+        rack.addChannel("MFLI", sprintf("on_%d", i), sprintf("On%d", i));
     end
 end
 
@@ -596,11 +596,11 @@ if SDG2042X_mixed_Use
 
     rack.addInstrument(handle_SDG2042X_mixed, "SDG2042X_mixed");
     for i = 1:7
-        rack.addChannel("SDG2042X_mixed", string(sprintf("amplitude_%d", i)), string(sprintf("Mix_Amp_%d", i)));
-        rack.addChannel("SDG2042X_mixed", string(sprintf("phase_%d", i)), string(sprintf("Mix_Phase_%d", i)));
-        rack.addChannel("SDG2042X_mixed", string(sprintf("frequency_%d", i)), string(sprintf("Mix_Freq_%d", i)));
+        rack.addChannel("SDG2042X_mixed", string(sprintf("amplitude_%d", i)), string(sprintf("mix_A_%d", i)));
+        rack.addChannel("SDG2042X_mixed", string(sprintf("phase_%d", i)), string(sprintf("mix_Th_%d", i)));
+        rack.addChannel("SDG2042X_mixed", string(sprintf("frequency_%d", i)), string(sprintf("mix_f_%d", i)));
     end
-    rack.addChannel("SDG2042X_mixed", "global_phase_offset", "Mix_Phase");
+    rack.addChannel("SDG2042X_mixed", "global_phase_offset", "mix_Th");
 end
 
 if Montana2_Use

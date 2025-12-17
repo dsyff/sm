@@ -54,27 +54,27 @@ classdef instrument_MFLI < instrumentInterface
                 ziDAQ('setInt', sprintf('%senables/%d', sigout_path, demod_idx), 1);
 
                 % Create Channels
-                % Amplitude_n in V
-                obj.addChannel(sprintf("Amplitude_%d", i), setTolerances = 1e-3);
+                % amplitude_n in V
+                obj.addChannel(sprintf("amplitude_%d", i), setTolerances = 1e-3);
 
-                % Phase_n in degrees
-                obj.addChannel(sprintf("Phase_%d", i), setTolerances = 1e-3);
+                % phase_n in degrees
+                obj.addChannel(sprintf("phase_%d", i), setTolerances = 1e-3);
 
-                % Frequency_n in Hz
-                obj.addChannel(sprintf("Frequency_%d", i));
+                % frequency_n in Hz
+                obj.addChannel(sprintf("frequency_%d", i));
 
-                % Harmonic_n
-                obj.addChannel(sprintf("Harmonic_%d", i));
+                % harmonic_n
+                obj.addChannel(sprintf("harmonic_%d", i));
 
-                % On_n
-                obj.addChannel(sprintf("On_%d", i));
+                % on_n
+                obj.addChannel(sprintf("on_%d", i));
             end
 
             % Sync to ensure settings are applied
             ziDAQ('sync');
         end
 
-        function delete(obj)
+        function delete(~)
             % Disconnect? ziDAQ doesn't strictly require disconnect, but good practice.
             % ziDAQ('disconnectDevice', obj.address);
         end
@@ -82,7 +82,7 @@ classdef instrument_MFLI < instrumentInterface
 
     methods (Access = ?instrumentInterface)
 
-        function getWriteChannelHelper(obj, channelIndex)
+        function getWriteChannelHelper(~, ~)
             % For MFLI settings, getWrite doesn't need to do anything special
             % as we will read the value directly in getRead.
         end
