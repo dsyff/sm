@@ -582,7 +582,7 @@ if MFLI_Use
         rack.addChannel("MFLI", sprintf("phase_%d", i), sprintf("Th%d", i)); % degrees
         rack.addChannel("MFLI", sprintf("frequency_%d", i), sprintf("f%d", i));
         rack.addChannel("MFLI", sprintf("harmonic_%d", i), sprintf("Harm%d", i));
-        rack.addChannel("MFLI", sprintf("on_%d", i), sprintf("On%d", i));
+        rack.addChannel("MFLI", sprintf("on_%d", i), sprintf("On%d", i)); %on/off
     end
 end
 
