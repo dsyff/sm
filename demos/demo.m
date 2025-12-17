@@ -596,11 +596,11 @@ if SDG2042X_mixed_Use
 
     rack.addInstrument(handle_SDG2042X_mixed, "SDG2042X_mixed");
     for i = 1:7
-        rack.addChannel("SDG2042X_mixed", string(sprintf("Amplitude_%d", i)), string(sprintf("SDG_Amp_%d", i)));
-        rack.addChannel("SDG2042X_mixed", string(sprintf("Phase_%d", i)), string(sprintf("SDG_Phase_%d", i)));
-        rack.addChannel("SDG2042X_mixed", string(sprintf("Frequency_%d", i)), string(sprintf("SDG_Freq_%d", i)));
+        rack.addChannel("SDG2042X_mixed", string(sprintf("amplitude_%d", i)), string(sprintf("Mix_Amp_%d", i)));
+        rack.addChannel("SDG2042X_mixed", string(sprintf("phase_%d", i)), string(sprintf("Mix_Phase_%d", i)));
+        rack.addChannel("SDG2042X_mixed", string(sprintf("frequency_%d", i)), string(sprintf("Mix_Freq_%d", i)));
     end
-    rack.addChannel("SDG2042X_mixed", "global_phase_offset", "SDG_global_phase_offset");
+    rack.addChannel("SDG2042X_mixed", "global_phase_offset", "Mix_Phase");
 end
 
 if Montana2_Use

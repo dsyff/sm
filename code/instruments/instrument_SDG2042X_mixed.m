@@ -1,10 +1,10 @@
 classdef instrument_SDG2042X_mixed < instrumentInterface
-    % SDG2042X mixed multi-tone uploader using TrueARB (TARB) sample-rate mode.
+    % SDG2042X mixed multi-tone uploader using TrueARB sample-rate mode.
     %
     % Channels (all set-only; read returns cached values):
-    % - Amplitude_1..7 (Vpp)
-    % - Phase_1..7 (deg)
-    % - Frequency_1..7 (Hz)
+    % - amplitude_1..7 (Vpp)
+    % - phase_1..7 (deg)
+    % - frequency_1..7 (Hz)
     % - global_phase_offset (deg)
     %
     % Upload happens every time any parameter is changed (setWrite).
@@ -56,9 +56,9 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             obj.communicationHandle = handle;
 
             for sineIndex = 1:7
-                obj.addChannel(string(sprintf("Amplitude_%d", sineIndex)));
-                obj.addChannel(string(sprintf("Phase_%d", sineIndex)));
-                obj.addChannel(string(sprintf("Frequency_%d", sineIndex)));
+                obj.addChannel(string(sprintf("amplitude_%d", sineIndex)));
+                obj.addChannel(string(sprintf("phase_%d", sineIndex)));
+                obj.addChannel(string(sprintf("frequency_%d", sineIndex)));
             end
             obj.addChannel("global_phase_offset");
 
@@ -109,7 +109,7 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
                 obj.cachedGlobalPhaseOffsetDeg = setValues;
             end
 
-            obj.uploadMixedWaveformTARB();
+            obj.uploadMixedWaveform();
         end
 
         function TF = setCheckChannelHelper(~, ~, ~)
@@ -130,7 +130,7 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             writeline(handle, "C2:OUTP LOAD,HZ");
         end
 
-        function uploadMixedWaveformTARB(obj)
+        function uploadMixedWaveform(obj)
             handle = obj.communicationHandle;
             if isempty(handle)
                 error("SDG2042X communicationHandle is empty; cannot upload waveform.");
