@@ -545,27 +545,42 @@ end
 
 %Callback for update constants pushbutton
 function UpdateConstants(varargin)
-    global smaux smscan;
-    allchans = {};
-    if isfield(smscan.consts,'setchan')
-        allchans = {smscan.consts.setchan};
+    global smaux smscan instrumentRackGlobal;
+
+    % Constants channel dropdowns are scalar-only channelFriendlyNames.
+    if ~exist("instrumentRackGlobal", "var") || isempty(instrumentRackGlobal)
+        error("instrumentRackGlobal not found. Please run setupSmguiWithNewInstruments() first.");
     end
-    setchans = {};
-    setvals = [];
-    for i=1:length(smscan.consts)
+
+    allchans = string.empty(1, 0);
+    if isfield(smscan.consts, "setchan")
+        allchans = string({smscan.consts.setchan});
+    end
+
+    setchans = string.empty(1, 0);
+    setvals = double.empty(1, 0);
+    for i = 1:length(smscan.consts)
         if smscan.consts(i).set
-            setchans{end+1}=smscan.consts(i).setchan;
-            setvals(end+1)=smscan.consts(i).val;
+            setchans(end+1) = string(smscan.consts(i).setchan); %#ok<AGROW>
+            setvals(end+1) = double(smscan.consts(i).val); %#ok<AGROW>
         end
     end
-    smset_new(setchans, setvals);
-    newvals = cell2mat(smget_new(allchans));
-    for i=1:length(smscan.consts)
-        smscan.consts(i).val=newvals(i);
-        if abs(floor(log10(newvals(i))))>3
-            set(smaux.smgui.consts_eth(i),'String',sprintf('%0.1e',newvals(i)));
+
+    if ~isempty(setchans)
+        instrumentRackGlobal.rackSet(setchans, setvals(:));
+    end
+
+    if isempty(allchans)
+        return;
+    end
+    newvals = instrumentRackGlobal.rackGet(allchans);
+
+    for i = 1:length(smscan.consts)
+        smscan.consts(i).val = newvals(i);
+        if abs(floor(log10(newvals(i)))) > 3
+            set(smaux.smgui.consts_eth(i), "String", sprintf("%0.1e", newvals(i)));
         else
-            set(smaux.smgui.consts_eth(i),'String',round(1000*newvals(i))/1000);
+            set(smaux.smgui.consts_eth(i), "String", round(1000 * newvals(i)) / 1000);
         end
     end
 end
