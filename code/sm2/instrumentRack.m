@@ -64,6 +64,17 @@ classdef (Sealed) instrumentRack < handle
                 assert(~any(instrumentObj == obj.instrumentTable.instruments), "Instrument must not repeat.")
                 assert(~matches(instrumentFriendlyName, obj.instrumentTable.instrumentFriendlyNames), "Instrument friendly name must not repeat.")
             end
+
+            % Ensure the instrument comms buffer starts clean.
+            % Default implementation is a no-op; real instruments may override.
+            try
+                instrumentObj.flush();
+            catch ME
+                warning("instrumentRack:addInstrumentFlushFailed", ...
+                    "Failed to flush instrument %s (%s) during addInstrument. Continuing. Error: %s", ...
+                    instrumentFriendlyName, instrumentObj.address, ME.message);
+            end
+
             isVirtualInstrument = isa(instrumentObj, "virtualInstrumentInterface");
             obj.instrumentTable = [obj.instrumentTable; {instrumentObj, instrumentFriendlyName, instrumentObj.address, isVirtualInstrument}];
         end
@@ -213,17 +224,33 @@ classdef (Sealed) instrumentRack < handle
                             [~, uniqueIndices, ~] = unique(getTableRemaining.instruments, "stable");
                             batchTable = getTableRemaining(uniqueIndices, :);
                             getTableRemaining(uniqueIndices, :) = [];
-                            
+
                             % first to write is last to read
-                            for batchIndex = 1:height(batchTable)
-                                batchTable.instruments(batchIndex).getWriteChannel(batchTable.channels(batchIndex));
-                            end
-                            for batchIndex = height(batchTable):-1:1
-                                instrument = batchTable.instruments(batchIndex);
-                                channel = batchTable.channels(batchIndex);
-                                getValuesPartial = instrument.getReadChannel(channel);
-                                originalIndex = batchTable.originalIndex(batchIndex);
-                                getTableFull.getValues{originalIndex} = getValuesPartial;
+                            % If an error occurs mid-batch, some instruments may have
+                            % pending unread responses; flush them before retrying.
+                            pendingInstruments = instrumentInterface.empty(0, 1);
+                            try
+                                for batchIndex = 1:height(batchTable)
+                                    instrument = batchTable.instruments(batchIndex);
+                                    channel = batchTable.channels(batchIndex);
+                                    instrument.getWriteChannel(channel);
+                                    pendingInstruments(end+1, 1) = instrument; %#ok<AGROW>
+                                end
+                                for batchIndex = height(batchTable):-1:1
+                                    instrument = batchTable.instruments(batchIndex);
+                                    channel = batchTable.channels(batchIndex);
+                                    getValuesPartial = instrument.getReadChannel(channel);
+                                    originalIndex = batchTable.originalIndex(batchIndex);
+                                    getTableFull.getValues{originalIndex} = getValuesPartial;
+
+                                    % Reads occur in reverse order of writes, so pending is a stack.
+                                    if ~isempty(pendingInstruments)
+                                        pendingInstruments(end) = [];
+                                    end
+                                end
+                            catch MEBatch
+                                obj.flushInstrumentsSafe(pendingInstruments, "rackGet batch cleanup before retry");
+                                rethrow(MEBatch);
                             end
                         end
                         clear lockGuard;
@@ -438,12 +465,39 @@ classdef (Sealed) instrumentRack < handle
         function lockGuard = activateBatchGetLock(obj)
             assert(~obj.isBatchGetActive, "instrumentRack:ActiveBatchGet", ...
                 "Cannot start a new batch get while another batch get is in progress.");
+            % Important: if guard construction errors after setting the flag,
+            % retries will see a stuck lock. Ensure we roll back on failure.
             obj.isBatchGetActive = true;
-            lockGuard = onCleanup(@() obj.clearBatchGetLock());
+            try
+                lockGuard = onCleanup(@() obj.clearBatchGetLock());
+            catch ME
+                obj.isBatchGetActive = false;
+                rethrow(ME);
+            end
         end
 
         function clearBatchGetLock(obj)
             obj.isBatchGetActive = false;
+        end
+
+        function flushInstrumentsSafe(obj, instruments, context)
+            arguments
+                obj %#ok<INUSA>
+                instruments (:, 1) instrumentInterface
+                context (1, 1) string {mustBeNonzeroLengthText} = ""
+            end
+            for i = 1:numel(instruments)
+                instrument = instruments(i);
+                if ~isvalid(instrument)
+                    continue;
+                end
+                try
+                    instrument.flush();
+                catch ME
+                    warning("instrumentRack:flushFailed", ...
+                        "Failed to flush instrument (%s). Continuing. Error: %s", context, ME.message);
+                end
+            end
         end
         
         function channelIndices = findChannelIndices(obj, channelFriendlyNames)
