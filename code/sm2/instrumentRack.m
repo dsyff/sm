@@ -615,9 +615,10 @@ classdef (Sealed) instrumentRack < handle
                 obj.rackSetWriteHelperNoRamp(setTableStep);
                 % Remove rows where all elements have reached target from setTable
                 setTable(allReached, :) = [];
-                if ~isempty(setTable)
-                    pause(0.25); % avoid busy-waiting
-                end
+                % avoid sending too many commands too quickly
+                %if ~isempty(setTable)
+                    pause(0.75); % avoid busy-waiting
+                %end
             end
         end
         
