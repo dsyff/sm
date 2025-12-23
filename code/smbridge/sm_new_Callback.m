@@ -349,8 +349,8 @@ function Run
                     evalin('base',string(i,:));
                 end
             else
-                %filename for this run
-                scan_file_name = replace(scan.name, ".", "_"); %Thomas 20240611 sanitize scan name for saving
+                %filename for this run - final safety net: sanitize for Windows invalid chars
+                scan_file_name = regexprep(scan.name, '[\\/:*?"<>|.]', '_');
                 if ~isfield(smaux,'datadir') || isempty(smaux.datadir)
                     smaux.datadir = smdatapathDefaultPath();
                 end

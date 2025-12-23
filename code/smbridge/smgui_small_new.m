@@ -599,7 +599,12 @@ end
 % Callback for changing title of scan
 function ScanTitle(varargin)
     global smaux smscan;
-    smscan.name = get(smaux.smgui.scantitle_eth,'String');
+    rawName = get(smaux.smgui.scantitle_eth,'String');
+    smscan.name = sanitizeFilename(rawName);
+    % Update the textbox to show sanitized name
+    if ~strcmp(rawName, smscan.name)
+        set(smaux.smgui.scantitle_eth,'String', smscan.name);
+    end
 end
 
 
@@ -865,12 +870,15 @@ function Run(varargin)
     runCandidate = smrunGetState();
     useRunPrefix = ~isnan(runCandidate);
 
+    % Final safety net: sanitize filename for Windows
+    filestring_safe = sanitizeFilename(filestring);
+    
     if useRunPrefix
         runToUse = smrunNextAvailableRunNumber(smaux.datadir, runCandidate);
         runstring = sprintf('%03u', runToUse);
-        datasaveFile = fullfile(smaux.datadir,[runstring '_' filestring '.mat']);
+        datasaveFile = fullfile(smaux.datadir,[runstring '_' filestring_safe '.mat']);
     else
-        datasaveFile = fullfile(smaux.datadir,[filestring '.mat']);
+        datasaveFile = fullfile(smaux.datadir,[filestring_safe '.mat']);
     end
 
     UpdateConstants;
@@ -899,6 +907,10 @@ function ToScans(varargin)
     global smaux smscan
     try
         syncScanPptFromGUI();
+        % Safety net: ensure scan name is sanitized before sending to queue GUI
+        if isfield(smscan, 'name')
+            smscan.name = sanitizeFilename(smscan.name);
+        end
         smaux.scans{end+1}=smscan;
         sm
         sm_new_Callback('UpdateToGUI');
@@ -922,6 +934,10 @@ function ToQueue(varargin)
     global smaux smscan
     try
         syncScanPptFromGUI();
+        % Safety net: ensure scan name is sanitized before sending to queue
+        if isfield(smscan, 'name')
+            smscan.name = sanitizeFilename(smscan.name);
+        end
         smaux.smq{end+1}=smscan;
         sm
         sm_new_Callback('UpdateToGUI');
@@ -1752,4 +1768,11 @@ function registerSmallGuiWithRunState()
         handles.tooltipHandle = smaux.smgui.runnumber_eth;
     end
     smrunRegisterGui('small', handles);
+end
+
+
+function sanitized = sanitizeFilename(name)
+    % Sanitize a string for use as a Windows filename
+    % Replaces invalid characters: \ / : * ? " < > | .
+    sanitized = regexprep(name, '[\\/:*?"<>|.]', '_');
 end
