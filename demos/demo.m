@@ -47,6 +47,9 @@ SDG2042X_pure_Address = SDG2042X_mixed_Address;
 K10CR1_Serial = ""; % Leave blank to use the first detected device
 BK889B_Serial = "COM3";
 
+% ST3215-HS bus servos via Waveshare Bus Servo Adapter (A)
+ST3215HS_Serial = "COM3";
+
 
 %% GPIB Adaptor Indices - change these to match your setup
 % use visadevlist() to find out gpib addresses
@@ -88,6 +91,7 @@ Andor_Use = 0;
 Attodry2100_Use = 0;
 
 BK889B_Use = 0;
+ST3215HS_Use = 1;
 E4980AL_Use = 0;
 MFLI_Use = 0;
 SDG2042X_mixed_Use = 0;
@@ -355,6 +359,24 @@ if K10CR1_Use
     handle_K10CR1 = instrument_K10CR1(K10CR1_Serial);
     rack.addInstrument(handle_K10CR1, "K10CR1");
     rack.addChannel("K10CR1", "position_deg", "K10CR1_position_deg");
+end
+
+if ST3215HS_Use
+    % to reprogram the servo ID, connect a single servo to the adapter and run
+    % instrument_ST3215HS.reprogramSTServoId(ST3215HS_Serial, originalID, newID);
+    % new servos default to ID 1
+    % be sure to release the serial port before reprogramming the servo ID
+
+    % remove servoId_2 = and _2 channels if you only have one servo
+    % for ST3215HS, there are 4096 positions. So a scan from 0 to 360 should have 4097 points.
+    handle_ST3215HS = instrument_ST3215HS(ST3215HS_Serial, ...
+        servoId_1 = 10, ...
+        servoId_2 = 11);
+    rack.addInstrument(handle_ST3215HS, "ST3215HS");
+    rack.addChannel("ST3215HS", "position_1_deg", "ST3215HS_pos1_deg");
+    rack.addChannel("ST3215HS", "load_1_percent", "ST3215HS_load1_percent");
+    rack.addChannel("ST3215HS", "position_2_deg", "ST3215HS_pos2_deg");
+    rack.addChannel("ST3215HS", "load_2_percent", "ST3215HS_load2_percent");
 end
 
 if Andor_Use

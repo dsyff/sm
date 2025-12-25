@@ -2,9 +2,9 @@ classdef (Sealed) instrumentRack < handle
     % Thomas 20241221
     properties
         tryTimes (1, 1) double {mustBePositive} = inf;
-        tryInterval (1, 1) duration = seconds(10);
-        batchGetTimeout (1, 1) duration = seconds(5);
-        batchSetTimeout (1, 1) duration = hours(2);
+        tryInterval (1, 1) duration = minutes(10);
+        batchGetTimeout (1, 1) duration = seconds(20);
+        batchSetTimeout (1, 1) duration = hours(3);
     end
     properties (SetAccess = private)
         instrumentTable = table(Size = [0, 4], ...
