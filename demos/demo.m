@@ -43,6 +43,7 @@ Attodry2100_Address = "192.168.1.1";
 MFLI_Address = "dev30037";
 SDG2042X_mixed_Address = "USB0::0xF4EC::0xEE38::0123456789::0::INSTR";
 SDG2042X_pure_Address = SDG2042X_mixed_Address;
+SDG2042X_mixed_DDS_Address = SDG2042X_mixed_Address;
 
 K10CR1_Serial = ""; % Leave blank to use the first detected device
 BK889B_Serial = "COM3";
@@ -58,8 +59,8 @@ adaptorIndex_strain = 2; % Strain controller instruments
 
 
 %% instrument usage flags
-counter_Use = 1;
-clock_Use = 1;
+counter_Use = 0;
+clock_Use = 0;
 test_Use = 0; %extra counters for testing
 virtual_del_V_Use = 0;
 virtual_hysteresis_Use = 0;
@@ -91,11 +92,12 @@ Andor_Use = 0;
 Attodry2100_Use = 0;
 
 BK889B_Use = 0;
-ST3215HS_Use = 1;
+ST3215HS_Use = 0;
 E4980AL_Use = 0;
 MFLI_Use = 0;
 SDG2042X_mixed_Use = 0;
 SDG2042X_pure_Use = 0;
+SDG2042X_mixed_DDS_Use = 0;
 
 
 %% Create instrumentRack
@@ -642,6 +644,24 @@ if SDG2042X_pure_Use
         rack.addChannel("SDG2042X_pure", string(sprintf("frequency_%d", i)), string(sprintf("pure_f_%d", i)));
     end
     rack.addChannel("SDG2042X_pure", "global_phase_offset", "pure_Th");
+end
+
+if SDG2042X_mixed_DDS_Use
+    % SDG2042X mixed multi-tone output using DDS (ARB FRQ) mode (uploads on every set)
+    handle_SDG2042X_mixed_DDS = instrument_SDG2042X_mixed_DDS(SDG2042X_mixed_DDS_Address, ...
+        waveformArraySize = 2e5, ...
+        uploadFundamentalFrequencyHz = 1, ...
+        internalTimebase = true, ...
+        arbAmplitudeMultiplier = 2);
+    handle_SDG2042X_mixed_DDS.requireSetCheck = false;
+
+    rack.addInstrument(handle_SDG2042X_mixed_DDS, "SDG2042X_mixed_DDS");
+    for i = 1:7
+        rack.addChannel("SDG2042X_mixed_DDS", string(sprintf("amplitude_%d", i)), string(sprintf("mixDDS_A_%d", i)));
+        rack.addChannel("SDG2042X_mixed_DDS", string(sprintf("phase_%d", i)), string(sprintf("mixDDS_Th_%d", i)));
+        rack.addChannel("SDG2042X_mixed_DDS", string(sprintf("frequency_%d", i)), string(sprintf("mixDDS_f_%d", i)));
+    end
+    rack.addChannel("SDG2042X_mixed_DDS", "global_phase_offset", "mixDDS_Th");
 end
 
 if Montana2_Use
