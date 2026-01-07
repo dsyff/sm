@@ -23,7 +23,7 @@ classdef instrument_attodry2100 < instrumentInterface
 
             obj.addChannel("T", setTolerances = 0.1);
             obj.addChannel("B", setTolerances = 1E-2);
-            obj.addChannel("driven", setTolerances = 0);
+            obj.addChannel("driven", setTolerances = 0.1);
         end
 
         function delete(obj)
