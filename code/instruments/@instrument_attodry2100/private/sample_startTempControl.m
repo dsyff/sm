@@ -12,7 +12,8 @@ writeline(tcp, data_send);
 data_receive = readline(tcp);
 data = jsondecode(data_receive);
 
-errorNumber = data.result(1);
+% Thomas edit (sm-dev): vendor wrapper made robust via attodry_parseResult
+errorNumber = attodry_parseResult(data, 1, "sample_startTempControl");
 
 
 end

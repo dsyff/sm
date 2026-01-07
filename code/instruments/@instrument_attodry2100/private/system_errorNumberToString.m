@@ -13,7 +13,8 @@ writeline(tcp, data_send);
 data_receive = readline(tcp);
 data = jsondecode(data_receive);
 
-error = data.result(1);
+% Thomas edit (sm-dev): vendor wrapper made robust via attodry_parseResult
+error = attodry_parseResult(data, 1, "system_errorNumberToString");
 
 
 end
