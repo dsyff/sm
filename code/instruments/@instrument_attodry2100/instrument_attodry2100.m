@@ -5,6 +5,7 @@ classdef instrument_attodry2100 < instrumentInterface
         magnetChannel (1, 1) double = 0
         lastTemperature double = NaN
         lastField double = NaN
+        lastDriven double = NaN
     end
 
     methods
@@ -17,11 +18,12 @@ classdef instrument_attodry2100 < instrumentInterface
 
             obj.address = address;
 
-            obj.communicationHandle = connect(char(address));
+            obj.communicationHandle = connect(address);
             obj.initializeMagnet(options.magnetChannel);
 
             obj.addChannel("T", setTolerances = 0.1);
             obj.addChannel("B", setTolerances = 1E-2);
+            obj.addChannel("driven", setTolerances = 0);
         end
 
         function delete(obj)
@@ -49,6 +51,14 @@ classdef instrument_attodry2100 < instrumentInterface
                     [errorNumber, rawField] = magnet_getH(obj.communicationHandle, obj.magnetChannel);
                     obj.assertNoError(errorNumber, "magnet_getH");
                     obj.lastField = double(rawField);
+                case 3
+                    if ~obj.hasMagnet
+                        error("instrument_attodry2100:MagnetUnavailable", ...
+                            "Driven mode channel is not available on this system.");
+                    end
+                    [errorNumber, drivenMode] = magnet_getDrivenMode(obj.communicationHandle, obj.magnetChannel);
+                    obj.assertNoError(errorNumber, "magnet_getDrivenMode");
+                    obj.lastDriven = double(drivenMode);
             end
         end
 
@@ -58,6 +68,8 @@ classdef instrument_attodry2100 < instrumentInterface
                     getValues = obj.lastTemperature;
                 case 2
                     getValues = obj.lastField;
+                case 3
+                    getValues = obj.lastDriven;
             end
         end
 
@@ -79,6 +91,20 @@ classdef instrument_attodry2100 < instrumentInterface
                     obj.assertNoError(errorNumber, "magnet_setHSetPoint");
                     errorNumber = magnet_startFieldControl(handle, obj.magnetChannel);
                     obj.assertNoError(errorNumber, "magnet_startFieldControl");
+                case 3
+                    if ~obj.hasMagnet
+                        error("instrument_attodry2100:MagnetUnavailable", ...
+                            "Driven mode channel is not available on this system.");
+                    end
+
+                    drivenMode = double(setValues);
+                    if ~(drivenMode == 0 || drivenMode == 1)
+                        error("instrument_attodry2100:InvalidDrivenMode", ...
+                            "Driven mode must be 0 (not driven) or 1 (driven).");
+                    end
+
+                    errorNumber = magnet_setDrivenMode(handle, obj.magnetChannel, drivenMode);
+                    obj.assertNoError(errorNumber, "magnet_setDrivenMode");
                     
             end
         end
