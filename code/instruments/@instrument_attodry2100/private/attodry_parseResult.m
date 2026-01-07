@@ -29,7 +29,7 @@ else
     catch ME
         error("instrument_attodry2100:MalformedJson", ...
             "%s could not jsondecode response. Raw JSON:\n%s\n\njsondecode error: %s", ...
-            operation, rawJson, string(ME.message));
+            operation, localFormatRawJson(rawJson), string(ME.message));
     end
 end
 
@@ -39,7 +39,7 @@ if ~isstruct(data)
     end
     error("instrument_attodry2100:MalformedResponse", ...
         "%s expected decoded JSON to be a struct but received %s. Raw JSON:\n%s", ...
-        operation, class(data), rawJson);
+        operation, class(data), localFormatRawJson(rawJson));
 end
 
 if ~isfield(data, "result")
@@ -69,8 +69,19 @@ else
     errorNumber = r(1);
 end
 
-% Thomas edit: handle cases where the vendor API returns nested cells.
+% Thomas edit (sm-dev): allow scalar cell wrappers (jsondecode artifact), but
+% treat nested cells (cell-in-cell) as malformed.
 if iscell(errorNumber)
+    if numel(errorNumber) ~= 1
+        error("instrument_attodry2100:MalformedResponse", ...
+            "%s expected scalar errorNumber but received a cell array of size %d. Raw JSON:\n%s", ...
+            operation, numel(errorNumber), localRawJson(data, rawJson));
+    end
+    if iscell(errorNumber{1})
+        error("instrument_attodry2100:MalformedResponse", ...
+            "%s received nested cell for errorNumber (cell-in-cell). Raw JSON:\n%s", ...
+            operation, localRawJson(data, rawJson));
+    end
     errorNumber = errorNumber{1};
 end
 errorNumber = double(errorNumber);
@@ -100,8 +111,19 @@ for k = 2:expectedCount
         v = r(k);
     end
 
-    % Unwrap nested cells if present.
+    % Thomas edit (sm-dev): allow scalar cell wrappers, but treat nested cells
+    % (cell-in-cell) as malformed since it indicates unexpected JSON structure.
     if iscell(v)
+        if numel(v) ~= 1
+            error("instrument_attodry2100:MalformedResponse", ...
+                "%s expected scalar result(%d) but received a cell array of size %d. Raw JSON:\n%s", ...
+                operation, k, numel(v), localRawJson(data, rawJson));
+        end
+        if iscell(v{1})
+            error("instrument_attodry2100:MalformedResponse", ...
+                "%s received nested cell for result(%d) (cell-in-cell). Raw JSON:\n%s", ...
+                operation, k, localRawJson(data, rawJson));
+        end
         v = v{1};
     end
 
@@ -113,10 +135,29 @@ end
 function raw = localRawJson(decoded, rawJson)
 % Return the raw JSON when we have it; otherwise fall back to re-encoding.
 if rawJson ~= ""
-    raw = rawJson;
+    raw = localFormatRawJson(rawJson);
 else
-    raw = string(jsonencode(decoded));
+    raw = localFormatRawJson(string(jsonencode(decoded)));
 end
+end
+
+function out = localFormatRawJson(rawJson)
+% Split long, single-line JSON into readable chunks for error messages.
+rawJson = string(rawJson);
+chunkLen = 240;
+if strlength(rawJson) <= chunkLen
+    out = rawJson;
+    return;
+end
+
+n = ceil(double(strlength(rawJson)) / chunkLen);
+chunks = strings(n, 1);
+for i = 1:n
+    a = (i - 1) * chunkLen + 1;
+    b = min(i * chunkLen, strlength(rawJson));
+    chunks(i) = extractBetween(rawJson, a, b);
+end
+out = strjoin(chunks, newline);
 end
 
 
