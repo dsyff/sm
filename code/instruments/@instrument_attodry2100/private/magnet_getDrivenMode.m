@@ -11,10 +11,9 @@ data_send = compose("{""jsonrpc"": ""2.0"", ""method"": ""com.attocube.cryostat.
 
 writeline(tcp, data_send);
 data_receive = readline(tcp);
-data = jsondecode(data_receive);
 
 % Thomas edit (sm-dev): vendor wrapper made robust via attodry_parseResult
-[errorNumber, drivenMode_on_or_off] = attodry_parseResult(data, 2, "magnet_getDrivenMode");
+[errorNumber, drivenMode_on_or_off] = attodry_parseResult(data_receive, 2, "magnet_getDrivenMode");
 
 end
 

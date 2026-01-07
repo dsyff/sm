@@ -11,10 +11,9 @@ data_send = sprintf('{"jsonrpc": "2.0", "method": "com.attocube.cryostat.interfa
 
 writeline(tcp, data_send);
 data_receive = readline(tcp);
-data = jsondecode(data_receive);
 
 % Thomas edit (sm-dev): vendor wrapper made robust via attodry_parseResult
-errorNumber = attodry_parseResult(data, 1, "magnet_startFieldControl");
+errorNumber = attodry_parseResult(data_receive, 1, "magnet_startFieldControl");
 
 
 end
