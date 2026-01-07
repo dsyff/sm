@@ -684,6 +684,7 @@ if Attodry2100_Use
     rack.addInstrument(handle_attodry2100, "Attodry2100");
     rack.addChannel("Attodry2100", "T", "T");
     rack.addChannel("Attodry2100", "B", "B");
+    rack.addChannel("Attodry2100", "driven", "driven");
 end
 
 if BK889B_Use
