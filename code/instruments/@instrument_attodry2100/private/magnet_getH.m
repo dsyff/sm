@@ -14,8 +14,8 @@ writeline(tcp, data_send);
 data_receive = readline(tcp);
 data = jsondecode(data_receive);
 
-errorNumber = data.result(1);
-field = data.result(2);
+% Thomas edit (sm-dev): vendor wrapper made robust via attodry_parseResult
+[errorNumber, field] = attodry_parseResult(data, 2, "magnet_getH");
 
 
 end

@@ -13,8 +13,8 @@ writeline(tcp, data_send);
 data_receive = readline(tcp);
 data = jsondecode(data_receive);
 
-errorNumber = data.result(1);
-drivenMode_on_or_off = data.result(2);
+% Thomas edit (sm-dev): vendor wrapper made robust via attodry_parseResult
+[errorNumber, drivenMode_on_or_off] = attodry_parseResult(data, 2, "magnet_getDrivenMode");
 
 end
 
