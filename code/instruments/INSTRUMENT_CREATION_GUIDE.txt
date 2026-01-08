@@ -9,6 +9,16 @@ The instrument system uses a layered architecture:
   - virtualInstrumentInterface : Base class for software-only computed channels
   - instrumentRack           : Manages multiple instruments and batch operations
 
+CANONICAL USER SETUP SCRIPT
+---------------------------
+`demos/demo.m` is the main end-to-end example setup script. It is a practical
+starting point that initializes the broader SM environment (including the
+sm-bridge/legacy-GUI plumbing) and shows how to build an `instrumentRack`.
+Users typically copy `demos/demo.m`, remove unneeded instruments, and make small
+experiment-specific modifications. If you create/edit an instrument class or
+change channel names/sizes, update `demos/demo.m` accordingly (and keep
+`demos/INSTRUMENT_SETUP_GUIDE.txt` consistent).
+
 
 ================================================================================
 1. PHYSICAL INSTRUMENT CLASSES
@@ -68,6 +78,8 @@ Rules:
   - Only NUMERIC values are allowed - non-numeric data use class methods
   - setTolerances is only meaningful for SETTABLE channels that use the default
     setCheckChannelHelper (which compares the readback value against setTolerances).
+    If obj.requireSetCheck = false, then setCheckChannelHelper is never used and
+    setTolerances is ignored (so including setTolerances is misleading).
     For read-only channels (not implemented in setWriteChannelHelper), setTolerances
     is unused and including it is misleading. Prefer omitting setTolerances for
     read-only channels.
