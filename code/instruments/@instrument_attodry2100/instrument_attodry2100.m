@@ -7,10 +7,9 @@ classdef instrument_attodry2100 < instrumentInterface
     end
 
     methods
-        function obj = instrument_attodry2100(address, options)
+        function obj = instrument_attodry2100(address)
             arguments
                 address (1, 1) string {mustBeNonzeroLengthText}
-                options (1, 1) struct = struct() %#ok<INUSA>
             end
             obj@instrumentInterface();
 
