@@ -51,6 +51,9 @@ BK889B_Serial = "COM3";
 % ST3215-HS bus servos via Waveshare Bus Servo Adapter (A)
 ST3215HS_Serial = "COM3";
 
+% Thorlabs CS165MU camera (TLCamera SDK)
+CS165MU_Serial = ""; % Leave blank to use the first detected camera
+
 
 %% GPIB Adaptor Indices - change these to match your setup
 % use visadevlist() to find out gpib addresses
@@ -88,6 +91,7 @@ strainController_Use = 0;
 strain_cryostat = "Opticool"; %Opticool, Montana2
 
 K10CR1_Use = 0;
+CS165MU_Use = 0;
 Andor_Use = 0;
 Attodry2100_Use = 0;
 
@@ -361,6 +365,20 @@ if K10CR1_Use
     handle_K10CR1 = instrument_K10CR1(K10CR1_Serial);
     rack.addInstrument(handle_K10CR1, "K10CR1");
     rack.addChannel("K10CR1", "position_deg", "K10CR1_position_deg");
+end
+
+if CS165MU_Use
+    handle_CS165MU = instrument_CS165MU(CS165MU_Serial);
+    handle_CS165MU.requireSetCheck = false;
+    rack.addInstrument(handle_CS165MU, "CS165MU");
+    rack.addChannel("CS165MU", "continuous", "CS165MU_continuous");
+    rack.addChannel("CS165MU", "exposure_ms", "CS165MU_exposure_ms");
+    rack.addChannel("CS165MU", "bin", "CS165MU_bin");
+    rack.addChannel("CS165MU", "roi_origin_x_px", "CS165MU_roi_x_px");
+    rack.addChannel("CS165MU", "roi_origin_y_px", "CS165MU_roi_y_px");
+    rack.addChannel("CS165MU", "roi_width_px", "CS165MU_roi_w_px");
+    rack.addChannel("CS165MU", "roi_height_px", "CS165MU_roi_h_px");
+    rack.addChannel("CS165MU", "queued_frames", "CS165MU_queued_frames");
 end
 
 if ST3215HS_Use
