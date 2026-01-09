@@ -209,24 +209,36 @@ classdef instrument_SDG2042X_pure < instrumentInterface
         end
 
         function [dataInt16, vppForInstrument] = buildOneCycleSineInt16(~, ampVpp, phaseDeg, numPoints)
-            % Unambiguous convention:
-            % - ampVpp is the requested *output* amplitude in Vpp.
-            % - We upload a full-scale normalized sine to the ARB (|y| <= 1),
-            %   then set the instrument amplitude to ampVpp.
+            % SDG2042X ARB upload convention (per Siglent app notes/tests used here):
+            % - WAVEDATA int16 uses full-scale DAC codes (-32768..32767).
+            % - :BSWV AMP defines the physical full-scale in Vpp.
+            %
+            % Therefore:
+            % - Build the waveform in absolute volts (using ampVpp),
+            % - Upload a full-scale-normalized int16 waveform (via dacScaleFactor),
+            % - Set :BSWV AMP to the waveform's peak-to-peak (2*maxAbsValue).
             n = 0:(numPoints - 1);
             theta = 2 * pi * (n ./ numPoints);
             phaseRad = phaseDeg * pi / 180;
-            yNorm = sin(theta + phaseRad);
 
-            dacFullScale = double(intmax("int16")); % 32767
-            if ampVpp == 0
-                dataInt16 = int16(zeros(size(yNorm)));
-                vppForInstrument = 0;
-                return;
+            y = (ampVpp / 2) * sin(theta + phaseRad);
+            y = y - mean(y);
+
+            maxAbsValue = max(abs(y));
+            vppForInstrument = 2 * maxAbsValue;
+            if maxAbsValue == 0
+                % Keep a small non-zero amplitude to avoid firmware edge cases.
+                vppForInstrument = 0.02;
             end
 
-            dataInt16 = int16(round(dacFullScale * yNorm));
-            vppForInstrument = ampVpp;
+            dacFullScale = double(intmax("int16")); % 32767
+            if maxAbsValue == 0
+                dacScaleFactor = 0;
+            else
+                dacScaleFactor = dacFullScale / maxAbsValue;
+            end
+
+            dataInt16 = int16(round(y * dacScaleFactor));
         end
 
         function configureChannelDDS(obj, channelPrefix, waveformName, outputHz, vpp)
@@ -245,9 +257,8 @@ classdef instrument_SDG2042X_pure < instrumentInterface
             writeline(handle, channelPrefix + ":ARWV NAME," + waveformName);
             writeline(handle, channelPrefix + ":BSWV WVTP,ARB");
             writeline(handle, string(sprintf("%s:BSWV FRQ,%g", channelPrefix, outputHz)));
-            % Empirically, this unit's DDS mode interprets AMP as Vpk (not Vpp),
-            % so divide by 2 to keep amplitude_* semantics consistent with TARB.
-            writeline(handle, string(sprintf("%s:BSWV AMP,%.4f", channelPrefix, (vpp * obj.arbAmplitudeMultiplier) / 2)));
+            % DDS amplitude is configured in Vpp, matching TARB semantics.
+            writeline(handle, string(sprintf("%s:BSWV AMP,%.4f", channelPrefix, (vpp * obj.arbAmplitudeMultiplier))));
             writeline(handle, channelPrefix + ":BSWV OFST,0");
             writeline(handle, channelPrefix + ":BSWV PHSE,0");
         end

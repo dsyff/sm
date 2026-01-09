@@ -38,7 +38,6 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
                 NameValueArgs.waveformArraySize (1, 1) double {mustBePositive, mustBeInteger} = 2e5
                 NameValueArgs.uploadFundamentalFrequencyHz (1, 1) double {mustBePositive} = 1
                 NameValueArgs.internalTimebase (1, 1) logical = true
-                % Leave at 1 for physically meaningful Vpp scaling.
                 NameValueArgs.arbAmplitudeMultiplier (1, 1) double {mustBePositive} = 1
             end
             obj@instrumentInterface();
@@ -217,24 +216,28 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
                 mixedData = mixedData + tone;
             end
 
-            % Unambiguous convention:
-            % - cachedAmplitude values are per-tone output amplitudes in Vpp.
-            % - mixedData is constructed in volts.
-            % - We upload a normalized waveform (|w| <= 1) and set instrument AMP
-            %   to 2*max(abs(mixedData)) so the physical output equals mixedData.
+            % Remove any residual numerical DC so that OFST can stay at 0 V.
+            mixedData = mixedData - mean(mixedData);
+
             maxAbsValue = max(abs(mixedData));
+            % Instrument amplitude (Vpp) defines the full-scale mapping of the DAC.
+            % To reproduce the waveform in absolute volts, set AMP to 2*maxAbsValue.
             vppForInstrument = 2 * maxAbsValue;
+            if maxAbsValue == 0
+                vppForInstrument = 0.02;
+            end
+            % For reference/debugging only: actual peak-to-peak of the synthesized waveform.
+            actualVpp = max(mixedData) - min(mixedData); %#ok<NASGU>
 
             dacFullScale = double(intmax("int16")); % 32767
             if maxAbsValue == 0
-                dataCH1 = int16(zeros(size(mixedData)));
-                dataCH2 = int16(zeros(size(mixedData)));
-                vppForInstrument = 0;
+                dacScaleFactor = 0;
             else
-                wNorm = mixedData ./ maxAbsValue;
-                dataCH1 = int16(round(dacFullScale * wNorm));
-                dataCH2 = int16(round(dacFullScale * (-wNorm)));
+                dacScaleFactor = dacFullScale / maxAbsValue;
             end
+
+            dataCH1 = int16(round(mixedData * dacScaleFactor));
+            dataCH2 = int16(round(-mixedData * dacScaleFactor));
 
             obj.uploadWaveformBinary("C1", obj.waveformNameCH1, dataCH1);
             obj.uploadWaveformBinary("C2", obj.waveformNameCH2, dataCH2);
@@ -264,9 +267,7 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             writeline(handle, channelPrefix + ":ARWV NAME," + waveformName);
             writeline(handle, channelPrefix + ":BSWV WVTP,ARB");
             writeline(handle, string(sprintf("%s:BSWV FRQ,%g", channelPrefix, fundamentalHz)));
-            % Empirically, this unit's DDS mode interprets AMP as Vpk (not Vpp),
-            % so divide by 2 to keep amplitude_* semantics consistent with TARB.
-            writeline(handle, string(sprintf("%s:BSWV AMP,%.4f", channelPrefix, (vpp * obj.arbAmplitudeMultiplier) / 2)));
+            writeline(handle, string(sprintf("%s:BSWV AMP,%.4f", channelPrefix, (vpp * obj.arbAmplitudeMultiplier))));
             writeline(handle, channelPrefix + ":BSWV OFST,0");
             writeline(handle, channelPrefix + ":BSWV PHSE,0");
         end

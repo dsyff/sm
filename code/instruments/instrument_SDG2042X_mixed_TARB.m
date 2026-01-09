@@ -192,8 +192,19 @@ classdef instrument_SDG2042X_mixed_TARB < instrumentInterface
             % - mixedData is constructed in volts.
             % - We upload a normalized waveform (|w| <= 1) and set instrument AMP
             %   to 2*max(abs(mixedData)) so the physical output equals mixedData.
+            %
+            % Remove any residual numerical DC so that OFST can stay at 0 V.
+            mixedData = mixedData - mean(mixedData);
+
             maxAbsValue = max(abs(mixedData));
+            % Instrument amplitude (Vpp) defines the full-scale mapping of the DAC.
+            % To reproduce the waveform in absolute volts, set AMP to 2*maxAbsValue.
             vppForInstrument = 2 * maxAbsValue;
+            if maxAbsValue == 0
+                vppForInstrument = 0.02;
+            end
+            % For reference/debugging only: actual peak-to-peak of the synthesized waveform.
+            actualVpp = max(mixedData) - min(mixedData); %#ok<NASGU>
 
             dacFullScale = double(intmax("int16")); % 32767
             if maxAbsValue == 0
