@@ -43,7 +43,6 @@ Attodry2100_Address = "192.168.1.1";
 MFLI_Address = "dev30037";
 SDG2042X_mixed_Address = "USB0::0xF4EC::0xEE38::0123456789::0::INSTR";
 SDG2042X_pure_Address = "USB0::0xF4EC::0x1102::SDG2XCAD4R3406::0::INSTR";
-% TrueArb (TARB) SDG2042X address (can be different unit than DDS)
 SDG2042X_mixed_TARB_Address = SDG2042X_mixed_Address;
 
 K10CR1_Serial = ""; % Leave blank to use the first detected device
@@ -676,7 +675,7 @@ end
 if SDG2042X_mixed_TARB_Use
     % SDG2042X mixed multi-tone output using TrueArb (TARB) mode (uploads on every set)
     handle_SDG2042X_mixed_TARB = instrument_SDG2042X_mixed_TARB(SDG2042X_mixed_TARB_Address, ...
-        waveformArraySize = 2^15, ...
+        waveformArraySize = 2^19, ...
         uploadFundamentalFrequencyHz = 1, ...
         internalTimebase = true);
     handle_SDG2042X_mixed_TARB.requireSetCheck = true;
