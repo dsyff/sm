@@ -1,5 +1,10 @@
 classdef instrument_SDG2042X_pure < instrumentInterface
-    % SDG2042X two-channel pure sine output using TrueARB sample-rate mode.
+    % SDG2042X two-channel pure sine output using DDS (ARB frequency) mode.
+    %
+    % This is analogous to the TrueARB pure-sine implementation but uses the
+    % DDS-mode style configuration used by instrument_SDG2042X_mixed:
+    % - Upload ARB waveform data via :WVDT ... WAVEDATA,
+    % - Configure output frequency via :BSWV FRQ,<freqHz> (DDS-style)
     %
     % Channels (all set-only; read returns cached values):
     % - amplitude_1..2 (Vpp)
@@ -15,15 +20,14 @@ classdef instrument_SDG2042X_pure < instrumentInterface
         cachedFrequencyHz (2, 1) double = zeros(2, 1);
         cachedGlobalPhaseOffsetDeg (1, 1) double = 0;
 
-        waveformNameCH1 (1, 1) string = "PURE_1";
-        waveformNameCH2 (1, 1) string = "PURE_2";
+        waveformNameCH1 (1, 1) string = "PUREDDS_1";
+        waveformNameCH2 (1, 1) string = "PUREDDS_2";
     end
 
     properties (SetAccess = immutable, GetAccess = private)
-        uploadSampleRateHz (1, 1) double
-        uploadFundamentalFrequencyHz (1, 1) double
         waveformArraySize (1, 1) double
         internalTimebase (1, 1) logical
+        arbAmplitudeMultiplier (1, 1) double
     end
 
     methods
@@ -31,22 +35,15 @@ classdef instrument_SDG2042X_pure < instrumentInterface
             arguments
                 address (1, 1) string {mustBeNonzeroLengthText}
                 NameValueArgs.waveformArraySize (1, 1) double {mustBePositive, mustBeInteger} = 2e5
-                NameValueArgs.uploadFundamentalFrequencyHz (1, 1) double {mustBePositive} = 1
-                NameValueArgs.internalTimebase (1, 1) logical = true
+                NameValueArgs.internalTimebase (1, 1) logical = false
+                NameValueArgs.arbAmplitudeMultiplier (1, 1) double {mustBePositive} = 1
             end
+
             obj@instrumentInterface();
 
-            fundamentalHz = NameValueArgs.uploadFundamentalFrequencyHz;
-            numPoints = double(NameValueArgs.waveformArraySize);
-            fs = numPoints * fundamentalHz;
-            if fs >= 1.2e9
-                error("Computed sample rate must be < 1.2e9 Hz for TrueArb. Received %g Hz from waveformArraySize=%g and fundamentalHz=%g.", fs, numPoints, fundamentalHz);
-            end
-
-            obj.uploadSampleRateHz = fs;
-            obj.uploadFundamentalFrequencyHz = fundamentalHz;
-            obj.waveformArraySize = numPoints;
+            obj.waveformArraySize = double(NameValueArgs.waveformArraySize);
             obj.internalTimebase = NameValueArgs.internalTimebase;
+            obj.arbAmplitudeMultiplier = NameValueArgs.arbAmplitudeMultiplier;
 
             handle = visadev(address);
             configureTerminator(handle, "LF");
@@ -62,11 +59,29 @@ classdef instrument_SDG2042X_pure < instrumentInterface
 
             obj.resetSettingsOnInit();
         end
+
+        function cascadeResyncOnMaster(obj)
+            % Force a CASCADE re-handshake by cycling CASCADE state.
+            %
+            % See instrument_SDG2042X_mixed.cascadeResyncOnMaster for rationale.
+            % This method only acts when internalTimebase == true (master).
+            if ~obj.internalTimebase
+                return;
+            end
+            handle = obj.communicationHandle;
+            if isempty(handle)
+                return;
+            end
+
+            writeline(handle, "CASCADE STATE,OFF,MODE,MASTER");
+            pause(0.05);
+            writeline(handle, "CASCADE STATE,ON,MODE,MASTER");
+        end
     end
 
     methods (Access = ?instrumentInterface)
         function getWriteChannelHelper(~, ~)
-            % No pre-query needed.
+            % Cached-only instrument: no pre-query needed.
         end
 
         function getValues = getReadChannelHelper(obj, channelIndex)
@@ -104,7 +119,7 @@ classdef instrument_SDG2042X_pure < instrumentInterface
                 obj.cachedGlobalPhaseOffsetDeg = setValues;
             end
 
-            obj.uploadPureWaveforms();
+            obj.uploadPureWaveformsDDS();
         end
 
         function TF = setCheckChannelHelper(obj, ~, ~)
@@ -154,7 +169,7 @@ classdef instrument_SDG2042X_pure < instrumentInterface
             writeline(handle, "C2:OUTP LOAD,HZ");
         end
 
-        function uploadPureWaveforms(obj)
+        function uploadPureWaveformsDDS(obj)
             handle = obj.communicationHandle;
             if isempty(handle)
                 error("SDG2042X communicationHandle is empty; cannot upload waveform.");
@@ -165,36 +180,43 @@ classdef instrument_SDG2042X_pure < instrumentInterface
             writeline(handle, "C1:OUTP OFF");
             writeline(handle, "C2:OUTP OFF");
 
-            fs = obj.uploadSampleRateHz;
-            numPoints = obj.waveformArraySize;
-            t = (0:numPoints-1) ./ fs; % seconds
+            % Multi-device sync role: internalTimebase => master, external => slave.
+            if obj.internalTimebase
+                writeline(handle, "CASCADE STATE,ON,MODE,MASTER");
+            else
+                writeline(handle, "CASCADE STATE,ON,MODE,SLAVE,DELAY,0");
+            end
 
+            numPoints = obj.waveformArraySize;
             globalOffsetDeg = obj.cachedGlobalPhaseOffsetDeg;
 
             % CH1
-            [dataCH1, vppCH1] = obj.buildSineWaveformInt16( ...
-                obj.cachedAmplitude(1), obj.cachedFrequencyHz(1), obj.cachedPhaseDeg(1) + globalOffsetDeg, t);
+            [dataCH1, vppCH1] = obj.buildOneCycleSineInt16( ...
+                obj.cachedAmplitude(1), obj.cachedPhaseDeg(1) + globalOffsetDeg, numPoints);
             obj.uploadWaveformBinary("C1", obj.waveformNameCH1, dataCH1);
 
             % CH2
-            [dataCH2, vppCH2] = obj.buildSineWaveformInt16( ...
-                obj.cachedAmplitude(2), obj.cachedFrequencyHz(2), obj.cachedPhaseDeg(2) + globalOffsetDeg, t);
+            [dataCH2, vppCH2] = obj.buildOneCycleSineInt16( ...
+                obj.cachedAmplitude(2), obj.cachedPhaseDeg(2) + globalOffsetDeg, numPoints);
             obj.uploadWaveformBinary("C2", obj.waveformNameCH2, dataCH2);
 
-            obj.configureChannelTARB("C1", obj.waveformNameCH1, fs, vppCH1);
-            obj.configureChannelTARB("C2", obj.waveformNameCH2, fs, vppCH2);
+            % DDS configuration: set ARB repetition rate (FRQ) per channel.
+            obj.configureChannelDDS("C1", obj.waveformNameCH1, obj.cachedFrequencyHz(1), vppCH1);
+            obj.configureChannelDDS("C2", obj.waveformNameCH2, obj.cachedFrequencyHz(2), vppCH2);
 
             writeline(handle, "C1:OUTP ON");
             writeline(handle, "C2:OUTP ON");
         end
 
-        function [dataInt16, vppForInstrument] = buildSineWaveformInt16(~, ampVpp, freqHz, phaseDeg, t)
+        function [dataInt16, vppForInstrument] = buildOneCycleSineInt16(~, ampVpp, phaseDeg, numPoints)
             % Unambiguous convention:
             % - ampVpp is the requested *output* amplitude in Vpp.
             % - We upload a full-scale normalized sine to the ARB (|y| <= 1),
             %   then set the instrument amplitude to ampVpp.
+            n = 0:(numPoints - 1);
+            theta = 2 * pi * (n ./ numPoints);
             phaseRad = phaseDeg * pi / 180;
-            yNorm = sin(2 * pi * freqHz * t + phaseRad);
+            yNorm = sin(theta + phaseRad);
 
             dacFullScale = double(intmax("int16")); % 32767
             if ampVpp == 0
@@ -207,26 +229,33 @@ classdef instrument_SDG2042X_pure < instrumentInterface
             vppForInstrument = ampVpp;
         end
 
-        function configureChannelTARB(obj, channelPrefix, waveformName, fs, vpp)
+        function configureChannelDDS(obj, channelPrefix, waveformName, outputHz, vpp)
             handle = obj.communicationHandle;
             if obj.internalTimebase
                 writeline(handle, channelPrefix + ":ROSC:SOUR INT");
             else
                 writeline(handle, channelPrefix + ":ROSC:SOUR EXT");
             end
-            writeline(handle, channelPrefix + ":SRATE MODE,TARB");
-            writeline(handle, string(sprintf("%s:SRATE VALUE,%e", channelPrefix, fs)));
+
+            % Many SDG firmwares accept this to explicitly select DDS mode.
+            % If a given unit does not support it, comment it out.
+            writeline(handle, channelPrefix + ":SRATE MODE,DDS");
+
             writeline(handle, channelPrefix + ":OUTP LOAD,HZ");
             writeline(handle, channelPrefix + ":ARWV NAME," + waveformName);
             writeline(handle, channelPrefix + ":BSWV WVTP,ARB");
-            writeline(handle, string(sprintf("%s:BSWV AMP,%.4f", channelPrefix, vpp)));
+            writeline(handle, string(sprintf("%s:BSWV FRQ,%g", channelPrefix, outputHz)));
+            % Empirically, this unit's DDS mode interprets AMP as Vpk (not Vpp),
+            % so divide by 2 to keep amplitude_* semantics consistent with TARB.
+            writeline(handle, string(sprintf("%s:BSWV AMP,%.4f", channelPrefix, (vpp * obj.arbAmplitudeMultiplier) / 2)));
             writeline(handle, channelPrefix + ":BSWV OFST,0");
             writeline(handle, channelPrefix + ":BSWV PHSE,0");
         end
 
         function uploadWaveformBinary(obj, channelPrefix, waveformName, dataInt16)
             handle = obj.communicationHandle;
-            dataBytes = typecast(dataInt16, 'uint8');
+
+            dataBytes = typecast(dataInt16, "uint8");
 
             commandStr = channelPrefix + ":WVDT WVNM," + waveformName + ",WAVEDATA,";
             terminatorBytes = uint8(10);
@@ -239,7 +268,7 @@ classdef instrument_SDG2042X_pure < instrumentInterface
                 error("Final upload command length %d bytes exceeds 16 MB limit (%d bytes). Reduce waveformArraySize and retry.", numel(fullMessage), maxBytes);
             end
 
-            write(handle, fullMessage, 'uint8');
+            write(handle, fullMessage, "uint8");
         end
     end
 end

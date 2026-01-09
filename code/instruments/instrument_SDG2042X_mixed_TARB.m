@@ -1,10 +1,5 @@
-classdef instrument_SDG2042X_mixed_DDS < instrumentInterface
-    % SDG2042X mixed multi-tone uploader using DDS (ARB frequency) mode.
-    %
-    % This is an alternative to instrument_SDG2042X_mixed (TARB sample-rate mode).
-    % The waveform is still uploaded as an ARB via :WVDT ... WAVEDATA, but the
-    % output is configured using :BSWV FRQ,<fundamentalHz> (DDS-mode style),
-    % matching the approach in temp/SDG2042X/SDG2042X_test.m.
+classdef instrument_SDG2042X_mixed_TARB < instrumentInterface
+    % SDG2042X mixed multi-tone uploader using TrueARB sample-rate mode.
     %
     % Channels (all set-only; read returns cached values):
     % - amplitude_1..7 (Vpp)
@@ -20,33 +15,39 @@ classdef instrument_SDG2042X_mixed_DDS < instrumentInterface
         cachedFrequencyHz (7, 1) double = zeros(7, 1);
         cachedGlobalPhaseOffsetDeg (1, 1) double = 0;
 
-        waveformNameCH1 (1, 1) string = "DDS_POS";
-        waveformNameCH2 (1, 1) string = "DDS_NEG";
+        waveformNameCH1 (1, 1) string = "TARB_POS";
+        waveformNameCH2 (1, 1) string = "TARB_NEG";
     end
 
     properties (SetAccess = immutable, GetAccess = private)
-        waveformArraySize (1, 1) double
+        uploadSampleRateHz (1, 1) double
         uploadFundamentalFrequencyHz (1, 1) double
+        waveformArraySize (1, 1) double
         internalTimebase (1, 1) logical
-        arbAmplitudeMultiplier (1, 1) double
     end
 
     methods
-        function obj = instrument_SDG2042X_mixed_DDS(address, NameValueArgs)
+        function obj = instrument_SDG2042X_mixed_TARB(address, NameValueArgs)
             arguments
                 address (1, 1) string {mustBeNonzeroLengthText}
                 NameValueArgs.waveformArraySize (1, 1) double {mustBePositive, mustBeInteger} = 2e5
                 NameValueArgs.uploadFundamentalFrequencyHz (1, 1) double {mustBePositive} = 1
                 NameValueArgs.internalTimebase (1, 1) logical = true
-                % Leave at 1 for physically meaningful Vpp scaling.
-                NameValueArgs.arbAmplitudeMultiplier (1, 1) double {mustBePositive} = 1
             end
             obj@instrumentInterface();
 
-            obj.waveformArraySize = double(NameValueArgs.waveformArraySize);
-            obj.uploadFundamentalFrequencyHz = NameValueArgs.uploadFundamentalFrequencyHz;
+            fundamentalHz = NameValueArgs.uploadFundamentalFrequencyHz;
+            numPoints = double(NameValueArgs.waveformArraySize);
+            fs = numPoints * fundamentalHz;
+
+            if fs >= 1.2e9
+                error("Computed sample rate must be < 1.2e9 Hz for TARB. Received %g Hz from waveformArraySize=%g and fundamentalHz=%g.", fs, numPoints, fundamentalHz);
+            end
+
+            obj.uploadSampleRateHz = fs;
+            obj.uploadFundamentalFrequencyHz = fundamentalHz;
+            obj.waveformArraySize = numPoints;
             obj.internalTimebase = NameValueArgs.internalTimebase;
-            obj.arbAmplitudeMultiplier = NameValueArgs.arbAmplitudeMultiplier;
 
             handle = visadev(address);
             configureTerminator(handle, "LF");
@@ -108,7 +109,7 @@ classdef instrument_SDG2042X_mixed_DDS < instrumentInterface
                 obj.cachedGlobalPhaseOffsetDeg = setValues;
             end
 
-            obj.uploadMixedWaveformDDS();
+            obj.uploadMixedWaveform();
         end
 
         function TF = setCheckChannelHelper(obj, ~, ~)
@@ -154,11 +155,12 @@ classdef instrument_SDG2042X_mixed_DDS < instrumentInterface
 
             writeline(handle, "C1:OUTP OFF");
             writeline(handle, "C2:OUTP OFF");
+
             writeline(handle, "C1:OUTP LOAD,HZ");
             writeline(handle, "C2:OUTP LOAD,HZ");
         end
 
-        function uploadMixedWaveformDDS(obj)
+        function uploadMixedWaveform(obj)
             handle = obj.communicationHandle;
             if isempty(handle)
                 error("SDG2042X communicationHandle is empty; cannot upload waveform.");
@@ -169,22 +171,12 @@ classdef instrument_SDG2042X_mixed_DDS < instrumentInterface
             writeline(handle, "C1:OUTP OFF");
             writeline(handle, "C2:OUTP OFF");
 
-            % Multi-device sync role: internalTimebase => master, external => slave.
-            if obj.internalTimebase
-                writeline(handle, "CASCADE STATE,ON,MODE,MASTER");
-            else
-                writeline(handle, "CASCADE STATE,ON,MODE,SLAVE,DELAY,0");
-            end
-
-            f0 = obj.uploadFundamentalFrequencyHz;
+            fs = obj.uploadSampleRateHz;
             numPoints = obj.waveformArraySize;
 
-            % Build one-period waveform (period = 1/f0). This matches the
-            % normalized construction in SDG2042X_test.m but supports f0 ~= 1.
-            fs = numPoints * f0;
-            t = (0:numPoints-1) ./ fs; % seconds over one period
-
+            t = (0:numPoints-1) ./ fs; % seconds
             mixedData = zeros(1, numPoints);
+
             globalOffsetDeg = obj.cachedGlobalPhaseOffsetDeg;
             for sineIndex = 1:7
                 ampVpp = obj.cachedAmplitude(sineIndex);
@@ -217,40 +209,43 @@ classdef instrument_SDG2042X_mixed_DDS < instrumentInterface
             obj.uploadWaveformBinary("C1", obj.waveformNameCH1, dataCH1);
             obj.uploadWaveformBinary("C2", obj.waveformNameCH2, dataCH2);
 
-            % DDS/ARB frequency configuration: set FRQ (fundamental repetition rate),
-            % not SRATE VALUE.
-            obj.configureChannelDDS("C1", obj.waveformNameCH1, f0, vppForInstrument);
-            obj.configureChannelDDS("C2", obj.waveformNameCH2, f0, vppForInstrument);
+            % TrueArb configuration (per example_snippet_TARB.txt)
+            if obj.internalTimebase
+                writeline(handle, "C1:ROSC:SOUR INT");
+            else
+                writeline(handle, "C1:ROSC:SOUR EXT");
+            end
+            writeline(handle, "C1:SRATE MODE,TARB");
+            writeline(handle, string(sprintf("C1:SRATE VALUE,%e", fs)));
+            writeline(handle, "C1:OUTP LOAD,HZ");
+            writeline(handle, "C1:ARWV NAME," + obj.waveformNameCH1);
+            writeline(handle, "C1:BSWV WVTP,ARB");
+            writeline(handle, string(sprintf("C1:BSWV AMP,%.4f", vppForInstrument)));
+            writeline(handle, "C1:BSWV OFST,0");
+            writeline(handle, "C1:BSWV PHSE,0");
+
+            if obj.internalTimebase
+                writeline(handle, "C2:ROSC:SOUR INT");
+            else
+                writeline(handle, "C2:ROSC:SOUR EXT");
+            end
+            writeline(handle, "C2:SRATE MODE,TARB");
+            writeline(handle, string(sprintf("C2:SRATE VALUE,%e", fs)));
+            writeline(handle, "C2:OUTP LOAD,HZ");
+            writeline(handle, "C2:ARWV NAME," + obj.waveformNameCH2);
+            writeline(handle, "C2:BSWV WVTP,ARB");
+            writeline(handle, string(sprintf("C2:BSWV AMP,%.4f", vppForInstrument)));
+            writeline(handle, "C2:BSWV OFST,0");
+            writeline(handle, "C2:BSWV PHSE,0");
 
             writeline(handle, "C1:OUTP ON");
             writeline(handle, "C2:OUTP ON");
         end
 
-        function configureChannelDDS(obj, channelPrefix, waveformName, fundamentalHz, vpp)
-            handle = obj.communicationHandle;
-            if obj.internalTimebase
-                writeline(handle, channelPrefix + ":ROSC:SOUR INT");
-            else
-                writeline(handle, channelPrefix + ":ROSC:SOUR EXT");
-            end
-
-            % Many SDG firmwares accept this to explicitly select DDS mode.
-            % If a given unit does not support it, comment it out.
-            writeline(handle, channelPrefix + ":SRATE MODE,DDS");
-
-            writeline(handle, channelPrefix + ":OUTP LOAD,HZ");
-            writeline(handle, channelPrefix + ":ARWV NAME," + waveformName);
-            writeline(handle, channelPrefix + ":BSWV WVTP,ARB");
-            writeline(handle, string(sprintf("%s:BSWV FRQ,%g", channelPrefix, fundamentalHz)));
-            writeline(handle, string(sprintf("%s:BSWV AMP,%.4f", channelPrefix, vpp * obj.arbAmplitudeMultiplier)));
-            writeline(handle, channelPrefix + ":BSWV OFST,0");
-            writeline(handle, channelPrefix + ":BSWV PHSE,0");
-        end
-
         function uploadWaveformBinary(obj, channelPrefix, waveformName, dataInt16)
             handle = obj.communicationHandle;
 
-            dataBytes = typecast(dataInt16, "uint8");
+            dataBytes = typecast(dataInt16, 'uint8');
 
             commandStr = channelPrefix + ":WVDT WVNM," + waveformName + ",WAVEDATA,";
             terminatorBytes = uint8(10);
@@ -260,12 +255,11 @@ classdef instrument_SDG2042X_mixed_DDS < instrumentInterface
 
             maxBytes = 16 * 1024 * 1024;
             if numel(fullMessage) > maxBytes
-                error("Final upload command length %d bytes exceeds 16 MB limit (%d bytes). Reduce waveformArraySize and retry.", numel(fullMessage), maxBytes);
+                error("Final upload command length %d bytes exceeds 16 MB limit (%d bytes). Reduce numPoints and retry.", numel(fullMessage), maxBytes);
             end
 
-            write(handle, fullMessage, "uint8");
+            write(handle, fullMessage, 'uint8');
         end
     end
 end
-
 

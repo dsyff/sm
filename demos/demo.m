@@ -43,8 +43,8 @@ Attodry2100_Address = "192.168.1.1";
 MFLI_Address = "dev30037";
 SDG2042X_mixed_Address = "USB0::0xF4EC::0xEE38::0123456789::0::INSTR";
 SDG2042X_pure_Address = "USB0::0xF4EC::0x1102::SDG2XCAD4R3406::0::INSTR";
-SDG2042X_mixed_DDS_Address = SDG2042X_mixed_Address;
-SDG2042X_pure_DDS_Address = SDG2042X_pure_Address;
+% TrueArb (TARB) SDG2042X address (can be different unit than DDS)
+SDG2042X_mixed_TARB_Address = SDG2042X_mixed_Address;
 
 K10CR1_Serial = ""; % Leave blank to use the first detected device
 BK889B_Serial = "COM3";
@@ -102,8 +102,7 @@ E4980AL_Use = 0;
 MFLI_Use = 0;
 SDG2042X_mixed_Use = 0;
 SDG2042X_pure_Use = 0;
-SDG2042X_mixed_DDS_Use = 0;
-SDG2042X_pure_DDS_Use = 0;
+SDG2042X_mixed_TARB_Use = 0;
 
 
 %% Create instrumentRack
@@ -633,11 +632,12 @@ if MFLI_Use
 end
 
 if SDG2042X_mixed_Use
-    % SDG2042X mixed multi-tone output using TrueArb (TARB) mode (uploads on every set)
+    % SDG2042X mixed multi-tone output using DDS (ARB FRQ) mode (uploads on every set)
     handle_SDG2042X_mixed = instrument_SDG2042X_mixed(SDG2042X_mixed_Address, ...
         waveformArraySize = 2^15, ...
         uploadFundamentalFrequencyHz = 1, ...
-        internalTimebase = true);
+        internalTimebase = true, ...
+        arbAmplitudeMultiplier = 1);
     handle_SDG2042X_mixed.requireSetCheck = true;
 
     rack.addInstrument(handle_SDG2042X_mixed, "SDG2042X_mixed");
@@ -650,11 +650,11 @@ if SDG2042X_mixed_Use
 end
 
 if SDG2042X_pure_Use
-    % SDG2042X 2-channel pure sines using TrueArb (TARB) mode (uploads on every set)
+    % SDG2042X 2-channel pure sines using DDS (ARB FRQ) mode (uploads on every set)
     handle_SDG2042X_pure = instrument_SDG2042X_pure(SDG2042X_pure_Address, ...
         waveformArraySize = 2^15, ...
-        uploadFundamentalFrequencyHz = 1, ...
-        internalTimebase = true);
+        internalTimebase = false, ...
+        arbAmplitudeMultiplier = 1);
     handle_SDG2042X_pure.requireSetCheck = true;
 
     rack.addInstrument(handle_SDG2042X_pure, "SDG2042X_pure");
@@ -666,39 +666,28 @@ if SDG2042X_pure_Use
     rack.addChannel("SDG2042X_pure", "global_phase_offset", "pure_Th");
 end
 
-if SDG2042X_mixed_DDS_Use
-    % SDG2042X mixed multi-tone output using DDS (ARB FRQ) mode (uploads on every set)
-    handle_SDG2042X_mixed_DDS = instrument_SDG2042X_mixed_DDS(SDG2042X_mixed_DDS_Address, ...
-        waveformArraySize = 2^15, ...
-        uploadFundamentalFrequencyHz = 1, ...
-        internalTimebase = true, ...
-        arbAmplitudeMultiplier = 2);
-    handle_SDG2042X_mixed_DDS.requireSetCheck = true;
-
-    rack.addInstrument(handle_SDG2042X_mixed_DDS, "SDG2042X_mixed_DDS");
-    for i = 1:7
-        rack.addChannel("SDG2042X_mixed_DDS", string(sprintf("amplitude_%d", i)), string(sprintf("mixDDS_A_%d", i)));
-        rack.addChannel("SDG2042X_mixed_DDS", string(sprintf("phase_%d", i)), string(sprintf("mixDDS_Th_%d", i)));
-        rack.addChannel("SDG2042X_mixed_DDS", string(sprintf("frequency_%d", i)), string(sprintf("mixDDS_f_%d", i)));
-    end
-    rack.addChannel("SDG2042X_mixed_DDS", "global_phase_offset", "mixDDS_Th");
+% DDS CASCADE sync: after both DDS instruments are initialized, trigger a
+% master-side CASCADE re-handshake to apply any updated CASCADE settings.
+if SDG2042X_mixed_Use && SDG2042X_pure_Use
+    handle_SDG2042X_mixed.cascadeResyncOnMaster();
+    handle_SDG2042X_pure.cascadeResyncOnMaster();
 end
 
-if SDG2042X_pure_DDS_Use
-    % SDG2042X 2-channel pure sines using DDS (ARB FRQ) mode (uploads on every set)
-    handle_SDG2042X_pure_DDS = instrument_SDG2042X_pure_DDS(SDG2042X_pure_DDS_Address, ...
+if SDG2042X_mixed_TARB_Use
+    % SDG2042X mixed multi-tone output using TrueArb (TARB) mode (uploads on every set)
+    handle_SDG2042X_mixed_TARB = instrument_SDG2042X_mixed_TARB(SDG2042X_mixed_TARB_Address, ...
         waveformArraySize = 2^15, ...
-        internalTimebase = false, ...
-        arbAmplitudeMultiplier = 1);
-    handle_SDG2042X_pure_DDS.requireSetCheck = true;
+        uploadFundamentalFrequencyHz = 1, ...
+        internalTimebase = true);
+    handle_SDG2042X_mixed_TARB.requireSetCheck = true;
 
-    rack.addInstrument(handle_SDG2042X_pure_DDS, "SDG2042X_pure_DDS");
-    for i = 1:2
-        rack.addChannel("SDG2042X_pure_DDS", string(sprintf("amplitude_%d", i)), string(sprintf("pureDDS_A_%d", i)));
-        rack.addChannel("SDG2042X_pure_DDS", string(sprintf("phase_%d", i)), string(sprintf("pureDDS_Th_%d", i)));
-        rack.addChannel("SDG2042X_pure_DDS", string(sprintf("frequency_%d", i)), string(sprintf("pureDDS_f_%d", i)));
+    rack.addInstrument(handle_SDG2042X_mixed_TARB, "SDG2042X_mixed_TARB");
+    for i = 1:7
+        rack.addChannel("SDG2042X_mixed_TARB", string(sprintf("amplitude_%d", i)), string(sprintf("mixTARB_A_%d", i)));
+        rack.addChannel("SDG2042X_mixed_TARB", string(sprintf("phase_%d", i)), string(sprintf("mixTARB_Th_%d", i)));
+        rack.addChannel("SDG2042X_mixed_TARB", string(sprintf("frequency_%d", i)), string(sprintf("mixTARB_f_%d", i)));
     end
-    rack.addChannel("SDG2042X_pure_DDS", "global_phase_offset", "pureDDS_Th");
+    rack.addChannel("SDG2042X_mixed_TARB", "global_phase_offset", "mixTARB_Th");
 end
 
 if Montana2_Use
