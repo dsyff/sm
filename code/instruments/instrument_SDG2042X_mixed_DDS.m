@@ -38,7 +38,8 @@ classdef instrument_SDG2042X_mixed_DDS < instrumentInterface
                 NameValueArgs.waveformArraySize (1, 1) double {mustBePositive, mustBeInteger} = 2e5
                 NameValueArgs.uploadFundamentalFrequencyHz (1, 1) double {mustBePositive} = 1
                 NameValueArgs.internalTimebase (1, 1) logical = true
-                NameValueArgs.arbAmplitudeMultiplier (1, 1) double {mustBePositive} = 2
+                % Leave at 1 for physically meaningful Vpp scaling.
+                NameValueArgs.arbAmplitudeMultiplier (1, 1) double {mustBePositive} = 1
             end
             obj@instrumentInterface();
 
@@ -194,26 +195,32 @@ classdef instrument_SDG2042X_mixed_DDS < instrumentInterface
                 mixedData = mixedData + tone;
             end
 
+            % Unambiguous convention:
+            % - cachedAmplitude values are per-tone output amplitudes in Vpp.
+            % - mixedData is constructed in volts.
+            % - We upload a normalized waveform (|w| <= 1) and set instrument AMP
+            %   to 2*max(abs(mixedData)) so the physical output equals mixedData.
             maxAbsValue = max(abs(mixedData));
-            actualVpp = max(mixedData) - min(mixedData);
+            vppForInstrument = 2 * maxAbsValue;
 
             dacFullScale = double(intmax("int16")); % 32767
             if maxAbsValue == 0
-                dacScaleFactor = 0;
+                dataCH1 = int16(zeros(size(mixedData)));
+                dataCH2 = int16(zeros(size(mixedData)));
+                vppForInstrument = 0;
             else
-                dacScaleFactor = dacFullScale / maxAbsValue;
+                wNorm = mixedData ./ maxAbsValue;
+                dataCH1 = int16(round(dacFullScale * wNorm));
+                dataCH2 = int16(round(dacFullScale * (-wNorm)));
             end
-
-            dataCH1 = int16(round(mixedData * dacScaleFactor));
-            dataCH2 = int16(round(-mixedData * dacScaleFactor));
 
             obj.uploadWaveformBinary("C1", obj.waveformNameCH1, dataCH1);
             obj.uploadWaveformBinary("C2", obj.waveformNameCH2, dataCH2);
 
             % DDS/ARB frequency configuration: set FRQ (fundamental repetition rate),
             % not SRATE VALUE.
-            obj.configureChannelDDS("C1", obj.waveformNameCH1, f0, actualVpp);
-            obj.configureChannelDDS("C2", obj.waveformNameCH2, f0, actualVpp);
+            obj.configureChannelDDS("C1", obj.waveformNameCH1, f0, vppForInstrument);
+            obj.configureChannelDDS("C2", obj.waveformNameCH2, f0, vppForInstrument);
 
             writeline(handle, "C1:OUTP ON");
             writeline(handle, "C2:OUTP ON");

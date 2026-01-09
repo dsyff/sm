@@ -42,9 +42,9 @@ Opticool_IP = "127.0.0.1";
 Attodry2100_Address = "192.168.1.1";
 MFLI_Address = "dev30037";
 SDG2042X_mixed_Address = "USB0::0xF4EC::0xEE38::0123456789::0::INSTR";
-SDG2042X_pure_Address = SDG2042X_mixed_Address;
+SDG2042X_pure_Address = "USB0::0xF4EC::0x1102::SDG2XCAD4R3406::0::INSTR";
 SDG2042X_mixed_DDS_Address = SDG2042X_mixed_Address;
-SDG2042X_pure_DDS_Address = SDG2042X_mixed_Address;
+SDG2042X_pure_DDS_Address = SDG2042X_pure_Address;
 
 K10CR1_Serial = ""; % Leave blank to use the first detected device
 BK889B_Serial = "COM3";
@@ -635,10 +635,10 @@ end
 if SDG2042X_mixed_Use
     % SDG2042X mixed multi-tone output using TrueArb (TARB) mode (uploads on every set)
     handle_SDG2042X_mixed = instrument_SDG2042X_mixed(SDG2042X_mixed_Address, ...
-        waveformArraySize = 2e5, ...
+        waveformArraySize = 2^15, ...
         uploadFundamentalFrequencyHz = 1, ...
         internalTimebase = true);
-    handle_SDG2042X_mixed.requireSetCheck = false;
+    handle_SDG2042X_mixed.requireSetCheck = true;
 
     rack.addInstrument(handle_SDG2042X_mixed, "SDG2042X_mixed");
     for i = 1:7
@@ -652,10 +652,10 @@ end
 if SDG2042X_pure_Use
     % SDG2042X 2-channel pure sines using TrueArb (TARB) mode (uploads on every set)
     handle_SDG2042X_pure = instrument_SDG2042X_pure(SDG2042X_pure_Address, ...
-        waveformArraySize = 2e5, ...
+        waveformArraySize = 2^15, ...
         uploadFundamentalFrequencyHz = 1, ...
         internalTimebase = true);
-    handle_SDG2042X_pure.requireSetCheck = false;
+    handle_SDG2042X_pure.requireSetCheck = true;
 
     rack.addInstrument(handle_SDG2042X_pure, "SDG2042X_pure");
     for i = 1:2
@@ -669,11 +669,11 @@ end
 if SDG2042X_mixed_DDS_Use
     % SDG2042X mixed multi-tone output using DDS (ARB FRQ) mode (uploads on every set)
     handle_SDG2042X_mixed_DDS = instrument_SDG2042X_mixed_DDS(SDG2042X_mixed_DDS_Address, ...
-        waveformArraySize = 2e5, ...
+        waveformArraySize = 2^15, ...
         uploadFundamentalFrequencyHz = 1, ...
         internalTimebase = true, ...
         arbAmplitudeMultiplier = 2);
-    handle_SDG2042X_mixed_DDS.requireSetCheck = false;
+    handle_SDG2042X_mixed_DDS.requireSetCheck = true;
 
     rack.addInstrument(handle_SDG2042X_mixed_DDS, "SDG2042X_mixed_DDS");
     for i = 1:7
@@ -687,10 +687,10 @@ end
 if SDG2042X_pure_DDS_Use
     % SDG2042X 2-channel pure sines using DDS (ARB FRQ) mode (uploads on every set)
     handle_SDG2042X_pure_DDS = instrument_SDG2042X_pure_DDS(SDG2042X_pure_DDS_Address, ...
-        waveformArraySize = 2e5, ...
-        internalTimebase = true, ...
+        waveformArraySize = 2^15, ...
+        internalTimebase = false, ...
         arbAmplitudeMultiplier = 1);
-    handle_SDG2042X_pure_DDS.requireSetCheck = false;
+    handle_SDG2042X_pure_DDS.requireSetCheck = true;
 
     rack.addInstrument(handle_SDG2042X_pure_DDS, "SDG2042X_pure_DDS");
     for i = 1:2

@@ -188,20 +188,23 @@ classdef instrument_SDG2042X_pure < instrumentInterface
             writeline(handle, "C2:OUTP ON");
         end
 
-        function [dataInt16, actualVpp] = buildSineWaveformInt16(~, ampVpp, freqHz, phaseDeg, t)
+        function [dataInt16, vppForInstrument] = buildSineWaveformInt16(~, ampVpp, freqHz, phaseDeg, t)
+            % Unambiguous convention:
+            % - ampVpp is the requested *output* amplitude in Vpp.
+            % - We upload a full-scale normalized sine to the ARB (|y| <= 1),
+            %   then set the instrument amplitude to ampVpp.
             phaseRad = phaseDeg * pi / 180;
-            y = (ampVpp / 2) * sin(2 * pi * freqHz * t + phaseRad);
-
-            actualVpp = max(y) - min(y);
-            maxAbsValue = max(abs(y));
+            yNorm = sin(2 * pi * freqHz * t + phaseRad);
 
             dacFullScale = double(intmax("int16")); % 32767
-            if maxAbsValue == 0
-                dacScaleFactor = 0;
-            else
-                dacScaleFactor = dacFullScale / maxAbsValue;
+            if ampVpp == 0
+                dataInt16 = int16(zeros(size(yNorm)));
+                vppForInstrument = 0;
+                return;
             end
-            dataInt16 = int16(round(y * dacScaleFactor));
+
+            dataInt16 = int16(round(dacFullScale * yNorm));
+            vppForInstrument = ampVpp;
         end
 
         function configureChannelTARB(obj, channelPrefix, waveformName, fs, vpp)
