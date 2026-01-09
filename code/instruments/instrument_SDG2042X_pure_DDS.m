@@ -190,22 +190,25 @@ classdef instrument_SDG2042X_pure_DDS < instrumentInterface
             writeline(handle, "C2:OUTP ON");
         end
 
-        function [dataInt16, actualVpp] = buildOneCycleSineInt16(~, ampVpp, phaseDeg, numPoints)
+        function [dataInt16, vppForInstrument] = buildOneCycleSineInt16(~, ampVpp, phaseDeg, numPoints)
+            % Unambiguous convention:
+            % - ampVpp is the requested *output* amplitude in Vpp.
+            % - We upload a full-scale normalized sine to the ARB (|y| <= 1),
+            %   then set the instrument amplitude to ampVpp.
             n = 0:(numPoints - 1);
             theta = 2 * pi * (n ./ numPoints);
             phaseRad = phaseDeg * pi / 180;
-            y = (ampVpp / 2) * sin(theta + phaseRad);
-
-            actualVpp = max(y) - min(y);
-            maxAbsValue = max(abs(y));
+            yNorm = sin(theta + phaseRad);
 
             dacFullScale = double(intmax("int16")); % 32767
-            if maxAbsValue == 0
-                dacScaleFactor = 0;
-            else
-                dacScaleFactor = dacFullScale / maxAbsValue;
+            if ampVpp == 0
+                dataInt16 = int16(zeros(size(yNorm)));
+                vppForInstrument = 0;
+                return;
             end
-            dataInt16 = int16(round(y * dacScaleFactor));
+
+            dataInt16 = int16(round(dacFullScale * yNorm));
+            vppForInstrument = ampVpp;
         end
 
         function configureChannelDDS(obj, channelPrefix, waveformName, outputHz, vpp)

@@ -187,18 +187,24 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
                 mixedData = mixedData + tone;
             end
 
+            % Unambiguous convention:
+            % - cachedAmplitude values are per-tone output amplitudes in Vpp.
+            % - mixedData is constructed in volts.
+            % - We upload a normalized waveform (|w| <= 1) and set instrument AMP
+            %   to 2*max(abs(mixedData)) so the physical output equals mixedData.
             maxAbsValue = max(abs(mixedData));
-            actualVpp = max(mixedData) - min(mixedData);
+            vppForInstrument = 2 * maxAbsValue;
 
             dacFullScale = double(intmax("int16")); % 32767
             if maxAbsValue == 0
-                dacScaleFactor = 0;
+                dataCH1 = int16(zeros(size(mixedData)));
+                dataCH2 = int16(zeros(size(mixedData)));
+                vppForInstrument = 0;
             else
-                dacScaleFactor = dacFullScale / maxAbsValue;
+                wNorm = mixedData ./ maxAbsValue;
+                dataCH1 = int16(round(dacFullScale * wNorm));
+                dataCH2 = int16(round(dacFullScale * (-wNorm)));
             end
-
-            dataCH1 = int16(round(mixedData * dacScaleFactor));
-            dataCH2 = int16(round(-mixedData * dacScaleFactor));
 
             obj.uploadWaveformBinary("C1", obj.waveformNameCH1, dataCH1);
             obj.uploadWaveformBinary("C2", obj.waveformNameCH2, dataCH2);
@@ -214,7 +220,7 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             writeline(handle, "C1:OUTP LOAD,HZ");
             writeline(handle, "C1:ARWV NAME," + obj.waveformNameCH1);
             writeline(handle, "C1:BSWV WVTP,ARB");
-            writeline(handle, string(sprintf("C1:BSWV AMP,%.4f", actualVpp)));
+            writeline(handle, string(sprintf("C1:BSWV AMP,%.4f", vppForInstrument)));
             writeline(handle, "C1:BSWV OFST,0");
             writeline(handle, "C1:BSWV PHSE,0");
 
@@ -228,7 +234,7 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             writeline(handle, "C2:OUTP LOAD,HZ");
             writeline(handle, "C2:ARWV NAME," + obj.waveformNameCH2);
             writeline(handle, "C2:BSWV WVTP,ARB");
-            writeline(handle, string(sprintf("C2:BSWV AMP,%.4f", actualVpp)));
+            writeline(handle, string(sprintf("C2:BSWV AMP,%.4f", vppForInstrument)));
             writeline(handle, "C2:BSWV OFST,0");
             writeline(handle, "C2:BSWV PHSE,0");
 
