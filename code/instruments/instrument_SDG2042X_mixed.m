@@ -112,12 +112,42 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             obj.uploadMixedWaveform();
         end
 
-        function TF = setCheckChannelHelper(~, ~, ~)
-            TF = true;
+        function TF = setCheckChannelHelper(obj, ~, ~)
+            % Pass setCheck if either:
+            % - the requested waveform is identically zero (all amplitudes are 0), OR
+            % - both physical outputs are ON according to instrument query.
+            if obj.requestedWaveformIsZero()
+                TF = true;
+                return;
+            end
+
+            TF = obj.areOutputsOn();
         end
     end
 
     methods (Access = private)
+        function TF = requestedWaveformIsZero(obj)
+            TF = all(obj.cachedAmplitude == 0);
+        end
+
+        function TF = areOutputsOn(obj)
+            handle = obj.communicationHandle;
+            if isempty(handle)
+                TF = false;
+                return;
+            end
+
+            TF = obj.queryChannelOutputOn("C1") && obj.queryChannelOutputOn("C2");
+        end
+
+        function TF = queryChannelOutputOn(obj, channelPrefix)
+            handle = obj.communicationHandle;
+            writeline(handle, channelPrefix + ":OUTP?");
+            resp = strtrim(string(readline(handle)));
+            respUpper = upper(resp);
+            TF = contains(respUpper, "ON") && ~contains(respUpper, "OFF");
+        end
+
         function resetSettingsOnInit(obj)
             handle = obj.communicationHandle;
             writeline(handle, "*RST");
@@ -135,6 +165,11 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             if isempty(handle)
                 error("SDG2042X communicationHandle is empty; cannot upload waveform.");
             end
+
+            % Keep outputs disabled during the entire update (upload + config),
+            % then enable both together at the end.
+            writeline(handle, "C1:OUTP OFF");
+            writeline(handle, "C2:OUTP OFF");
 
             fs = obj.uploadSampleRateHz;
             numPoints = obj.waveformArraySize;
@@ -169,7 +204,6 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             obj.uploadWaveformBinary("C2", obj.waveformNameCH2, dataCH2);
 
             % TrueArb configuration (per example_snippet_TARB.txt)
-            writeline(handle, "C1:OUTP OFF");
             if obj.internalTimebase
                 writeline(handle, "C1:ROSC:SOUR INT");
             else
@@ -183,9 +217,7 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             writeline(handle, string(sprintf("C1:BSWV AMP,%.4f", actualVpp)));
             writeline(handle, "C1:BSWV OFST,0");
             writeline(handle, "C1:BSWV PHSE,0");
-            writeline(handle, "C1:OUTP ON");
 
-            writeline(handle, "C2:OUTP OFF");
             if obj.internalTimebase
                 writeline(handle, "C2:ROSC:SOUR INT");
             else
@@ -199,6 +231,8 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             writeline(handle, string(sprintf("C2:BSWV AMP,%.4f", actualVpp)));
             writeline(handle, "C2:BSWV OFST,0");
             writeline(handle, "C2:BSWV PHSE,0");
+
+            writeline(handle, "C1:OUTP ON");
             writeline(handle, "C2:OUTP ON");
         end
 
@@ -206,16 +240,12 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             handle = obj.communicationHandle;
 
             dataBytes = typecast(dataInt16, 'uint8');
-            numBytes = numel(dataBytes);
-            lengthStr = string(numBytes);
-            binaryHeader = "#" + strlength(lengthStr) + lengthStr;
 
             commandStr = channelPrefix + ":WVDT WVNM," + waveformName + ",WAVEDATA,";
             terminatorBytes = uint8(10);
 
             commandBytes = unicode2native(commandStr, "UTF-8");
-            headerBytes = unicode2native(binaryHeader, "UTF-8");
-            fullMessage = [commandBytes, headerBytes, dataBytes, terminatorBytes];
+            fullMessage = [commandBytes, dataBytes, terminatorBytes];
 
             maxBytes = 16 * 1024 * 1024;
             if numel(fullMessage) > maxBytes
