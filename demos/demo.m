@@ -44,6 +44,7 @@ MFLI_Address = "dev30037";
 SDG2042X_mixed_Address = "USB0::0xF4EC::0xEE38::0123456789::0::INSTR";
 SDG2042X_pure_Address = SDG2042X_mixed_Address;
 SDG2042X_mixed_DDS_Address = SDG2042X_mixed_Address;
+SDG2042X_pure_DDS_Address = SDG2042X_mixed_Address;
 
 K10CR1_Serial = ""; % Leave blank to use the first detected device
 BK889B_Serial = "COM3";
@@ -102,6 +103,7 @@ MFLI_Use = 0;
 SDG2042X_mixed_Use = 0;
 SDG2042X_pure_Use = 0;
 SDG2042X_mixed_DDS_Use = 0;
+SDG2042X_pure_DDS_Use = 0;
 
 
 %% Create instrumentRack
@@ -680,6 +682,23 @@ if SDG2042X_mixed_DDS_Use
         rack.addChannel("SDG2042X_mixed_DDS", string(sprintf("frequency_%d", i)), string(sprintf("mixDDS_f_%d", i)));
     end
     rack.addChannel("SDG2042X_mixed_DDS", "global_phase_offset", "mixDDS_Th");
+end
+
+if SDG2042X_pure_DDS_Use
+    % SDG2042X 2-channel pure sines using DDS (ARB FRQ) mode (uploads on every set)
+    handle_SDG2042X_pure_DDS = instrument_SDG2042X_pure_DDS(SDG2042X_pure_DDS_Address, ...
+        waveformArraySize = 2e5, ...
+        internalTimebase = true, ...
+        arbAmplitudeMultiplier = 1);
+    handle_SDG2042X_pure_DDS.requireSetCheck = false;
+
+    rack.addInstrument(handle_SDG2042X_pure_DDS, "SDG2042X_pure_DDS");
+    for i = 1:2
+        rack.addChannel("SDG2042X_pure_DDS", string(sprintf("amplitude_%d", i)), string(sprintf("pureDDS_A_%d", i)));
+        rack.addChannel("SDG2042X_pure_DDS", string(sprintf("phase_%d", i)), string(sprintf("pureDDS_Th_%d", i)));
+        rack.addChannel("SDG2042X_pure_DDS", string(sprintf("frequency_%d", i)), string(sprintf("pureDDS_f_%d", i)));
+    end
+    rack.addChannel("SDG2042X_pure_DDS", "global_phase_offset", "pureDDS_Th");
 end
 
 if Montana2_Use
