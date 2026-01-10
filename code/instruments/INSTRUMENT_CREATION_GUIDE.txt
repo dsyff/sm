@@ -343,6 +343,33 @@ CACHE EXPENSIVE COMPUTATIONS
   end
 
 
+KEEP VENDOR SDK/API FILES WITH THE CLASS + USE RUNTIME ABSOLUTE PATHS
+--------------------------------------------------------------------
+If an instrument requires vendor SDK files (e.g. C header files, DLLs, .NET
+assemblies, config files), keep them inside the instrument class folder for
+organization, e.g.:
+  - code/instruments/@instrument_AndorSpectrometer/atspectrograph.h
+  - code/instruments/@instrument_CS165MU/dlls/*.dll
+
+Do NOT rely on the current working directory or relative paths. Instead, build
+absolute paths at runtime by locating the class file, then deriving its folder:
+
+  % Preferred (instance methods): robust to renames/inheritance
+  classFile = which(class(obj));
+  instDir = fileparts(classFile);
+
+  % Fallback (static helpers where you don't have obj):
+  classFile = which("instrument_YourInstrument");
+  instDir = fileparts(classFile);
+
+  headerPath = fullfile(instDir, "vendor_header.h");
+  dllDir = fullfile(instDir, "dlls");
+
+Always validate the path exists (isfile/isfolder) and throw a clear error that
+includes the resolved path. This makes instruments robust to different launch
+contexts (different startup folders, different path configurations, etc.).
+
+
 AVOID COMMON MISTAKES
 ---------------------
   X  Don't validate setValues size - the framework already does this

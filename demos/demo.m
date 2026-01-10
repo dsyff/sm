@@ -4,16 +4,18 @@ global instrumentRackGlobal smscan smaux smdata bridge tareData; %#ok<NUSED>
 
 %% initialize
 path(pathdef);
-username = getenv("USERNAME");
-sm_main_path = sprintf("C:\\Users\\%s\\Desktop\\sm-main", username);
-sm_dev_path = sprintf("C:\\Users\\%s\\Desktop\\sm-dev", username);
+username = string(getenv("USERNAME"));
+sm_main_path = fullfile("C:\Users", username, "Desktop", "sm-main");
+sm_dev_path = fullfile("C:\Users", username, "Desktop", "sm-dev");
 
 if exist(sm_dev_path, "dir")
-    addpath(genpath(sm_dev_path));
-    fprintf("Added sm-dev to path: %s\n", sm_dev_path);
+    codePath = fullfile(sm_dev_path, "code");
+    addpath(codePath);
+    fprintf("Added sm-dev code folder to path: %s\n", codePath);
 elseif exist(sm_main_path, "dir")
-    addpath(genpath(sm_main_path));
-    fprintf("Added sm-main to path: %s\n", sm_main_path);
+    codePath = fullfile(sm_main_path, "code");
+    addpath(codePath);
+    fprintf("Added sm-main code folder to path: %s\n", codePath);
 else
     error("demo:MissingCodePath", "Neither sm-dev nor sm-main directories were found on the Desktop.");
 end

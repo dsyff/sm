@@ -1,29 +1,12 @@
-global instrumentRackGlobal smscan smaux smdata bridge tareData;
+warning("sminit:Moved", "sminit moved to code/sminit.m; calling it from smbridge is deprecated.");
 
-% Check MATLAB version (R2024a or newer required)
-if isMATLABReleaseOlderThan('R2024a')
-    error("sminit: MATLAB version is too old. SM1.5 requires MATLAB R2024a or newer. Current version: " + version('-release'));
+st = dbstack("-completenames");
+if isempty(st) || ~isfield(st, "file") || strlength(string(st(1).file)) == 0
+    error("sminit:CannotDetermineLocation", "Unable to determine sminit location (dbstack empty).");
 end
 
-close all;
-selection = questdlg("Has Windows Update been postponed? Updates can interrupt long measurements.", ...
-    "Postpone Windows Update", "Yes", "Not Yet", "Not Yet");
-if selection ~= "Yes"
-    error("sminit aborted: postpone Windows Update before starting measurements.");
-end
-% Clean up existing instruments to release serial ports
-if exist("instrumentRackGlobal", "var") && ~isempty(instrumentRackGlobal)
-    try
-        delete(instrumentRackGlobal);
-    catch ME
-        fprintf("sminit deleteInstrumentRackGlobalFailed: %s\n", ME.message);
-    end
-    clear instrumentRackGlobal;
-end
+smbridgeDir = fileparts(string(st(1).file));
+codeDir = fileparts(smbridgeDir);
 
-delete(visadevfind);
-delete(serialportfind);
-clear;
-%clear all;
-global instrumentRackGlobal smscan smaux smdata bridge tareData;
+run(fullfile(codeDir, "sminit.m"));
 
