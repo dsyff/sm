@@ -1,55 +1,42 @@
-function data = smget_new(channels)
-% Modern smget function that works with instrumentRack (optimized for performance)
-% This replaces the old smget function to work with the new sm2
+function values = smget_new(channelNames)
+% Wrapper around instrumentRack.rackGet.
 %
-% Usage: data = smget_new(channels)
-% channels: string array of channel names or numeric channel indices
-% data: cell array of values read from instruments
+% This function intentionally does NOT translate or expand channel names.
+% It expects the raw channelFriendlyNames already used by the rack.
+%
+% Usage:
+%   values = smget_new("chan")
+%   values = smget_new(["ch1","ch2"])
+%   values = smget_new({"ch1","ch2"})
+%
+% Notes:
+% - channelNames must be a 1-D list; it will be converted to a column vector.
+% - values is the raw numeric column vector returned by rackGet (concatenated).
 
-global smdata instrumentRackGlobal;
+global instrumentRackGlobal
 
-if isempty(channels)
-    data = {};
+if isempty(channelNames)
+    values = [];
     return
 end
 
-% Convert channel names to indices if needed
-if ~isnumeric(channels)
-    channels = smchanlookup_new(channels, true);
+if ~(exist("instrumentRackGlobal", "var") && ~isempty(instrumentRackGlobal))
+    error("smget_new:no_instrumentRack", "instrumentRackGlobal is not available. Cannot get values.")
 end
 
-% Ensure channels is a numeric vector
-if iscell(channels)
-    channels = cell2mat(channels);
+if ischar(channelNames)
+    channelNames = string(channelNames);
+elseif iscell(channelNames)
+    channelNames = string(channelNames);
+elseif ~isstring(channelNames)
+    error("smget_new:invalidChannels", "channelNames must be string/cellstr/char.")
 end
 
-nchan = length(channels);
-
-% Performance optimization: pre-allocate data cell array
-data = cell(1, nchan);
-
-% Use instrumentRack if available
-if exist("instrumentRackGlobal", "var") && ~isempty(instrumentRackGlobal)
-    % Performance optimization: pre-allocate and cache smdata.channels length
-    smdata_channels_length = length(smdata.channels);
-    channelNames = strings(nchan, 1);
-
-    % Performance optimization: vectorized channel name lookup
-    for i = 1:nchan
-        if channels(i) <= smdata_channels_length
-            channelNames(i) = string(smdata.channels(channels(i)).name);
-        else
-            error("Channel index %d out of range", channels(i));
-        end
-    end
-
-    % Use instrumentRack for getting values (bulk read for performance)
-    values = instrumentRackGlobal.rackGet(channelNames);
-
-    % Performance optimization: direct assignment instead of loop
-    data = num2cell(values);
-    return;
-else
-    error("smget_new:no_instrumentRack", "instrumentRackGlobal is not available. Cannot get values.");
+if ~isvector(channelNames)
+    error("smget_new:invalidChannelsShape", "channelNames must be a 1-D string array.")
 end
+
+channelNames = channelNames(:);
+values = instrumentRackGlobal.rackGet(channelNames);
+values = values(:);
 end
