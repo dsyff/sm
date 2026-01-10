@@ -24,7 +24,7 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
     end
 
     properties (Constant, Access = private)
-        arbAmplitudeMultiplier (1, 1) double = 1;
+        arbAmplitudeMultiplier (1, 1) double = 2;
     end
 
     properties (SetAccess = immutable, GetAccess = private)
@@ -164,14 +164,8 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
                 return;
             end
 
-            writeline(handle, "C1:OUTP OFF");
-            writeline(handle, "C2:OUTP OFF");
-
             writeline(handle, "*RST");
             pause(0.5);
-
-            writeline(handle, "C1:OUTP LOAD,HZ");
-            writeline(handle, "C2:OUTP LOAD,HZ");
 
             obj.configureDDSStatic();
 
@@ -180,9 +174,6 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
 
             % Use the standard upload path for the initial upload.
             obj.uploadMixedWaveformDDS();
-
-            % Select the uploaded waveform on both channels (static).
-            obj.selectSharedArbWaveform();
 
             pause(2);
         end
@@ -245,6 +236,11 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             % Per-update configuration: only amplitude must change.
             obj.setBothChannelsAmplitudeVpp(vppForInstrument);
 
+            % Re-select the waveform after upload so the active output refreshes.
+            % Without this, the instrument can keep using the previously-cached ARB.
+            writeline(handle, "C1:ARWV NAME," + obj.waveformName);
+            writeline(handle, "C2:ARWV NAME," + obj.waveformName);
+
             writeline(handle, "C1:OUTP ON");
             writeline(handle, "C2:OUTP ON");
         end
@@ -287,12 +283,6 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             scaledVpp = vpp * obj.arbAmplitudeMultiplier;
             writeline(handle, string(sprintf("C1:BSWV AMP,%.4f", scaledVpp)));
             writeline(handle, string(sprintf("C2:BSWV AMP,%.4f", scaledVpp)));
-        end
-
-        function selectSharedArbWaveform(obj)
-            handle = obj.communicationHandle;
-            writeline(handle, "C1:ARWV NAME," + obj.waveformName);
-            writeline(handle, "C2:ARWV NAME," + obj.waveformName);
         end
 
         function setMixedChannelPolaritiesStatic(obj)

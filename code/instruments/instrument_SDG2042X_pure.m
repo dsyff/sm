@@ -34,7 +34,7 @@ classdef instrument_SDG2042X_pure < instrumentInterface
     end
 
     properties (Constant, Access = private)
-        arbAmplitudeMultiplier (1, 1) double = 1;
+        arbAmplitudeMultiplier (1, 1) double = 2;
     end
 
     properties (SetAccess = immutable, GetAccess = private)
@@ -178,14 +178,8 @@ classdef instrument_SDG2042X_pure < instrumentInterface
                 return;
             end
 
-            writeline(handle, "C1:OUTP OFF");
-            writeline(handle, "C2:OUTP OFF");
-
             writeline(handle, "*RST");
             pause(0.5);
-
-            writeline(handle, "C1:OUTP LOAD,HZ");
-            writeline(handle, "C2:OUTP LOAD,HZ");
 
             obj.configureDDSStatic();
 
@@ -193,9 +187,6 @@ classdef instrument_SDG2042X_pure < instrumentInterface
             % With default cached settings, this naturally uploads all-zeros.
             obj.uploadPureWaveformDDS(1);
             obj.uploadPureWaveformDDS(2);
-
-            % Select the uploaded waveforms on each channel (static).
-            obj.selectArbWaveformsStatic();
 
             pause(2);
         end
@@ -255,6 +246,10 @@ classdef instrument_SDG2042X_pure < instrumentInterface
             % Per-update configuration: only amplitude must change.
             obj.setChannelAmplitudeVpp(chIdx, vppForInstrument);
 
+            % Re-select the waveform after upload so the active output refreshes.
+            % Without this, the instrument can keep using the previously-cached ARB.
+            writeline(handle, channelPrefix + ":ARWV NAME," + waveformName);
+
             writeline(handle, channelPrefix + ":OUTP ON");
         end
 
@@ -295,12 +290,6 @@ classdef instrument_SDG2042X_pure < instrumentInterface
             handle = obj.communicationHandle;
             scaledVpp = vpp * obj.arbAmplitudeMultiplier;
             writeline(handle, string(sprintf("C%d:BSWV AMP,%.4f", chIdx, scaledVpp)));
-        end
-
-        function selectArbWaveformsStatic(obj)
-            handle = obj.communicationHandle;
-            writeline(handle, "C1:ARWV NAME," + obj.waveformNameCH1);
-            writeline(handle, "C2:ARWV NAME," + obj.waveformNameCH2);
         end
 
         function waveformName = getWaveformNameForChannel(obj, chIdx)
