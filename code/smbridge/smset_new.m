@@ -1,57 +1,47 @@
-function smset_new(channels, vals, ~)
-% Modern smset function that works with instrumentRack
-% This replaces the old smset function to work with the new sm2
+function smset_new(channelNames, values, ~)
+% Wrapper around instrumentRack.rackSet.
 %
-% Usage: smset_new(channels, vals, ramprate)
-% channels: string array of channel names or numeric channel indices
-% vals: values to set (vector)
-% ramprate: ramping rate (ignored for performance optimization - use ~ placeholder)
+% This function intentionally does NOT translate or expand channel names.
+% It expects the raw channelFriendlyNames already used by the rack.
+%
+% Usage:
+%   smset_new("chan", value)
+%   smset_new(["ch1","ch2"], [v1; v2])
+%   smset_new({"ch1","ch2"}, [v1; v2])
+%
+% Notes:
+% - channelNames must be a 1-D list; it will be converted to a column vector.
+% - values must be a numeric vector; it will be converted to a column vector.
+% - Any rampRate third argument is accepted but ignored (rack controls ramping).
 
-global smdata instrumentRackGlobal;
+global instrumentRackGlobal
 
-if isempty(channels)
+if isempty(channelNames)
     return
 end
 
-% Convert channel names to indices if needed
-if ~isnumeric(channels)
-    channels = smchanlookup_new(channels, true);
+if ~(exist("instrumentRackGlobal", "var") && ~isempty(instrumentRackGlobal))
+    error("smset_new:no_instrumentRack", "instrumentRackGlobal is not available. Cannot set values.")
 end
 
-% Ensure channels is a numeric vector
-if iscell(channels)
-    channels = cell2mat(channels);
+if ischar(channelNames)
+    channelNames = string(channelNames);
+elseif iscell(channelNames)
+    channelNames = string(channelNames);
+elseif ~isstring(channelNames)
+    error("smset_new:invalidChannels", "channelNames must be string/cellstr/char.")
 end
 
-nchan = length(channels);
-
-% Handle values
-if size(vals, 2) > 1
-    vals = vals';
+if ~isvector(channelNames)
+    error("smset_new:invalidChannelsShape", "channelNames must be a 1-D string array.")
 end
 
-if length(vals) == 1
-    vals = vals * ones(nchan, 1);
+if ~isnumeric(values) || ~isvector(values)
+    error("smset_new:invalidValues", "values must be a numeric vector.")
 end
 
-% Use instrumentRack
-if exist("instrumentRackGlobal", "var") && ~isempty(instrumentRackGlobal)
-    % Get channel names from indices
-    channelNames = strings(nchan, 1);
-    for i = 1:nchan
-        if channels(i) <= length(smdata.channels)
-            channelNames(i) = string(smdata.channels(channels(i)).name);
-        else
-            error("Channel index %d out of range", channels(i));
-        end
-    end
-    
-    % Use instrumentRack for setting (ramping removed for performance)
-    instrumentRackGlobal.rackSet(channelNames, vals);
-    return;
-else
-    error("instrumentRackGlobal is not available. Cannot set values.");
+channelNames = channelNames(:);
+values = values(:);
+instrumentRackGlobal.rackSet(channelNames, values);
 end
 
-
-end

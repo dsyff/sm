@@ -20,15 +20,17 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
         cachedFrequencyHz (7, 1) double = zeros(7, 1);
         cachedGlobalPhaseOffsetDeg (1, 1) double = 0;
 
-        waveformNameCH1 (1, 1) string = "DDS_POS";
-        waveformNameCH2 (1, 1) string = "DDS_NEG";
+        waveformName (1, 1) string = "DDS_MIX";
+    end
+
+    properties (Constant, Access = private)
+        arbAmplitudeMultiplier (1, 1) double = 1;
     end
 
     properties (SetAccess = immutable, GetAccess = private)
         waveformArraySize (1, 1) double
         uploadFundamentalFrequencyHz (1, 1) double
         internalTimebase (1, 1) logical
-        arbAmplitudeMultiplier (1, 1) double
     end
 
     methods
@@ -38,14 +40,12 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
                 NameValueArgs.waveformArraySize (1, 1) double {mustBePositive, mustBeInteger} = 2e5
                 NameValueArgs.uploadFundamentalFrequencyHz (1, 1) double {mustBePositive} = 1
                 NameValueArgs.internalTimebase (1, 1) logical = true
-                NameValueArgs.arbAmplitudeMultiplier (1, 1) double {mustBePositive} = 1
             end
             obj@instrumentInterface();
 
             obj.waveformArraySize = double(NameValueArgs.waveformArraySize);
             obj.uploadFundamentalFrequencyHz = NameValueArgs.uploadFundamentalFrequencyHz;
             obj.internalTimebase = NameValueArgs.internalTimebase;
-            obj.arbAmplitudeMultiplier = NameValueArgs.arbAmplitudeMultiplier;
 
             handle = visadev(address);
             configureTerminator(handle, "LF");
@@ -60,7 +60,7 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             end
             obj.addChannel("global_phase_offset");
 
-            obj.resetSettingsOnInit();
+            obj.initializeInstrument();
         end
 
         function cascadeResyncOnMaster(obj)
@@ -133,23 +133,12 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
         end
 
         function TF = setCheckChannelHelper(obj, ~, ~)
-            % Pass setCheck if either:
-            % - the requested waveform is identically zero (all amplitudes are 0), OR
-            % - both physical outputs are ON according to instrument query.
-            if obj.requestedWaveformIsZero()
-                TF = true;
-                return;
-            end
-
+            % Pass setCheck only when both physical outputs are ON.
             TF = obj.areOutputsOn();
         end
     end
 
     methods (Access = private)
-        function TF = requestedWaveformIsZero(obj)
-            TF = all(obj.cachedAmplitude == 0);
-        end
-
         function TF = areOutputsOn(obj)
             handle = obj.communicationHandle;
             if isempty(handle)
@@ -168,15 +157,34 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             TF = contains(respUpper, "ON") && ~contains(respUpper, "OFF");
         end
 
-        function resetSettingsOnInit(obj)
+        function initializeInstrument(obj)
+            % Reset, perform static DDS configuration, then upload the initial waveform.
             handle = obj.communicationHandle;
-            writeline(handle, "*RST");
-            pause(0.5);
+            if isempty(handle)
+                return;
+            end
 
             writeline(handle, "C1:OUTP OFF");
             writeline(handle, "C2:OUTP OFF");
+
+            writeline(handle, "*RST");
+            pause(0.5);
+
             writeline(handle, "C1:OUTP LOAD,HZ");
             writeline(handle, "C2:OUTP LOAD,HZ");
+
+            obj.configureDDSStatic();
+
+            % Mixed mode uses shared waveform but requires CH2 polarity inverted.
+            obj.setMixedChannelPolaritiesStatic();
+
+            % Use the standard upload path for the initial upload.
+            obj.uploadMixedWaveformDDS();
+
+            % Select the uploaded waveform on both channels (static).
+            obj.selectSharedArbWaveform();
+
+            pause(2);
         end
 
         function uploadMixedWaveformDDS(obj)
@@ -189,13 +197,6 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             % then enable both together at the end.
             writeline(handle, "C1:OUTP OFF");
             writeline(handle, "C2:OUTP OFF");
-
-            % Multi-device sync role: internalTimebase => master, external => slave.
-            if obj.internalTimebase
-                writeline(handle, "CASCADE STATE,ON,MODE,MASTER");
-            else
-                writeline(handle, "CASCADE STATE,ON,MODE,SLAVE,DELAY,0");
-            end
 
             f0 = obj.uploadFundamentalFrequencyHz;
             numPoints = obj.waveformArraySize;
@@ -224,7 +225,7 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             % To reproduce the waveform in absolute volts, set AMP to 2*maxAbsValue.
             vppForInstrument = 2 * maxAbsValue;
             if maxAbsValue == 0
-                vppForInstrument = 0.02;
+                vppForInstrument = 0.002;
             end
             % For reference/debugging only: actual peak-to-peak of the synthesized waveform.
             actualVpp = max(mixedData) - min(mixedData); %#ok<NASGU>
@@ -237,40 +238,70 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             end
 
             dataCH1 = int16(round(mixedData * dacScaleFactor));
-            dataCH2 = int16(round(-mixedData * dacScaleFactor));
 
-            obj.uploadWaveformBinary("C1", obj.waveformNameCH1, dataCH1);
-            obj.uploadWaveformBinary("C2", obj.waveformNameCH2, dataCH2);
+            % Upload a SINGLE waveform, then reference it from both channels.
+            obj.uploadWaveformBinary("C1", obj.waveformName, dataCH1);
 
-            % DDS/ARB frequency configuration: set FRQ (fundamental repetition rate),
-            % not SRATE VALUE.
-            obj.configureChannelDDS("C1", obj.waveformNameCH1, f0, vppForInstrument);
-            obj.configureChannelDDS("C2", obj.waveformNameCH2, f0, vppForInstrument);
+            % Per-update configuration: only amplitude must change.
+            obj.setBothChannelsAmplitudeVpp(vppForInstrument);
 
             writeline(handle, "C1:OUTP ON");
             writeline(handle, "C2:OUTP ON");
         end
 
-        function configureChannelDDS(obj, channelPrefix, waveformName, fundamentalHz, vpp)
+        function configureDDSStatic(obj)
             handle = obj.communicationHandle;
             if obj.internalTimebase
-                writeline(handle, channelPrefix + ":ROSC:SOUR INT");
+                rosc = "INT";
             else
-                writeline(handle, channelPrefix + ":ROSC:SOUR EXT");
+                rosc = "EXT";
             end
+
+            % Configure both channels identically for DDS/ARB mode.
+            writeline(handle, "C1:ROSC:SOUR " + rosc);
+            writeline(handle, "C2:ROSC:SOUR " + rosc);
 
             % Many SDG firmwares accept this to explicitly select DDS mode.
             % If a given unit does not support it, comment it out.
-            writeline(handle, channelPrefix + ":SRATE MODE,DDS");
+            writeline(handle, "C1:SRATE MODE,DDS");
+            writeline(handle, "C2:SRATE MODE,DDS");
 
-            writeline(handle, channelPrefix + ":OUTP LOAD,HZ");
-            writeline(handle, channelPrefix + ":ARWV NAME," + waveformName);
-            writeline(handle, channelPrefix + ":BSWV WVTP,ARB");
-            writeline(handle, string(sprintf("%s:BSWV FRQ,%g", channelPrefix, fundamentalHz)));
-            writeline(handle, string(sprintf("%s:BSWV AMP,%.4f", channelPrefix, (vpp * obj.arbAmplitudeMultiplier))));
-            writeline(handle, channelPrefix + ":BSWV OFST,0");
-            writeline(handle, channelPrefix + ":BSWV PHSE,0");
+            writeline(handle, "C1:OUTP LOAD,HZ");
+            writeline(handle, "C2:OUTP LOAD,HZ");
+
+            writeline(handle, "C1:BSWV WVTP,ARB");
+            writeline(handle, "C2:BSWV WVTP,ARB");
+
+            f0 = obj.uploadFundamentalFrequencyHz;
+            writeline(handle, string(sprintf("C1:BSWV FRQ,%g", f0)));
+            writeline(handle, string(sprintf("C2:BSWV FRQ,%g", f0)));
+
+            writeline(handle, "C1:BSWV OFST,0");
+            writeline(handle, "C2:BSWV OFST,0");
+            writeline(handle, "C1:BSWV PHSE,0");
+            writeline(handle, "C2:BSWV PHSE,0");
         end
+
+        function setBothChannelsAmplitudeVpp(obj, vpp)
+            handle = obj.communicationHandle;
+            scaledVpp = vpp * obj.arbAmplitudeMultiplier;
+            writeline(handle, string(sprintf("C1:BSWV AMP,%.4f", scaledVpp)));
+            writeline(handle, string(sprintf("C2:BSWV AMP,%.4f", scaledVpp)));
+        end
+
+        function selectSharedArbWaveform(obj)
+            handle = obj.communicationHandle;
+            writeline(handle, "C1:ARWV NAME," + obj.waveformName);
+            writeline(handle, "C2:ARWV NAME," + obj.waveformName);
+        end
+
+        function setMixedChannelPolaritiesStatic(obj)
+            handle = obj.communicationHandle;
+
+            % After reset, both channels default to NOR. Mixed mode requires CH2 inverted.
+            writeline(handle, "C2:OUTP PLRT,INVT");
+        end
+
 
         function uploadWaveformBinary(obj, channelPrefix, waveformName, dataInt16)
             handle = obj.communicationHandle;
