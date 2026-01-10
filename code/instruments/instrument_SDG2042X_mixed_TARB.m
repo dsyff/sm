@@ -15,8 +15,7 @@ classdef instrument_SDG2042X_mixed_TARB < instrumentInterface
         cachedFrequencyHz (7, 1) double = zeros(7, 1);
         cachedGlobalPhaseOffsetDeg (1, 1) double = 0;
 
-        waveformNameCH1 (1, 1) string = "TARB_POS";
-        waveformNameCH2 (1, 1) string = "TARB_NEG";
+        waveformName (1, 1) string = "TARB_MIX";
     end
 
     properties (SetAccess = immutable, GetAccess = private)
@@ -62,7 +61,7 @@ classdef instrument_SDG2042X_mixed_TARB < instrumentInterface
             end
             obj.addChannel("global_phase_offset");
 
-            obj.resetSettingsOnInit();
+            obj.initializeInstrument();
         end
     end
 
@@ -113,23 +112,12 @@ classdef instrument_SDG2042X_mixed_TARB < instrumentInterface
         end
 
         function TF = setCheckChannelHelper(obj, ~, ~)
-            % Pass setCheck if either:
-            % - the requested waveform is identically zero (all amplitudes are 0), OR
-            % - both physical outputs are ON according to instrument query.
-            if obj.requestedWaveformIsZero()
-                TF = true;
-                return;
-            end
-
+            % Pass setCheck only when both physical outputs are ON.
             TF = obj.areOutputsOn();
         end
     end
 
     methods (Access = private)
-        function TF = requestedWaveformIsZero(obj)
-            TF = all(obj.cachedAmplitude == 0);
-        end
-
         function TF = areOutputsOn(obj)
             handle = obj.communicationHandle;
             if isempty(handle)
@@ -148,16 +136,23 @@ classdef instrument_SDG2042X_mixed_TARB < instrumentInterface
             TF = contains(respUpper, "ON") && ~contains(respUpper, "OFF");
         end
 
-        function resetSettingsOnInit(obj)
+        function initializeInstrument(obj)
+            % Reset, perform static TARB configuration, then upload initial waveform.
             handle = obj.communicationHandle;
+            if isempty(handle)
+                return;
+            end
+
             writeline(handle, "*RST");
             pause(0.5);
 
-            writeline(handle, "C1:OUTP OFF");
-            writeline(handle, "C2:OUTP OFF");
+            obj.configureTARBStatic();
+            obj.setMixedChannelPolaritiesStatic();
 
-            writeline(handle, "C1:OUTP LOAD,HZ");
-            writeline(handle, "C2:OUTP LOAD,HZ");
+            % Use the standard upload path for the initial upload.
+            obj.uploadMixedWaveform();
+
+            pause(2);
         end
 
         function uploadMixedWaveform(obj)
@@ -201,62 +196,82 @@ classdef instrument_SDG2042X_mixed_TARB < instrumentInterface
             % To reproduce the waveform in absolute volts, set AMP to 2*maxAbsValue.
             vppForInstrument = 2 * maxAbsValue;
             if maxAbsValue == 0
-                vppForInstrument = 0.02;
+                vppForInstrument = 0.002;
             end
             % For reference/debugging only: actual peak-to-peak of the synthesized waveform.
             actualVpp = max(mixedData) - min(mixedData); %#ok<NASGU>
 
             dacFullScale = double(intmax("int16")); % 32767
             if maxAbsValue == 0
-                dataCH1 = int16(zeros(size(mixedData)));
-                dataCH2 = int16(zeros(size(mixedData)));
-                vppForInstrument = 0;
+                dacScaleFactor = 0;
             else
-                wNorm = mixedData ./ maxAbsValue;
-                dataCH1 = int16(round(dacFullScale * wNorm));
-                dataCH2 = int16(round(dacFullScale * (-wNorm)));
+                dacScaleFactor = dacFullScale / maxAbsValue;
             end
 
-            obj.uploadWaveformBinary("C1", obj.waveformNameCH1, dataCH1);
-            obj.uploadWaveformBinary("C2", obj.waveformNameCH2, dataCH2);
+            dataCH1 = int16(round(mixedData * dacScaleFactor));
 
-            % TrueArb configuration (per example_snippet_TARB.txt)
-            if obj.internalTimebase
-                writeline(handle, "C1:ROSC:SOUR INT");
-            else
-                writeline(handle, "C1:ROSC:SOUR EXT");
-            end
-            writeline(handle, "C1:SRATE MODE,TARB");
-            writeline(handle, string(sprintf("C1:SRATE VALUE,%e", fs)));
-            writeline(handle, "C1:OUTP LOAD,HZ");
-            writeline(handle, "C1:ARWV NAME," + obj.waveformNameCH1);
-            writeline(handle, "C1:BSWV WVTP,ARB");
-            writeline(handle, string(sprintf("C1:BSWV AMP,%.4f", vppForInstrument)));
-            writeline(handle, "C1:BSWV OFST,0");
-            writeline(handle, "C1:BSWV PHSE,0");
+            % Upload a SINGLE waveform, then reference it from both channels.
+            obj.uploadWaveformBinary("C1", obj.waveformName, dataCH1);
 
-            if obj.internalTimebase
-                writeline(handle, "C2:ROSC:SOUR INT");
-            else
-                writeline(handle, "C2:ROSC:SOUR EXT");
-            end
-            writeline(handle, "C2:SRATE MODE,TARB");
-            writeline(handle, string(sprintf("C2:SRATE VALUE,%e", fs)));
-            writeline(handle, "C2:OUTP LOAD,HZ");
-            writeline(handle, "C2:ARWV NAME," + obj.waveformNameCH2);
-            writeline(handle, "C2:BSWV WVTP,ARB");
-            writeline(handle, string(sprintf("C2:BSWV AMP,%.4f", vppForInstrument)));
-            writeline(handle, "C2:BSWV OFST,0");
-            writeline(handle, "C2:BSWV PHSE,0");
+            % Per-update configuration: only amplitude must change.
+            obj.setBothChannelsAmplitudeVpp(vppForInstrument);
+
+            % Re-select the waveform after upload so the active output refreshes.
+            % Without this, the instrument can keep using the previously-cached ARB.
+            writeline(handle, "C1:ARWV NAME," + obj.waveformName);
+            writeline(handle, "C2:ARWV NAME," + obj.waveformName);
 
             writeline(handle, "C1:OUTP ON");
             writeline(handle, "C2:OUTP ON");
         end
 
+        function configureTARBStatic(obj)
+            % Static TrueArb configuration (set once in init).
+            handle = obj.communicationHandle;
+            if obj.internalTimebase
+                rosc = "INT";
+            else
+                rosc = "EXT";
+            end
+
+            writeline(handle, "C1:ROSC:SOUR " + rosc);
+            writeline(handle, "C2:ROSC:SOUR " + rosc);
+
+            writeline(handle, "C1:SRATE MODE,TARB");
+            writeline(handle, "C2:SRATE MODE,TARB");
+
+            fs = obj.uploadSampleRateHz;
+            writeline(handle, string(sprintf("C1:SRATE VALUE,%e", fs)));
+            writeline(handle, string(sprintf("C2:SRATE VALUE,%e", fs)));
+
+            writeline(handle, "C1:OUTP LOAD,HZ");
+            writeline(handle, "C2:OUTP LOAD,HZ");
+
+            writeline(handle, "C1:BSWV WVTP,ARB");
+            writeline(handle, "C2:BSWV WVTP,ARB");
+            writeline(handle, "C1:BSWV OFST,0");
+            writeline(handle, "C2:BSWV OFST,0");
+            writeline(handle, "C1:BSWV PHSE,0");
+            writeline(handle, "C2:BSWV PHSE,0");
+        end
+
+        function setBothChannelsAmplitudeVpp(obj, vpp)
+            handle = obj.communicationHandle;
+            writeline(handle, string(sprintf("C1:BSWV AMP,%.4f", vpp)));
+            writeline(handle, string(sprintf("C2:BSWV AMP,%.4f", vpp)));
+        end
+
+        function setMixedChannelPolaritiesStatic(obj)
+            handle = obj.communicationHandle;
+
+            % After reset, both channels default to NOR. Mixed mode requires CH2 inverted.
+            writeline(handle, "C2:OUTP PLRT,INVT");
+        end
+
         function uploadWaveformBinary(obj, channelPrefix, waveformName, dataInt16)
             handle = obj.communicationHandle;
 
-            dataBytes = typecast(dataInt16, 'uint8');
+            dataBytes = typecast(dataInt16, "uint8");
 
             commandStr = channelPrefix + ":WVDT WVNM," + waveformName + ",WAVEDATA,";
             terminatorBytes = uint8(10);
@@ -269,7 +284,7 @@ classdef instrument_SDG2042X_mixed_TARB < instrumentInterface
                 error("Final upload command length %d bytes exceeds 16 MB limit (%d bytes). Reduce numPoints and retry.", numel(fullMessage), maxBytes);
             end
 
-            write(handle, fullMessage, 'uint8');
+            write(handle, fullMessage, "uint8");
         end
     end
 end
