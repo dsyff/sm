@@ -198,6 +198,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         end
 
         function ccdCounts = flushCCD(obj)
+            ccdCounts = [];
             handle = obj.communicationHandle;
             if isempty(handle)
                 error("instrument_AndorSpectrometer:FlushCCDUnavailable", ...
@@ -535,13 +536,13 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             obj.spectrographGratingCount = int32(0);
         end
 
-        function headerPath = getSpectrographHeaderPath(~)
-            classFile = which('instrument_AndorSpectrometer');
+        function headerPath = getSpectrographHeaderPath(obj)
+            classFile = which(class(obj));
             if isempty(classFile)
                 error("instrument_AndorSpectrometer:HeaderLookupFailed", ...
                     "Unable to locate instrument_AndorSpectrometer class file for header lookup.");
             end
-            headerPath = fullfile(fileparts(classFile), 'atspectrograph.h');
+            headerPath = fullfile(fileparts(classFile), "atspectrograph.h");
             if ~isfile(headerPath)
                 error("instrument_AndorSpectrometer:MissingSpectrographHeader", ...
                     "atspectrograph.h was not found at %s.", headerPath);
