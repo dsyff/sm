@@ -175,6 +175,11 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             % Use the standard upload path for the initial upload.
             obj.uploadMixedWaveformDDS();
 
+            % Set CASCADE master/slave after the initial waveform upload.
+            % Some SDG firmwares behave more reliably when CASCADE mode is set
+            % after waveform memory has been initialized by an upload.
+            obj.setCascadeModeFromInternalTimebase();
+
             pause(2);
         end
 
@@ -276,6 +281,25 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             writeline(handle, "C2:BSWV OFST,0");
             writeline(handle, "C1:BSWV PHSE,0");
             writeline(handle, "C2:BSWV PHSE,0");
+        end
+
+        function setCascadeModeFromInternalTimebase(obj)
+            handle = obj.communicationHandle;
+            if isempty(handle)
+                return;
+            end
+
+            if obj.internalTimebase
+                mode = "MASTER";
+            else
+                mode = "SLAVE";
+            end
+
+            % Cycle CASCADE state to force the new mode to take effect.
+            writeline(handle, "CASCADE STATE,OFF");
+            pause(0.05);
+            writeline(handle, "CASCADE STATE,ON,MODE," + mode);
+            pause(0.05);
         end
 
         function setBothChannelsAmplitudeVpp(obj, vpp)
