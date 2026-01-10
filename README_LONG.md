@@ -59,8 +59,8 @@ maintainability, and features.
 ### CHANNEL ACCESS:
 - **`smget.m`**: Quick channel reading (wrapper for `smget_new.m`)
 - **`smset.m`**: Quick channel setting (wrapper for `smset_new.m`)
-- **`smget_new.m`**: Full-featured channel reading with batch optimization
-- **`smset_new.m`**: Full-featured channel setting with verification
+- **`smget_new.m`**: Thin wrapper for `instrumentRack.rackGet` (expects string arrays)
+- **`smset_new.m`**: Thin wrapper for `instrumentRack.rackSet` (expects string arrays)
 
 ### INSTRUMENT INTERFACE:
 - **`instrumentInterface.m`**: Abstract base class (see IMPORTANT CONCEPTS below)
@@ -363,7 +363,7 @@ data = smrun_new(smscan, "voltage_freq_map");
 
 ### Measurement Optimization:
 - **Single measurements**: Use `smget("channel")` for quick interactive access
-- **Batch measurements**: Use `smget({"ch1", "ch2", "ch3"})` for multiple channels
+- **Batch measurements**: Use `smget(["ch1", "ch2", "ch3"])` for multiple channels
 - **Scanning**: Always use `smrun_new()` (faster than legacy)
 - **Batch operations**: Let instrumentRack handle getWrite/getRead separation
 - **Direct access**: Use `instrument.getChannel()` for single instrument operations
