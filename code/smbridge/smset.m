@@ -6,13 +6,11 @@ function smset(varargin)
 %
 % USAGE:
 %   smset(channelName, value)
-%   smset({channel1, channel2, ...}, [value1, value2, ...])
-%   smset(channel1, value1, channel2, value2, ...)
+%   smset(["channel1", "channel2", ...], [value1; value2; ...])
 %
 % EXAMPLES:
 %   smset("sr830.frequency", 1000);                    % Single channel
-%   smset({"k2400.V_source", "sr830.sensitivity"}, [5, 1e-6]);  % Multiple channels
-%   smset("k2400.V_source", 5, "sr830.frequency", 1000);        % Paired arguments
+%   smset(["k2400.V_source", "sr830.sensitivity"], [5; 1e-6]);  % Multiple channels
 %
 % NOTES:
 %   - Uses same setWrite/setCheck optimization as smset_new

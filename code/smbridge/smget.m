@@ -6,13 +6,11 @@ function varargout = smget(varargin)
 %
 % USAGE:
 %   value = smget(channelName)
-%   values = smget({channel1, channel2, ...})
-%   [val1, val2, ...] = smget(channel1, channel2, ...)
+%   values = smget(["channel1", "channel2", ...])
 %
 % EXAMPLES:
 %   x = smget("sr830.X");                    % Single channel
-%   xy = smget({"sr830.X", "sr830.Y"});      % Multiple channels as cell array
-%   [x, y] = smget("sr830.X", "sr830.Y");    % Multiple channels as separate args
+%   xy = smget(["sr830.X", "sr830.Y"]);      % Multiple channels as string array
 %
 % SEE ALSO: smget_new, smset, smrun_new
 %
