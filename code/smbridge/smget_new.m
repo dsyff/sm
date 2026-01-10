@@ -7,7 +7,6 @@ function values = smget_new(channelNames)
 % Usage:
 %   values = smget_new("chan")
 %   values = smget_new(["ch1","ch2"])
-%   values = smget_new({"ch1","ch2"})
 %
 % Notes:
 % - channelNames must be a 1-D list; it will be converted to a column vector.
@@ -24,12 +23,8 @@ if ~(exist("instrumentRackGlobal", "var") && ~isempty(instrumentRackGlobal))
     error("smget_new:no_instrumentRack", "instrumentRackGlobal is not available. Cannot get values.")
 end
 
-if ischar(channelNames)
-    channelNames = string(channelNames);
-elseif iscell(channelNames)
-    channelNames = string(channelNames);
-elseif ~isstring(channelNames)
-    error("smget_new:invalidChannels", "channelNames must be string/cellstr/char.")
+if ~isstring(channelNames)
+    error("smget_new:invalidChannels", "channelNames must be a string array.")
 end
 
 if ~isvector(channelNames)
