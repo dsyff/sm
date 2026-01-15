@@ -1,4 +1,4 @@
-function [tcp] = connect(IP)
+function tcp = connect(IP)
 
 % brief : This function initializes and connects a selected device.
 %
@@ -6,6 +6,10 @@ function [tcp] = connect(IP)
 %
 % param[out] tcp : TCP/IP connection ID, a tcpclient object 
 
-tcp = tcpclient(IP, 9090);
+arguments
+    IP (1, 1) string {mustBeNonzeroLengthText}
+end
+
+tcp = tcpclient(char(IP), 9090);
 
 end

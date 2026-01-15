@@ -349,8 +349,8 @@ function Run
                     evalin('base',string(i,:));
                 end
             else
-                %filename for this run
-                scan_file_name = replace(scan.name, ".", "_"); %Thomas 20240611 sanitize scan name for saving
+                %filename for this run - final safety net: sanitize for Windows invalid chars
+                scan_file_name = regexprep(scan.name, '[\\/:*?"<>|.]', '_');
                 if ~isfield(smaux,'datadir') || isempty(smaux.datadir)
                     smaux.datadir = smdatapathDefaultPath();
                 end
@@ -471,28 +471,43 @@ function Eval
 end
 
 function scan = UpdateConstants(scan)
-    global smaux smscan;
+    global smaux smscan instrumentRackGlobal;
     
     try
         if nargin==0
             scan = smscan;
         end
-        allchans = {};
-        if isfield(scan.consts,'setchan')
-            allchans = {scan.consts.setchan};
+
+        % Use direct instrumentRack calls (smget_new/smset_new require string arrays).
+        if ~exist("instrumentRackGlobal", "var") || isempty(instrumentRackGlobal)
+            error("instrumentRackGlobal not found. Please run setupSmguiWithNewInstruments() first.");
         end
-        setchans = {};
-        setvals = [];
-        for i=1:length(scan.consts)
+
+        allchans = string.empty(1, 0);
+        if isfield(scan.consts, "setchan")
+            allchans = string({scan.consts.setchan});
+        end
+
+        setchans = string.empty(1, 0);
+        setvals = double.empty(1, 0);
+        for i = 1:length(scan.consts)
             if scan.consts(i).set
-                setchans{end+1}=scan.consts(i).setchan;
-                setvals(end+1)=scan.consts(i).val;
+                setchans(end+1) = string(scan.consts(i).setchan); %#ok<AGROW>
+                setvals(end+1) = double(scan.consts(i).val); %#ok<AGROW>
             end
         end
-        smset_new(setchans, setvals);  % Updated to use new version
-        newvals = cell2mat(smget_new(allchans));  % Updated to use new version
-        for i=1:length(scan.consts)
-            scan.consts(i).val=newvals(i);
+
+        if ~isempty(setchans)
+            instrumentRackGlobal.rackSet(setchans, setvals(:));
+        end
+
+        if isempty(allchans)
+            return;
+        end
+        newvals = instrumentRackGlobal.rackGet(allchans);
+
+        for i = 1:length(scan.consts)
+            scan.consts(i).val = newvals(i);
         end
     catch ME
         % Create detailed error message

@@ -14,8 +14,8 @@ classdef virtualInstrument_nE < virtualInstrumentInterface
     %
 
     properties
-        vTgChannelName (1, 1) string {mustBeNonzeroLengthText};
-        vBgChannelName (1, 1) string {mustBeNonzeroLengthText};
+        vTgChannelName (1, 1) string;
+        vBgChannelName (1, 1) string;
         vTgLimits (1, 2) double {mustBeFinite};
         vBgLimits (1, 2) double {mustBeFinite};
         cnpTg1 (1, 1) double {mustBeFinite};

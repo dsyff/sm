@@ -1,40 +1,34 @@
 # sm 1.5 - MATLAB Measurement Automation System
 
 ## 🚀 QUICK START:
-- Clone or download the `sm-dev` repository (or the latest `sm-main` release) to your desktop
-- Run `demos/demo.m` for complete example
+- Clone or download the latest `sm-dev` or `sm-main` repository to your desktop
+- Copy the newest `demos/demo.m` and adapt it to your experiment
 - The familiar GUI interface is largely unchanged from the original system
 - Use `smget("channel")` and `smset("channel", value)` for quick access
 - Use `smplot("filename.mat")` to recreate plots
 
-## 🔬 AVAILABLE INSTRUMENTS:
-- **BK889B** - LCR meter
-- **E4980AL** - Precision LCR meter  
-- **K2400, K2450** - Keithley
-- **K10CR1** - Thorlabs cage rotator
-- **AndorCCD** - SDK2-compatible CCD spectrometer (single-scan, single/double/triple counts channels)
-- **Montana2, Opticool** - Cryostats
-- **SR830, SR860** - Stanford Research lock-in amplifiers
-- **strainController** - Parallel strain control system
-- **clock, counter** - Timing and counting
-
 ## 🔑 KEY CONCEPTS:
 - **Batch Optimization**: getWrite/getRead separation and smart ordering for performance
-- **Avoid Nested rackGet**: The rack rejects new batch gets while hardware channels are active; virtual instruments run after that lock is released, so call the rack only from `virtualGetChannelRead` if you need derived reads
-- **Bridge System**: Seamless compatibility between old/new instruments
-- **Vector Channels**: Multi-element channels (e.g., XY, XTheta, YTheta, RTheta) supported in smgui and instruments (get only, no vector setting)
+- **Vector Channels**: Multi-element channels that save instrument read time (e.g., XY, XTheta, YTheta, RTheta) supported in smgui and instruments (get only, no vector setting). Vector channels are plotted and saved as scalar channels with `_#` appended (e.g., `XY_1` is X and `XY_2` is Y).
 - **Data Compatibility**: Same file format as legacy system - existing analysis code works unchanged
-- **Virtual Instruments**: Create complex scans (non-linear ramping) and parameter conversions (field→gate voltages)
+- **Virtual Instruments**: Create complex scans (e.g., non-linear ramping) and parameter conversions (e.g., gate voltages to n/E)
 	- Base class `virtualInstrumentInterface` lives in `code/sm2`; concrete helpers in `code/instruments` should follow the layout shown in `instrument_demo.m`.
-- **Deterministic Plot Axes**: Real-time 1D plots always use the loop where a channel is acquired for the x-axis; 2D plots demand that loop be ≤ `nloops-1` and pick a distinct remaining loop for the y-axis (raising errors when a second loop is unavailable).
+- **Scan Stop (Escape)**: Use the Escape key to stop a scan. Plot updates are blocking, so you can stop immediately if something is wrong.
+- **Close Button (X)**: Clicking the close “X” will not close the scan figure immediately; it pauses the scan and asks for confirmation.
+- **Avoid Nested rackGet**: The rack rejects new batch gets while hardware channels are active; virtual instruments run after that lock is released, so call the rack only from `virtualGetChannelRead` if you need derived reads
+
+## 📘 CANONICAL GUIDES
+- `docs/INSTRUMENT_SETUP_GUIDE.txt` (setup workflow, rack usage)
+- `docs/INSTRUMENT_CREATION_GUIDE.txt` (instrument authoring best practices)
+- `docs/VIRTUAL_INSTRUMENT_CREATION_GUIDE.txt` (virtual instrument authoring)
+- `docs/general_coding_guidelines.md` (repo-wide coding guidelines)
 
 ## 🔧 TROUBLESHOOTING:
-- Check instrument addresses and VISA connections
+- Check instrument addresses and VISA connections (especially adaptor index for GPIB)
 - Verify channel names match exactly (case-sensitive)
-- Use `smplot()` to recover plots from saved data
-- Check `filename-tempN.mat~` files if scan interrupted
+- Check `filename-tempN.mat~` files if scan crashed
+- When all else fails, try restarting everything
 
 ---
 
-📖 **For complete documentation, see [README_LONG.md](README_LONG.md)**  
 📅 **Last Updated**: 2025-12-06

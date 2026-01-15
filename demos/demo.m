@@ -4,16 +4,18 @@ global instrumentRackGlobal smscan smaux smdata bridge tareData; %#ok<NUSED>
 
 %% initialize
 path(pathdef);
-username = getenv("USERNAME");
-sm_main_path = sprintf("C:\\Users\\%s\\Desktop\\sm-main", username);
-sm_dev_path = sprintf("C:\\Users\\%s\\Desktop\\sm-dev", username);
+username = string(getenv("USERNAME"));
+sm_main_path = fullfile("C:\Users", username, "Desktop", "sm-main");
+sm_dev_path = fullfile("C:\Users", username, "Desktop", "sm-dev");
 
 if exist(sm_dev_path, "dir")
-    addpath(genpath(sm_dev_path));
-    fprintf("Added sm-dev to path: %s\n", sm_dev_path);
+    codePath = fullfile(sm_dev_path, "code");
+    addpath(codePath);
+    fprintf("Added sm-dev code folder to path: %s\n", codePath);
 elseif exist(sm_main_path, "dir")
-    addpath(genpath(sm_main_path));
-    fprintf("Added sm-main to path: %s\n", sm_main_path);
+    codePath = fullfile(sm_main_path, "code");
+    addpath(codePath);
+    fprintf("Added sm-main code folder to path: %s\n", codePath);
 else
     error("demo:MissingCodePath", "Neither sm-dev nor sm-main directories were found on the Desktop.");
 end
@@ -41,9 +43,18 @@ Montana2_IP = "136.167.55.165";
 Opticool_IP = "127.0.0.1";
 Attodry2100_Address = "192.168.1.1";
 MFLI_Address = "dev30037";
+SDG2042X_mixed_Address = "USB0::0xF4EC::0xEE38::0123456789::0::INSTR";
+SDG2042X_pure_Address = "USB0::0xF4EC::0x1102::SDG2XCAD4R3406::0::INSTR";
+SDG2042X_mixed_TARB_Address = SDG2042X_mixed_Address;
 
 K10CR1_Serial = ""; % Leave blank to use the first detected device
 BK889B_Serial = "COM3";
+
+% ST3215-HS bus servos via Waveshare Bus Servo Adapter (A)
+ST3215HS_Serial = "COM3";
+
+% Thorlabs CS165MU camera (TLCamera SDK)
+CS165MU_Serial = ""; % Leave blank to use the first detected camera
 
 
 %% GPIB Adaptor Indices - change these to match your setup
@@ -53,8 +64,8 @@ adaptorIndex_strain = 2; % Strain controller instruments
 
 
 %% instrument usage flags
-counter_Use = 1;
-clock_Use = 1;
+counter_Use = 0;
+clock_Use = 0;
 test_Use = 0; %extra counters for testing
 virtual_del_V_Use = 0;
 virtual_hysteresis_Use = 0;
@@ -82,12 +93,17 @@ strainController_Use = 0;
 strain_cryostat = "Opticool"; %Opticool, Montana2
 
 K10CR1_Use = 0;
+CS165MU_Use = 0;
 Andor_Use = 0;
 Attodry2100_Use = 0;
 
 BK889B_Use = 0;
+ST3215HS_Use = 0;
 E4980AL_Use = 0;
 MFLI_Use = 0;
+SDG2042X_mixed_Use = 0;
+SDG2042X_pure_Use = 0;
+SDG2042X_mixed_TARB_Use = 0;
 
 
 %% Create instrumentRack
@@ -353,6 +369,38 @@ if K10CR1_Use
     rack.addChannel("K10CR1", "position_deg", "K10CR1_position_deg");
 end
 
+if CS165MU_Use
+    handle_CS165MU = instrument_CS165MU(CS165MU_Serial);
+    handle_CS165MU.requireSetCheck = false;
+    rack.addInstrument(handle_CS165MU, "CS165MU");
+    rack.addChannel("CS165MU", "continuous", "CS165MU_continuous");
+    rack.addChannel("CS165MU", "exposure_ms", "CS165MU_exposure_ms");
+    rack.addChannel("CS165MU", "bin", "CS165MU_bin");
+    rack.addChannel("CS165MU", "roi_origin_x_px", "CS165MU_roi_x_px");
+    rack.addChannel("CS165MU", "roi_origin_y_px", "CS165MU_roi_y_px");
+    rack.addChannel("CS165MU", "roi_width_px", "CS165MU_roi_w_px");
+    rack.addChannel("CS165MU", "roi_height_px", "CS165MU_roi_h_px");
+    rack.addChannel("CS165MU", "queued_frames", "CS165MU_queued_frames");
+end
+
+if ST3215HS_Use
+    % to reprogram the servo ID, connect a single servo to the adapter and run
+    % instrument_ST3215HS.reprogramSTServoId(ST3215HS_Serial, originalID, newID);
+    % new servos default to ID 1
+    % be sure to release the serial port before reprogramming the servo ID
+
+    % remove servoId_2 = and _2 channels if you only have one servo
+    % for ST3215HS, there are 4096 positions. So a scan from 0 to 360 should have 4097 points.
+    handle_ST3215HS = instrument_ST3215HS(ST3215HS_Serial, ...
+        servoId_1 = 10, ...
+        servoId_2 = 11);
+    rack.addInstrument(handle_ST3215HS, "ST3215HS");
+    rack.addChannel("ST3215HS", "position_1_deg", "ST3215HS_pos1_deg");
+    rack.addChannel("ST3215HS", "load_1_percent", "ST3215HS_load1_percent");
+    rack.addChannel("ST3215HS", "position_2_deg", "ST3215HS_pos2_deg");
+    rack.addChannel("ST3215HS", "load_2_percent", "ST3215HS_load2_percent");
+end
+
 if Andor_Use
     handle_AndorSpectrometer = instrument_AndorSpectrometer("AndorSpectrometer");
     handle_AndorSpectrometer.minTimeBetweenAcquisitions_s = 300;
@@ -576,12 +624,69 @@ if MFLI_Use
     rack.addInstrument(handle_MFLI, "MFLI");
     % Add channels for MFLI (4 sine generators)
     for i = 1:4
-        rack.addChannel("MFLI", sprintf("Amplitude_%d", i), sprintf("MFLI_Amp_%d", i), [], [], -2, 2);
-        rack.addChannel("MFLI", sprintf("Phase_%d", i), sprintf("MFLI_Phase_%d", i)); %degrees
-        rack.addChannel("MFLI", sprintf("Frequency_%d", i), sprintf("MFLI_Freq_%d", i));
-        rack.addChannel("MFLI", sprintf("Harmonic_%d", i), sprintf("MFLI_Harm_%d", i));
-        rack.addChannel("MFLI", sprintf("On_%d", i), sprintf("MFLI_On_%d", i));
+        rack.addChannel("MFLI", sprintf("amplitude_%d", i), sprintf("A%d", i), [], [], -2, 2);
+        rack.addChannel("MFLI", sprintf("phase_%d", i), sprintf("Th%d", i)); % degrees
+        rack.addChannel("MFLI", sprintf("frequency_%d", i), sprintf("f%d", i));
+        rack.addChannel("MFLI", sprintf("harmonic_%d", i), sprintf("Harm%d", i));
+        rack.addChannel("MFLI", sprintf("on_%d", i), sprintf("On%d", i)); %on/off
     end
+end
+
+if SDG2042X_mixed_Use
+    % SDG2042X mixed multi-tone output using DDS (ARB FRQ) mode (uploads on every set)
+    handle_SDG2042X_mixed = instrument_SDG2042X_mixed(SDG2042X_mixed_Address, ...
+        waveformArraySize = 2^15, ...
+        uploadFundamentalFrequencyHz = 1, ...
+        internalTimebase = true);
+    handle_SDG2042X_mixed.requireSetCheck = true;
+
+    rack.addInstrument(handle_SDG2042X_mixed, "SDG2042X_mixed");
+    for i = 1:7
+        rack.addChannel("SDG2042X_mixed", string(sprintf("amplitude_%d", i)), string(sprintf("mix_A_%d", i)));
+        rack.addChannel("SDG2042X_mixed", string(sprintf("phase_%d", i)), string(sprintf("mix_Th_%d", i)));
+        rack.addChannel("SDG2042X_mixed", string(sprintf("frequency_%d", i)), string(sprintf("mix_f_%d", i)));
+    end
+    rack.addChannel("SDG2042X_mixed", "global_phase_offset", "mix_Th");
+end
+
+if SDG2042X_pure_Use
+    % SDG2042X 2-channel pure sines using DDS (ARB FRQ) mode (uploads on every set)
+    handle_SDG2042X_pure = instrument_SDG2042X_pure(SDG2042X_pure_Address, ...
+        waveformArraySize = 2^15, ...
+        internalTimebase = false);
+    handle_SDG2042X_pure.requireSetCheck = true;
+
+    rack.addInstrument(handle_SDG2042X_pure, "SDG2042X_pure");
+    for i = 1:2
+        rack.addChannel("SDG2042X_pure", string(sprintf("amplitude_%d", i)), string(sprintf("pure_A_%d", i)));
+        rack.addChannel("SDG2042X_pure", string(sprintf("phase_%d", i)), string(sprintf("pure_Th_%d", i)));
+        rack.addChannel("SDG2042X_pure", string(sprintf("frequency_%d", i)), string(sprintf("pure_f_%d", i)));
+    end
+    rack.addChannel("SDG2042X_pure", "global_phase_offset", "pure_Th");
+end
+
+% DDS CASCADE sync: after both DDS instruments are initialized, trigger a
+% master-side CASCADE re-handshake to apply any updated CASCADE settings.
+if SDG2042X_mixed_Use && SDG2042X_pure_Use
+    handle_SDG2042X_mixed.cascadeResyncOnMaster();
+    handle_SDG2042X_pure.cascadeResyncOnMaster();
+end
+
+if SDG2042X_mixed_TARB_Use
+    % SDG2042X mixed multi-tone output using TrueArb (TARB) mode (uploads on every set)
+    handle_SDG2042X_mixed_TARB = instrument_SDG2042X_mixed_TARB(SDG2042X_mixed_TARB_Address, ...
+        waveformArraySize = 2^20, ...
+        uploadFundamentalFrequencyHz = 1, ...
+        internalTimebase = true);
+    handle_SDG2042X_mixed_TARB.requireSetCheck = true;
+
+    rack.addInstrument(handle_SDG2042X_mixed_TARB, "SDG2042X_mixed_TARB");
+    for i = 1:7
+        rack.addChannel("SDG2042X_mixed_TARB", string(sprintf("amplitude_%d", i)), string(sprintf("mixTARB_A_%d", i)));
+        rack.addChannel("SDG2042X_mixed_TARB", string(sprintf("phase_%d", i)), string(sprintf("mixTARB_Th_%d", i)));
+        rack.addChannel("SDG2042X_mixed_TARB", string(sprintf("frequency_%d", i)), string(sprintf("mixTARB_f_%d", i)));
+    end
+    rack.addChannel("SDG2042X_mixed_TARB", "global_phase_offset", "mixTARB_Th");
 end
 
 if Montana2_Use
@@ -604,6 +709,7 @@ if Attodry2100_Use
     rack.addInstrument(handle_attodry2100, "Attodry2100");
     rack.addChannel("Attodry2100", "T", "T");
     rack.addChannel("Attodry2100", "B", "B");
+    rack.addChannel("Attodry2100", "driven", "driven");
 end
 
 if BK889B_Use

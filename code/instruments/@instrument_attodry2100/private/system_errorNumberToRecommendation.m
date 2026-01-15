@@ -13,10 +13,9 @@ data_send = sprintf('{"jsonrpc": "2.0", "method": "com.attocube.system.errorNumb
 
 writeline(tcp, data_send);
 data_receive = readline(tcp);
-data = jsondecode(data_receive);
 
-value_errNo = data.result(1);
-value_string = data.result(2);
+% Thomas edit (sm-dev): vendor wrapper made robust via attodry_parseResult
+[value_errNo, value_string] = attodry_parseResult(data_receive, 2, "system_errorNumberToRecommendation");
 
 
 end
