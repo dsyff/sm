@@ -1,0 +1,76 @@
+%% INSTRUMENT SETUP GUIDE (see demos/demo.m for the canonical full setup script)
+% Users typically copy/paste + edit demos/demo.m. Keep it up to date when you add
+% or change instruments/channels.
+%
+% QUICK REFERENCE
+% ---------------
+% 0) Add sm-dev or sm-main code folder to the MATLAB path
+% 1) Run sminit (shared setup: globals, cleanup, UI state)
+% 2) Create instrument object (handle)
+% 3) Optional: set instrument properties / send direct hardware commands
+% 4) Add instrument to rack
+% 5) Add user-facing channels to rack
+% 6) smready(rack)
+%
+% STEP 0: Add sm-dev or sm-main code folder to the path
+% This matches demos/demo.m and keeps sminit available.
+% Example:
+%   username = string(getenv("USERNAME"));
+%   sm_dev_path = fullfile("C:\Users", username, "Desktop", "sm-dev");
+%   if exist(sm_dev_path, "dir")
+%       codePath = fullfile(sm_dev_path, "code");
+%       addpath(codePath);
+%   end
+%
+% STEP 1: Run shared initialization
+%   sminit;
+%
+% STEP 2: Create instrument object
+% Syntax: handle = instrument_ClassName(address)
+%
+% Examples:
+%   handle_clock = instrument_clock("clock");
+%   handle_K2450 = instrument_K2450(gpibAddress(18, 0));
+%   handle_SR830 = instrument_SR830(gpibAddress(7, 0));
+%   handle_Montana2 = instrument_Montana2("192.168.1.100");
+%
+% STEP 3 (optional): configure instrument
+% Common patterns:
+%   handle.requireSetCheck = false;  % skip set verification for fast/unsafe cases
+%   h = handle.communicationHandle;
+%   writeline(h, "SCPI_COMMAND");
+%   resp = writeread(h, "SCPI_QUERY?");
+% Notes:
+% - This can be done before or after rack.addInstrument(...) (demo.m does both).
+% - Prefer instrument class methods when available; use direct commands for gaps.
+%
+% STEP 4: add instrument to rack
+% Syntax: rack.addInstrument(handle, "instName")
+%
+% Examples:
+%   rack.addInstrument(handle_clock, "clock");
+%   rack.addInstrument(handle_K2450, "K2450_A");
+%
+% STEP 5: add channels to rack (user-facing names used by smget/smset)
+% Full signature (matches demos/demo.m):
+%   rack.addChannel("instName", "instChanName", "userChanName", rampRate, rampThreshold, softMin, softMax)
+%
+% Notes:
+% - rampRate, rampThreshold, softMin, softMax are optional.
+% - Use [] to skip an optional argument position.
+%
+% Examples:
+%   rack.addChannel("clock", "timeStamp", "time");
+%   rack.addChannel("K2450_A", "V_source", "V_bg", 1, 0.5, -10, 10);
+%   rack.addChannel("SR830_1", "XTheta", "Ixx_XTheta");
+%
+% STEP 6: finish setup + launch GUI
+%   smready(rack);
+%
+% COMMON PITFALLS
+% --------------
+% - addInstrument arg order is (handle, "instName"), not ("instName", handle).
+% - The "instName" string must match between addInstrument and addChannel.
+% - "instChanName" must exist in the instrument class (see its constructor/addChannel calls).
+% - All names must be unique (instrument names, userChanName).
+
