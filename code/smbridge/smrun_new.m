@@ -267,6 +267,17 @@ end
 s.type = '()';
 s2.type = '()';
 display_x_loops = zeros(1, length(scan_disp));
+display_y_loops = zeros(1, length(scan_disp));
+disp2d_info = repmat(struct( ...
+    "x_loop", [], ...
+    "y_loop", [], ...
+    "x_dim", [], ...
+    "y_dim", [], ...
+    "x_len", [], ...
+    "y_len", [], ...
+    "fixed_dims", [], ...
+    "fixed_loops", [], ...
+    "subs_template", []), 1, length(scan_disp));
 for i = 1:length(scan_disp)    
     subplot(sbpl(1), sbpl(2), i);
     dc = scan_disp(i).channel;
@@ -341,42 +352,41 @@ for i = 1:length(scan_disp)
         xlab = 'n';
     end
 
-    if scan_disp(i).dim == 2    
-        if channel_loop_idx > nloops - 1
+    if scan_disp(i).dim == 2
+        if channel_loop_idx >= nloops
             error("smrun_new:InvalidLoopConfiguration", ...
                 "Display %d uses channel %d from loop %d but requires at least two varying loops (n = %d).", ...
                 i, dc, channel_loop_idx, nloops);
         end
 
-        loopsForChannel = zeros(1, dimCount);
-        for loopCandidate = 1:nloops
-            dimIdxCandidate = dimForLoop(loopCandidate);
-            if dimIdxCandidate > 0
-                loopsForChannel(dimIdxCandidate) = loopCandidate;
-            end
-        end
-        loopsForChannel = loopsForChannel(loopsForChannel ~= 0);
+        x_loop_idx = channel_loop_idx;
+        y_loop_idx = channel_loop_idx + 1;
+        display_x_loops(i) = x_loop_idx;
+        display_y_loops(i) = y_loop_idx;
 
-        if numel(loopsForChannel) < 2
-            error("smrun_new:InsufficientLoopDimensions", ...
-                "Display %d requires at least two loop dimensions for channel %d.", ...
-                i, dc);
-        end
-
-        y_loop_idx = [];
-        for candidateLoop = loopsForChannel
-            if candidateLoop ~= channel_loop_idx
-                y_loop_idx = candidateLoop;
-                break;
-            end
-        end
-        if isempty(y_loop_idx)
+        xDim = nloops - x_loop_idx + 1;
+        yDim = nloops - y_loop_idx + 1;
+        if xDim < 1 || xDim > dimCount || yDim < 1 || yDim > dimCount
             error("smrun_new:LoopMappingError", ...
-                "Display %d could not determine a y-axis loop distinct from loop %d.", ...
-                i, channel_loop_idx);
+                "Display %d cannot resolve axes for channel %d (x loop %d, y loop %d).", ...
+                i, dc, x_loop_idx, y_loop_idx);
         end
 
-        yDim = dimForLoop(y_loop_idx);
+        xAxisLength = dataSize(xDim);
+        [xAxis, xLabel] = buildLoopAxis(x_loop_idx);
+        xAxis = double(xAxis(:)');
+        if isempty(xAxis)
+            if xAxisLength > 0
+                xAxis = 1:xAxisLength;
+            end
+        elseif xAxisLength > 0 && numel(xAxis) ~= xAxisLength
+            if xAxisLength == 1
+                xAxis = xAxis(1);
+            else
+                xAxis = linspace(xAxis(1), xAxis(end), xAxisLength);
+            end
+        end
+
         yAxisLength = dataSize(yDim);
         [yAxis, yLabel] = buildLoopAxis(y_loop_idx);
         yAxis = double(yAxis(:)');
@@ -392,13 +402,34 @@ for i = 1:length(scan_disp)
             end
         end
 
+        x = xAxis;
         y = yAxis;
+        xlab = xLabel;
         ylab = yLabel;
-        z = NaN(length(y),length(x));
-        z(:, :) = subsref(data{dc}, s);
-        % Data is stored as [loop2, loop1, ...] which is correct for imagesc
-        % where loop2=y-axis (rows) and loop1=x-axis (columns)
-        % No transpose needed - data is already in the correct format
+
+        fixed_dims = 1:dimCount;
+        fixed_dims([xDim yDim]) = [];
+        fixed_loops = nloops - fixed_dims + 1;
+        subs_template = repmat({1}, 1, dimCount);
+        subs_template{xDim} = ':';
+        subs_template{yDim} = ':';
+
+        s.subs = subs_template;
+        z = subsref(data{dc}, s);
+        if numel(z) == yAxisLength * xAxisLength
+            z = reshape(z, yAxisLength, xAxisLength);
+        end
+
+        disp2d_info(i).x_loop = x_loop_idx;
+        disp2d_info(i).y_loop = y_loop_idx;
+        disp2d_info(i).x_dim = xDim;
+        disp2d_info(i).y_dim = yDim;
+        disp2d_info(i).x_len = xAxisLength;
+        disp2d_info(i).y_len = yAxisLength;
+        disp2d_info(i).fixed_dims = fixed_dims;
+        disp2d_info(i).fixed_loops = fixed_loops;
+        disp2d_info(i).subs_template = subs_template;
+
         disph(i) = imagesc(x, y, z);
 
         xLimits = computeAxisLimits(x);
@@ -643,10 +674,19 @@ for point_idx = 1:totpoints_cached
             % For display updates, we want to show only data collected so far
             % Create subscript for extracting current data state
             if disp_dims(k) == 2
-                % For 2D displays, extract the full data array
-                % The data will have NaN values where measurements haven't been taken yet
-                % This matches what the initial display does
-                s2.subs = repmat({':'}, 1, ndims(data{dc}));
+                info = disp2d_info(k);
+                if isempty(info.x_dim)
+                    continue;
+                end
+                s2.subs = info.subs_template;
+                if ~isempty(info.fixed_dims)
+                    for idx = 1:numel(info.fixed_dims)
+                        loop_idx = info.fixed_loops(idx);
+                        if loop_idx >= 1 && loop_idx <= numel(count)
+                            s2.subs{info.fixed_dims(idx)} = count(loop_idx);
+                        end
+                    end
+                end
                 
             else
                 % For 1D displays, extract based on current loop position
@@ -657,48 +697,18 @@ for point_idx = 1:totpoints_cached
             
             try
                 if disp_dims(k) == 2
-                    % Only update 2D plots after a full line (inner loop) completes
-                    innerLoopIdx = 1;
+                    % Only update 2D plots after a full x-loop line completes
+                    innerLoopIdx = info.x_loop;
                     if innerLoopIdx <= numel(count) && innerLoopIdx <= numel(npoints)
                         if count(innerLoopIdx) ~= npoints(innerLoopIdx)
                             continue;
                         end
                     end
 
-                    % For 2D plots, handle 3D scan data properly
                     z_data = subsref(data{dc}, s2);
-
-                    % Check if this is a 3D scan (more than 2 loops) and we're updating the outermost loop
-                    if nloops > 2 && j == nloops
-                        % Reset the plot for 3D scans when outermost loop changes
-                        z_data(:) = NaN;  % Clear the plot
+                    if numel(z_data) == info.y_len * info.x_len
+                        z_data = reshape(z_data, info.y_len, info.x_len);
                     end
-
-                    % Ensure z_data is 2D for imagesc
-                    if ndims(z_data) > 2
-                        % For nD scans (n>2), extract 2D slice showing loop 1 vs loop 2
-                        % Data is stored as [n_outer, ..., n3, n2, n1]
-                        % We want to fix the outermost loop and show [n2, n1]
-                        slice_indices = repmat({':'}, 1, ndims(z_data));
-                        slice_indices{1} = count(end);  % Fix outermost loop at current value
-
-                        % For 4D+: also fix any intermediate loops at their current values
-                        for dim_idx = 2:(ndims(z_data)-2)
-                            loop_idx = nloops - dim_idx + 1;  % Map dimension to loop index
-                            if loop_idx >= 3  % Only fix loops 3 and higher
-                                slice_indices{dim_idx} = count(loop_idx);
-                            end
-                        end
-
-                        z_data = z_data(slice_indices{:});
-                        z_data = squeeze(z_data); % Remove all singleton dimensions
-                    end
-
-                    % Data is stored as [loop2, loop1, ...] which is correct for imagesc
-                    % where loop2=y-axis (rows) and loop1=x-axis (columns)
-                    % No transpose needed - data is already in the correct format
-
-                    % Simple efficient update - let errors surface if there's a size mismatch
                     set(disph(k), 'cdata', z_data);
                 else                
                     y_data = subsref(data{dc}, s2);

@@ -492,12 +492,24 @@ global smaux smscan smdata bridge;
     if val==1
         smscan.loops(i).getchan(j)=[];
     else
-        % Get the vector channel names (what's shown in dropdown)
-        vectorChannelNames = getChannelNamesForContext('vector');
-        selectedVectorChannel = vectorChannelNames{val-1};  % -1 because first option is 'none'
-        
-        % Store the vector channel name - setplotchoices will handle expansion
-        smscan.loops(i).getchan{j} = selectedVectorChannel;
+        popupStrings = get(smaux.smgui.loopvars_getchans_pmh(i,j), "String");
+        if iscell(popupStrings)
+            popupStrings = string(popupStrings);
+        end
+        if ischar(popupStrings)
+            popupStrings = string(popupStrings);
+        end
+        if val <= numel(popupStrings)
+            selectedVectorChannel = popupStrings(val);
+            if selectedVectorChannel == "none"
+                smscan.loops(i).getchan(j) = [];
+            else
+                % Store the vector channel name - setplotchoices will handle expansion
+                smscan.loops(i).getchan{j} = selectedVectorChannel;
+            end
+        else
+            smscan.loops(i).getchan(j) = [];
+        end
     end
     smscan.disp=[];
     makelooppanels;
@@ -749,32 +761,20 @@ function Plot(varargin)
     global smaux smscan;
     
     % Build plot choices using same logic as setplotchoices
-    allgetchans={smscan.loops.getchan};
-    plotchoices.string={};
-    plotchoices.loop=[];
-    for i=1:length(allgetchans)
-        for j=1:length(allgetchans{i})
-            % Convert vector channel names to scalar names for plotting
-            vectorChanName = allgetchans{i}{j};
-            scalarChanNames = convertVectorToScalarNames(vectorChanName);
-            for k=1:length(scalarChanNames)
-                plotchoices.string={plotchoices.string{:} scalarChanNames{k}};
-                plotchoices.loop=[plotchoices.loop i];
-            end
-        end
-    end
+    [plotchoicesAll, plotchoices2d] = buildPlotChoices();
     
     vals1d = get(smaux.smgui.oneDplot_lbh,'Val');
     vals2d = get(smaux.smgui.twoDplot_lbh,'Val');
     smscan.disp=[];
     for i = 1:length(vals1d)
-       smscan.disp(i).loop=plotchoices.loop(vals1d(i));
+       smscan.disp(i).loop=plotchoicesAll.loop(vals1d(i));
        smscan.disp(i).channel=vals1d(i);
        smscan.disp(i).dim=1;
     end
     for i = (length(vals1d)+1):(length(vals1d)+length(vals2d))
-       smscan.disp(i).loop=plotchoices.loop(vals2d(i-length(vals1d)))+1;
-       smscan.disp(i).channel=vals2d(i-length(vals1d));
+       local_idx = vals2d(i-length(vals1d));
+       smscan.disp(i).loop=plotchoices2d.loop(local_idx)+1;
+       smscan.disp(i).channel=plotchoices2d.full_index(local_idx);
        smscan.disp(i).dim=2;
     end
     
@@ -784,22 +784,9 @@ end
 %populates plot choices
 function setplotchoices(varargin)
     global smscan smaux;
-        temp={smscan.loops.getchan};
-        plotchoices.string={};
-        plotchoices.loop=[];
-        for i=1:length(temp)
-            for j=1:length(temp{i})
-                % Convert vector channel names to scalar names for plotting
-                vectorChanName = temp{i}{j};
-                scalarChanNames = convertVectorToScalarNames(vectorChanName);
-                for k=1:length(scalarChanNames)
-                    plotchoices.string={plotchoices.string{:} scalarChanNames{k}};
-                    plotchoices.loop=[plotchoices.loop i];
-                end
-            end
-        end
-        set(smaux.smgui.oneDplot_lbh,'String',plotchoices.string);       
-        set(smaux.smgui.twoDplot_lbh,'String',plotchoices.string);       
+        [plotchoicesAll, plotchoices2d] = buildPlotChoices();
+        set(smaux.smgui.oneDplot_lbh,'String',plotchoicesAll.string);       
+        set(smaux.smgui.twoDplot_lbh,'String',plotchoices2d.string);       
         
         % Disable 2D plots selection when there is only 1 loop
         numloops = length(smscan.loops);
@@ -829,17 +816,54 @@ function setplotchoices(varargin)
         
         newoneDvals = [];
         newtwoDvals = [];
+        full_to_2d = zeros(1, numel(plotchoicesAll.string));
+        if ~isempty(plotchoices2d.full_index)
+            full_to_2d(plotchoices2d.full_index) = 1:numel(plotchoices2d.full_index);
+        end
         for i=1:length(smscan.disp)
             if smscan.disp(i).dim==1
                 newoneDvals = [newoneDvals smscan.disp(i).channel];
             elseif smscan.disp(i).dim == 2
-                newtwoDvals = [newtwoDvals smscan.disp(i).channel];
+                mapped_idx = full_to_2d(smscan.disp(i).channel);
+                if mapped_idx > 0
+                    newtwoDvals = [newtwoDvals mapped_idx];
+                end
             end
         end
         sort(newoneDvals);
         sort(newtwoDvals);
         set(smaux.smgui.oneDplot_lbh,'Val',newoneDvals);
         set(smaux.smgui.twoDplot_lbh,'Val',newtwoDvals);
+end
+
+function [plotchoicesAll, plotchoices2d] = buildPlotChoices()
+    global smscan;
+
+    allgetchans={smscan.loops.getchan};
+    plotchoicesAll.string={};
+    plotchoicesAll.loop=[];
+    plotchoicesAll.full_index=[];
+
+    full_idx = 0;
+    for i=1:length(allgetchans)
+        for j=1:length(allgetchans{i})
+            % Convert vector channel names to scalar names for plotting
+            vectorChanName = allgetchans{i}{j};
+            scalarChanNames = convertVectorToScalarNames(vectorChanName);
+            for k=1:length(scalarChanNames)
+                full_idx = full_idx + 1;
+                plotchoicesAll.string={plotchoicesAll.string{:} scalarChanNames{k}};
+                plotchoicesAll.loop=[plotchoicesAll.loop i];
+                plotchoicesAll.full_index=[plotchoicesAll.full_index full_idx];
+            end
+        end
+    end
+
+    numloops = length(smscan.loops);
+    mask2d = plotchoicesAll.loop < numloops;
+    plotchoices2d.string = plotchoicesAll.string(mask2d);
+    plotchoices2d.loop = plotchoicesAll.loop(mask2d);
+    plotchoices2d.full_index = find(mask2d);
 end
 
 % Callback for running the scan (call to smrun)
@@ -1400,12 +1424,36 @@ function makeloopgetchans(i)
     numgetchans=length(smscan.loops(i).getchan);
     %smaux.smgui.loopvars_getchans_pmh=[];  %JDSY 7/1/9/2011
     channelnames = getChannelNamesForContext('vector');  % Use vector names for get channels
+    channelnames_str = string(channelnames);
+
+    selected_names = string.empty(1, 0);
+    for loopIdx = 1:length(smscan.loops)
+        loopGetchans = smscan.loops(loopIdx).getchan;
+        if isempty(loopGetchans)
+            continue;
+        end
+        for chanIdx = 1:length(loopGetchans)
+            chanName = loopGetchans{chanIdx};
+            if isempty(chanName)
+                continue;
+            end
+            selected_names(end+1) = string(chanName); %#ok<AGROW>
+        end
+    end
 
     for j=1:numgetchans
         try
             % Find position in dropdown list, not smdata.channels indices
             chanName = smscan.loops(i).getchan{j};
-            chanval = find(strcmp(channelnames, chanName));
+            current_name = string(chanName);
+            available_names = setdiff(channelnames_str, selected_names, "stable");
+            if ~isempty(current_name)
+                if ~any(available_names == current_name)
+                    available_names = [current_name, available_names]; %#ok<AGROW>
+                end
+            end
+
+            chanval = find(available_names == current_name);
             if isempty(chanval)
                 chanval = 1; % Default to 'none'
             else
@@ -1445,7 +1493,7 @@ function makeloopgetchans(i)
         end
         smaux.smgui.loopvars_getchans_pmh(i,j) = uicontrol('Parent',smaux.smgui.loop_panels_ph(i),...
             'Style','popupmenu',...
-            'String',['none' channelnames],...
+            'String',[string("none") available_names],...
             'Value',chanval,...
             'HorizontalAlignment','center',...
             'Position',[60+90*(mod((j-1),7)) 40-30*floor((j-1)/7) 80 20],...
@@ -1457,7 +1505,7 @@ function makeloopgetchans(i)
 
     smaux.smgui.loopvars_getchans_pmh(i,j+1) = uicontrol('Parent',smaux.smgui.loop_panels_ph(i),...
         'Style','popupmenu',...
-        'String',['none' channelnames],...
+        'String',[string("none") setdiff(channelnames_str, selected_names, "stable")],...
         'Value',1,...
         'HorizontalAlignment','center',...
         'Position',[60+90*(mod(j,7)) 40-30*floor(j/7) 80 20],...
