@@ -820,18 +820,41 @@ function setplotchoices(varargin)
         if ~isempty(plotchoices2d.full_index)
             full_to_2d(plotchoices2d.full_index) = 1:numel(plotchoices2d.full_index);
         end
+        valid_disp_mask = true(1, length(smscan.disp));
         for i=1:length(smscan.disp)
+            channel_idx = smscan.disp(i).channel;
+            if channel_idx < 1 || channel_idx > numel(plotchoicesAll.string)
+                valid_disp_mask(i) = false;
+                continue;
+            end
             if smscan.disp(i).dim==1
-                newoneDvals = [newoneDvals smscan.disp(i).channel];
+                newoneDvals = [newoneDvals channel_idx];
             elseif smscan.disp(i).dim == 2
-                mapped_idx = full_to_2d(smscan.disp(i).channel);
+                mapped_idx = full_to_2d(channel_idx);
                 if mapped_idx > 0
                     newtwoDvals = [newtwoDvals mapped_idx];
+                else
+                    valid_disp_mask(i) = false;
                 end
             end
         end
+        if any(~valid_disp_mask)
+            smscan.disp = smscan.disp(valid_disp_mask);
+        end
         sort(newoneDvals);
         sort(newtwoDvals);
+        maxOneD = numel(plotchoicesAll.string);
+        maxTwoD = numel(plotchoices2d.string);
+        if maxOneD == 0
+            newoneDvals = [];
+        else
+            newoneDvals = newoneDvals(newoneDvals >= 1 & newoneDvals <= maxOneD);
+        end
+        if maxTwoD == 0
+            newtwoDvals = [];
+        else
+            newtwoDvals = newtwoDvals(newtwoDvals >= 1 & newtwoDvals <= maxTwoD);
+        end
         set(smaux.smgui.oneDplot_lbh,'Val',newoneDvals);
         set(smaux.smgui.twoDplot_lbh,'Val',newtwoDvals);
 end

@@ -712,8 +712,8 @@ for point_idx = 1:totpoints_cached
                     set(disph(k), 'cdata', z_data);
                 else                
                     y_data = subsref(data{dc}, s2);
-                    % For 3D scans, reset line plots when outermost loop changes
-                    if nloops > 2 && j == nloops
+                    % For 3D+ scans, reset inner-loop plots when the outermost loop changes
+                    if nloops > 2 && j == nloops && dataloop(dc) < nloops
                         y_data(:) = NaN;  % Clear the plot
                     end
 
