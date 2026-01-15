@@ -97,16 +97,17 @@ classdef instrument_Opticool < instrumentInterface
                 case 1
                     targetTemperature = channelLastSetValues;
                     if obj.enforceTargetTemperature(targetTemperature)
-                        warning("Opticool target temperature was changed elsewhere.");
+                        %warning("Opticool target temperature was changed elsewhere.");
                     end
 
                     [~, obj.readValues, obj.temperatureStatus] = handle.GetTemperature(0, obj.temperatureStatus);
                     TF = (string(obj.temperatureStatus) == "Stable");
                 case 2
-                    targetMagneticField = channelLastSetValues;
-                    if obj.enforceTargetMagneticField(targetMagneticField)
-                        warning("Opticool target magnetic field was changed elsewhere.");
-                    end
+                    %GetFieldSetpoints is not working, so we cannot check if the target magnetic field was changed elsewhere.
+                    %targetMagneticField = channelLastSetValues;
+                    %if obj.enforceTargetMagneticField(targetMagneticField)
+                    %    warning("Opticool target magnetic field was changed elsewhere.");
+                    %end
 
                     [~, obj.readValues, obj.fieldStatus] = handle.GetField(0, obj.fieldStatus);
                     TF = (string(obj.fieldStatus) == "StableDriven");
