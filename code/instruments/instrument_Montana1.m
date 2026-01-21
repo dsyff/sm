@@ -1,4 +1,4 @@
-classdef instrument_Montana2 < instrumentInterface
+classdef instrument_Montana1 < instrumentInterface
     % Thomas 20241221
     properties (Access = private)
         % class variables go here
@@ -8,12 +8,12 @@ classdef instrument_Montana2 < instrumentInterface
         readValues;
         approachTime;
         defaultWeboptions = weboptions(Timeout = 3);
-        highTemperatureLimit (1,1) double = 200;
+        highTemperatureLimit (1,1) double = 300;
     end
 
     methods
 
-        function obj = instrument_Montana2(address)         
+        function obj = instrument_Montana1(address)
             obj@instrumentInterface();
             obj.urlRoot = sprintf("http://%s:47101/v1", address);
             obj.platformGetUrl = obj.urlRoot + "/sampleChamber/temperatureControllers/platform/thermometer/properties/sample";
@@ -106,7 +106,7 @@ classdef instrument_Montana2 < instrumentInterface
             else
                 TF = stabilizingTime > minutes(15);
                 if TF && absDiff > 1
-                    Warning("Montana 2 failed to reach %fK", targetTemperature);
+                    Warning("Montana 1 failed to reach %fK", targetTemperature);
                 end
             end
         end
