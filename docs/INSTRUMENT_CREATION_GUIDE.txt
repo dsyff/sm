@@ -291,6 +291,8 @@ CHANNEL PARAMETER REFERENCE
   rampThreshold : Skip ramping if delta is below this value
   softMin       : Software-enforced minimum limit
   softMax       : Software-enforced maximum limit
+  Note: softMin/softMax are enforced only by instrumentRack (smset/rackSet).
+        Direct instrument.setChannel calls do not apply software limits.
 
 Example with all parameters:
   rack.addChannel("K2450_A", "V_source", "V_bg", 1, 0.5, -10, 10);

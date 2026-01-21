@@ -24,8 +24,9 @@ classdef (Sealed) instrumentRack < handle
             end
             assert(~isMATLABReleaseOlderThan("R2022a"), "Matlab version is too old");
             if ~skipDialog
-                selection = questdlg("Is the sample safe?", "Check sample", "Yes", "No", "No");
-                % Handle response
+                selection = questdlg( ...
+                    "Has Windows Update been postponed, and is the sample safe?", ...
+                    "Preflight Checks", "Yes", "No", "No");
                 if selection ~= "Yes"
                     error("instrumentRack construction cancelled by user.");
                 end
