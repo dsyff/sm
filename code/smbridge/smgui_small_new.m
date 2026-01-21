@@ -63,6 +63,21 @@ if ~exist('bridge', 'var') || isempty(bridge)
     end
 end
 
+% Ensure experimentRootPath is set early for path defaults.
+if exist("bridge", "var") && ~isempty(bridge) && isobject(bridge) && isprop(bridge, "experimentRootPath")
+    if strlength(string(bridge.experimentRootPath)) == 0
+        bridge.experimentRootPath = pwd;
+    end
+    rootPath = string(bridge.experimentRootPath);
+    if strlength(rootPath) > 0
+        currentPath = smdatapathGetState();
+        if ~startsWith(string(currentPath), rootPath, "IgnoreCase", true)
+            smaux.datadir = fullfile(rootPath, "data");
+            smdatapathUpdateGlobalState("small", smaux.datadir);
+        end
+    end
+end
+
 
  
 switch nargin
@@ -111,17 +126,8 @@ end
             'HandleVisibility','Callback',...
             'Accelerator','s',...
             'Callback',@SaveScan);
-
-        smaux.smgui.OpenRack = uimenu('Parent',smaux.smgui.FileMenu,...
+        smaux.smgui.EditRack = uimenu('Parent',smaux.smgui.FileMenu,...
             'Separator','on',...
-            'Label','Open Rack',...
-            'HandleVisibility','Callback',...
-            'Callback',@OpenRack);
-        smaux.smgui.SaveRack = uimenu('Parent',smaux.smgui.FileMenu,...
-            'Label','Save Rack',...
-            'HandleVisibility','Callback',...
-            'Callback',@SaveRack);
-       smaux.smgui.EditRack = uimenu('Parent',smaux.smgui.FileMenu,...
             'Label','Edit Rack',...
             'HandleVisibility','Callback',...
             'Callback',@EditRack);
@@ -313,14 +319,40 @@ end
 
 
 function SaveScan(hObject,eventdata)
-    [smscanFile,smscanPath] = uiputfile('*.mat','Save Scan As');
+    global smscan
+    defaultName = "scan.mat";
+    if isstruct(smscan) && isfield(smscan, "name") && ~isempty(smscan.name)
+        defaultName = string(sanitizeFilename(string(smscan.name))) + ".mat";
+    end
+    [smscanFile,smscanPath] = uiputfile('*.mat','Save Scan As', char(defaultName));
+    if isequal(smscanFile, 0)
+        return;
+    end
     save(fullfile(smscanPath,smscanFile),'smscan');
 end
 
 function LoadScan(hObject,eventdata)
+    global smscan
     [smscanFile,smscanPath] = uigetfile('*.mat','Select Scan File');
-    S=load (fullfile(smscanPath,smscanFile));
-    smscan=S.smscan;
+    if isequal(smscanFile, 0)
+        return;
+    end
+    try
+        S = load(fullfile(smscanPath, smscanFile));
+    catch
+        return;
+    end
+    if isfield(S, "smscan")
+        smscan = S.smscan;
+    elseif isfield(S, "scan")
+        smscan = S.scan;
+    else
+        return;
+    end
+    smscan = smscanSanitizeForBridge(smscan);
+    if isempty(smscan)
+        return;
+    end
     if isfield(smscan,'consts') && ~isfield(smscan.consts,'set')
         for i=1:length(smscan.consts)
             smscan.consts(i).set=1;
@@ -329,16 +361,9 @@ function LoadScan(hObject,eventdata)
     scaninit;
 end
 
-function OpenRack(hObject,eventdata)
-    msgbox('Open Rack functionality is not implemented in sm1.5.', 'Not Implemented', 'warn');
-end
-
-function SaveRack(hObject,eventdata)
-    msgbox('Save Rack functionality is not implemented in sm1.5.', 'Not Implemented', 'warn');
-end
-
 function EditRack(hObject,eventdata)
-    msgbox('Edit Rack functionality is not implemented in sm1.5.', 'Not Implemented', 'warn');
+    msgbox("Edit Rack is not implemented in sm1.5. Use your setup script (demos/demo.m) to edit the rack.", ...
+        "Not Implemented", "help");
 end
 
 function loopvars_addchan_pbh_Callback(hObject,eventdata,i)
@@ -511,7 +536,6 @@ global smaux smscan smdata bridge;
             smscan.loops(i).getchan(j) = [];
         end
     end
-    smscan.disp=[];
     makelooppanels;
 end
 
@@ -599,12 +623,41 @@ end
 
  % Callback for data file location pushbutton
 function SavePath(varargin)
-    global smaux
-    x=uigetdir;
+    global smaux bridge
+    x = uigetdir;
     if x
-        smaux.datadir = x;
-        smdatapathUpdateGlobalState('small', smaux.datadir);
-        smdatapathApplyStateToGui('small');
+        rootPath = string(pwd);
+        if exist("bridge", "var") && ~isempty(bridge) && isobject(bridge) && isprop(bridge, "experimentRootPath")
+            if strlength(string(bridge.experimentRootPath)) == 0
+                bridge.experimentRootPath = pwd;
+            end
+            rootPath = string(bridge.experimentRootPath);
+        end
+
+        pickedPath = string(x);
+        targetPath = pickedPath;
+        if strlength(rootPath) > 0
+            if startsWith(pickedPath, rootPath, "IgnoreCase", true)
+                relPath = extractAfter(pickedPath, strlength(rootPath));
+                if startsWith(relPath, filesep)
+                    relPath = extractAfter(relPath, 1);
+                end
+                if strlength(relPath) == 0
+                    relPath = "data";
+                end
+            else
+                [~, relPath] = fileparts(char(pickedPath));
+                relPath = string(relPath);
+                if strlength(relPath) == 0
+                    relPath = "data";
+                end
+            end
+            targetPath = fullfile(rootPath, relPath);
+        end
+
+        smaux.datadir = targetPath;
+        smdatapathUpdateGlobalState("small", smaux.datadir);
+        smdatapathApplyStateToGui("small");
     end
 end
 
@@ -622,12 +675,44 @@ end
 
 %Callback for filename pushbutton
 function FileName(varargin)
-global smaux smscan;
+global smaux smscan bridge;
     [savedataFile,savedataPath] = uiputfile('*.mat','Save Data As');
     if savedataPath ~= 0
-        smaux.datadir=savedataPath(1:end-1);
-        smdatapathUpdateGlobalState('small', smaux.datadir);
-        smdatapathApplyStateToGui('small');
+        rootPath = string(pwd);
+        if exist("bridge", "var") && ~isempty(bridge) && isobject(bridge) && isprop(bridge, "experimentRootPath")
+            if strlength(string(bridge.experimentRootPath)) == 0
+                bridge.experimentRootPath = pwd;
+            end
+            rootPath = string(bridge.experimentRootPath);
+        end
+
+        pickedPath = string(savedataPath);
+        targetPath = pickedPath;
+        if strlength(rootPath) > 0
+            if endsWith(pickedPath, filesep)
+                pickedPath = extractBefore(pickedPath, strlength(pickedPath));
+            end
+            if startsWith(pickedPath, rootPath, "IgnoreCase", true)
+                relPath = extractAfter(pickedPath, strlength(rootPath));
+                if startsWith(relPath, filesep)
+                    relPath = extractAfter(relPath, 1);
+                end
+                if strlength(relPath) == 0
+                    relPath = "data";
+                end
+            else
+                [~, relPath] = fileparts(char(pickedPath));
+                relPath = string(relPath);
+                if strlength(relPath) == 0
+                    relPath = "data";
+                end
+            end
+            targetPath = fullfile(rootPath, relPath);
+        end
+
+        smaux.datadir = targetPath;
+        smdatapathUpdateGlobalState("small", smaux.datadir);
+        smdatapathApplyStateToGui("small");
 
         savedataFile=savedataFile(1:end-4); %crop off .mat
         separators=strfind(savedataFile,'_');
@@ -648,12 +733,23 @@ end
 
 % Callback for ppt file location pushbutton
 function SavePPT(varargin)
-global smaux;
+global smaux bridge;
     [pptFile,pptPath] = uiputfile('*.ppt','Append to Presentation');
     if isequal(pptFile, 0)
         return;
     end
-    selectedFile = fullfile(pptPath, pptFile);
+    rootPath = string(pwd);
+    if exist("bridge", "var") && ~isempty(bridge) && isobject(bridge) && isprop(bridge, "experimentRootPath")
+        if strlength(string(bridge.experimentRootPath)) == 0
+            bridge.experimentRootPath = pwd;
+        end
+        rootPath = string(bridge.experimentRootPath);
+    end
+    [~, pptName, pptExt] = fileparts(pptFile);
+    if strlength(string(pptExt)) == 0
+        pptExt = ".ppt";
+    end
+    selectedFile = fullfile(rootPath, string(pptName) + string(pptExt));
     checkboxValue = false;
     if isstruct(smaux) && isfield(smaux, 'smgui') && isstruct(smaux.smgui) ...
             && isfield(smaux.smgui, 'appendppt_cbh') && ishandle(smaux.smgui.appendppt_cbh)
@@ -765,18 +861,31 @@ function Plot(varargin)
     
     vals1d = get(smaux.smgui.oneDplot_lbh,'Val');
     vals2d = get(smaux.smgui.twoDplot_lbh,'Val');
-    smscan.disp=[];
+    dispEntries = struct('loop', {}, 'channel', {}, 'dim', {}, 'name', {});
+    entryIndex = 0;
     for i = 1:length(vals1d)
-       smscan.disp(i).loop=plotchoicesAll.loop(vals1d(i));
-       smscan.disp(i).channel=vals1d(i);
-       smscan.disp(i).dim=1;
+        chanIdx = vals1d(i);
+        if chanIdx < 1 || chanIdx > numel(plotchoicesAll.string)
+            continue;
+        end
+        entryIndex = entryIndex + 1;
+        dispEntries(entryIndex).loop = plotchoicesAll.loop(chanIdx);
+        dispEntries(entryIndex).channel = chanIdx;
+        dispEntries(entryIndex).dim = 1;
+        dispEntries(entryIndex).name = string(plotchoicesAll.string{chanIdx});
     end
-    for i = (length(vals1d)+1):(length(vals1d)+length(vals2d))
-       local_idx = vals2d(i-length(vals1d));
-       smscan.disp(i).loop=plotchoices2d.loop(local_idx)+1;
-       smscan.disp(i).channel=plotchoices2d.full_index(local_idx);
-       smscan.disp(i).dim=2;
+    for i = 1:length(vals2d)
+        local_idx = vals2d(i);
+        if local_idx < 1 || local_idx > numel(plotchoices2d.string)
+            continue;
+        end
+        entryIndex = entryIndex + 1;
+        dispEntries(entryIndex).loop = plotchoices2d.loop(local_idx) + 1;
+        dispEntries(entryIndex).channel = plotchoices2d.full_index(local_idx);
+        dispEntries(entryIndex).dim = 2;
+        dispEntries(entryIndex).name = string(plotchoices2d.string{local_idx});
     end
+    smscan.disp = dispEntries;
     
     setplotchoices;
 end
@@ -814,6 +923,7 @@ function setplotchoices(varargin)
             set(smaux.smgui.twoDplot_sth,'Enable','on');
         end
         
+        plotNames = string(plotchoicesAll.string);
         newoneDvals = [];
         newtwoDvals = [];
         full_to_2d = zeros(1, numel(plotchoicesAll.string));
@@ -822,11 +932,27 @@ function setplotchoices(varargin)
         end
         valid_disp_mask = true(1, length(smscan.disp));
         for i=1:length(smscan.disp)
-            channel_idx = smscan.disp(i).channel;
-            if channel_idx < 1 || channel_idx > numel(plotchoicesAll.string)
+            dispName = "";
+            if isfield(smscan.disp, "name")
+                dispName = string(smscan.disp(i).name);
+            end
+            if strlength(dispName) == 0
+                channel_idx = smscan.disp(i).channel;
+                if channel_idx >= 1 && channel_idx <= numel(plotchoicesAll.string)
+                    dispName = plotNames(channel_idx);
+                end
+            end
+            if strlength(dispName) == 0
                 valid_disp_mask(i) = false;
                 continue;
             end
+            channel_idx = find(plotNames == dispName, 1);
+            if isempty(channel_idx)
+                valid_disp_mask(i) = false;
+                continue;
+            end
+            smscan.disp(i).name = dispName;
+            smscan.disp(i).channel = channel_idx;
             if smscan.disp(i).dim==1
                 newoneDvals = [newoneDvals channel_idx];
             elseif smscan.disp(i).dim == 2
@@ -841,8 +967,8 @@ function setplotchoices(varargin)
         if any(~valid_disp_mask)
             smscan.disp = smscan.disp(valid_disp_mask);
         end
-        sort(newoneDvals);
-        sort(newtwoDvals);
+        newoneDvals = sort(newoneDvals);
+        newtwoDvals = sort(newtwoDvals);
         maxOneD = numel(plotchoicesAll.string);
         maxTwoD = numel(plotchoices2d.string);
         if maxOneD == 0
@@ -1023,7 +1149,8 @@ function Update(varargin)
         smscan.saveloop=1;
         smscan.disp(1).loop=[];
         smscan.disp(1).channel=[];
-        smscan.disp(1).dim=[];        
+        smscan.disp(1).dim=[];
+        smscan.disp(1).name="";
         smscan.consts=[];
         smscan.comments='';
         smscan.name='';
@@ -1763,18 +1890,27 @@ function registerSmallGuiWithPptState()
     end
     targetEnabled = checkboxValue;
     targetFile = currentFile;
+    rootPath = string(pwd);
+    if exist("bridge", "var") && ~isempty(bridge) && isobject(bridge) && isprop(bridge, "experimentRootPath")
+        if strlength(string(bridge.experimentRootPath)) == 0
+            bridge.experimentRootPath = pwd;
+        end
+        rootPath = string(bridge.experimentRootPath);
+    end
     if isempty(targetFile)
         if isfield(smaux, 'pptsavefile') && ~isempty(smaux.pptsavefile)
             targetFile = smaux.pptsavefile;
         else
             % Set default short name
-            targetFile = 'log.ppt';
-            % Store pwd as experimentRootPath if not already set
-            global bridge;
-            if isempty(bridge.experimentRootPath)
-                bridge.experimentRootPath = pwd;
-            end
+            targetFile = "log.ppt";
         end
+    end
+    if strlength(rootPath) > 0
+        [~, pptName, pptExt] = fileparts(targetFile);
+        if strlength(string(pptExt)) == 0
+            pptExt = ".ppt";
+        end
+        targetFile = fullfile(rootPath, string(pptName) + string(pptExt));
     end
     if targetEnabled ~= currentEnabled || ~strcmp(char(targetFile), char(currentFile))
         smpptUpdateGlobalState('small', targetEnabled, targetFile);
@@ -1784,7 +1920,7 @@ end
 
 
 function registerSmallGuiWithDataState()
-    global smaux
+    global smaux bridge
     smdatapathEnsureGlobals();
     if ~isstruct(smaux) || ~isfield(smaux, 'smgui') || ~isstruct(smaux.smgui)
         return;
@@ -1800,6 +1936,13 @@ function registerSmallGuiWithDataState()
 
     currentPath = smdatapathGetState();
     targetPath = currentPath;
+    rootPath = string(pwd);
+    if exist("bridge", "var") && ~isempty(bridge) && isobject(bridge) && isprop(bridge, "experimentRootPath")
+        if strlength(string(bridge.experimentRootPath)) == 0
+            bridge.experimentRootPath = pwd;
+        end
+        rootPath = string(bridge.experimentRootPath);
+    end
     if isempty(targetPath)
         if isfield(smaux, 'datadir') && ~isempty(smaux.datadir)
             targetPath = smaux.datadir;
@@ -1810,7 +1953,18 @@ function registerSmallGuiWithDataState()
         smaux.datadir = targetPath;
     end
 
-    if isempty(smaux.datadir)
+    if strlength(rootPath) > 0
+        if ~startsWith(string(targetPath), rootPath, "IgnoreCase", true)
+            [~, relPath] = fileparts(char(targetPath));
+            relPath = string(relPath);
+            if strlength(relPath) == 0
+                relPath = "data";
+            end
+            targetPath = fullfile(rootPath, relPath);
+        end
+    end
+
+    if isempty(smaux.datadir) || ~strcmp(char(smaux.datadir), char(targetPath))
         smaux.datadir = targetPath;
     end
 
