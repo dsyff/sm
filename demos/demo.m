@@ -38,7 +38,7 @@ K2400_B_GPIB = 24; %vtg
 K2400_C_GPIB = 25; %vtg
 
 E4980AL_GPIB = 6; %E4980AL LCR meter for strain controller
-
+Montana1_IP = "136.167.55.127";
 Montana2_IP = "136.167.55.165";
 Opticool_IP = "127.0.0.1";
 Attodry2100_Address = "192.168.1.1";
@@ -88,6 +88,7 @@ K2400_B_Use = 0;
 K2400_C_Use = 0;
 
 Montana2_Use = 0;
+Montana1_Use = 0;
 Opticool_Use = 0;
 
 strainController_Use = 0;
@@ -706,6 +707,12 @@ if Montana2_Use
     handle_Montana2 = instrument_Montana2(Montana2_IP);
     rack.addInstrument(handle_Montana2, "Montana2");
     rack.addChannel("Montana2", "T", "T");
+end
+
+if Montana1_Use
+    handle_Montana1 = instrument_Montana1(Montana1_IP);
+    rack.addInstrument(handle_Montana1, "Montana1");
+    rack.addChannel("Montana1", "T", "T");
 end
 
 if Opticool_Use

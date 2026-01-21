@@ -8,6 +8,7 @@ classdef instrument_Montana2 < instrumentInterface
         readValues;
         approachTime;
         defaultWeboptions = weboptions(Timeout = 3);
+        highTemperatureLimit (1,1) double = 200;
     end
 
     methods
@@ -86,12 +87,12 @@ classdef instrument_Montana2 < instrumentInterface
                 if absDiff > 0.5
                     obj.approachTime = datetime('now');
                 end
-            elseif targetTemperature <= 200
+            elseif targetTemperature <= obj.highTemperatureLimit
                 if absDiff > 0.2
                     obj.approachTime = datetime('now');
                 end
             else
-                if actualTemperature <= 199.9
+                if actualTemperature <= (obj.highTemperatureLimit - 1)
                     obj.approachTime = datetime('now');
                 end
             end
@@ -100,7 +101,7 @@ classdef instrument_Montana2 < instrumentInterface
                 TF = stabilizingTime > minutes(0.5);
             elseif targetTemperature < 15
                 TF = absDiff < 0.1 || stabilizingTime > minutes(5);
-            elseif targetTemperature <= 200
+            elseif targetTemperature <= obj.highTemperatureLimit
                 TF = absDiff < 0.1 || stabilizingTime > minutes(5);
             else
                 TF = stabilizingTime > minutes(15);
