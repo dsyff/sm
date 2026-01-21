@@ -849,14 +849,26 @@ function saveData()
         fprintf("smrun_new: Failed to save final data (%s).\n", finalSaveError.message);
     end
 
+    % Save PNG for figure and PowerPoint
+    pngFile = sprintf("%s.png", figstring);
+    png_saved = true;
+    try
+        exportgraphics(figHandle, pngFile, Resolution = 300, Padding = "tight");
+    catch pngError
+        png_saved = false;
+        fprintf("smrun_new: Failed to export PNG (%s).\n", pngError.message);
+    end
+
     % Save PowerPoint if enabled
     try
         [pptEnabled, pptFile] = smpptGetState();
         if pptEnabled
             if isempty(pptFile)
                 fprintf("smrun_new: PowerPoint append skipped (no file specified).\n");
+            elseif ~png_saved
+                fprintf("smrun_new: PowerPoint append skipped (PNG export failed).\n");
             else
-                % Create text structure for smsaveppt (it expects .title and .body fields)
+                % Create text structure for smsaveppt_new (it expects .title and .body fields)
                 text_data = struct();
                 [~, name_only, ext] = fileparts(filename);
                 text_data.title = [name_only ext]; % Use just filename without path
@@ -891,19 +903,20 @@ function saveData()
                     end
                 end
 
-                smsaveppt(pptFile, text_data, '-f1000');
+                text_data.imagePath = pngFile;
+                smsaveppt_new(pptFile, text_data);
             end
         end
     catch pptError
         fprintf("smrun_new: Skipping PowerPoint append (%s).\n", pptError.message);
     end
 
-    try
-        pdfFile = sprintf('%s.pdf', figstring);
-        exportgraphics(figHandle, pdfFile, 'ContentType', 'vector');
-    catch pdfError
-        fprintf("smrun_new: Failed to export PDF (%s).\n", pdfError.message);
-    end
+%     try
+%         pdfFile = sprintf('%s.pdf', figstring);
+%         exportgraphics(figHandle, pdfFile, 'ContentType', 'vector');
+%     catch pdfError
+%         fprintf("smrun_new: Failed to export PDF (%s).\n", pdfError.message);
+%     end
 
     try
         savefig(figHandle, figstring);

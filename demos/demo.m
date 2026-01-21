@@ -71,6 +71,7 @@ virtual_del_V_Use = 0;
 virtual_hysteresis_Use = 0;
 virtual_nonlinear_T_Use = 0;
 virtual_nE_Use = 0;
+toyBLG_Use = 0;
 
 SR860_1_Use = 0;
 SR830_1_Use = 0;
@@ -201,6 +202,18 @@ if clock_Use
     handle_clock = instrument_clock("clock");
     rack.addInstrument(handle_clock, "clock");
     rack.addChannel("clock", "timeStamp", "time");
+end
+
+if toyBLG_Use
+    handle_toyBLG = instrument_toyBLG("toyBLG");
+    rack.addInstrument(handle_toyBLG, "toyBLG");
+    rack.addChannel("toyBLG", "h_tg", "toyBLG_h_tg");
+    rack.addChannel("toyBLG", "h_bg", "toyBLG_h_bg");
+    rack.addChannel("toyBLG", "n0", "toyBLG_n0");
+    rack.addChannel("toyBLG", "D0_V_per_nm", "toyBLG_D0_V_per_nm");
+    rack.addChannel("toyBLG", "V_bg", "toyBLG_V_bg", [], [], -10, 10);
+    rack.addChannel("toyBLG", "V_tg", "toyBLG_V_tg", [], [], -10, 10);
+    rack.addChannel("toyBLG", "Rxx", "toyBLG_Rxx");
 end
 
 if K2450_A_Use
@@ -760,17 +773,18 @@ end
 
 if virtual_nE_Use
     handle_virtual_nE = virtualInstrument_nE("virtual_nE", rack, ...
-        vTgChannelName = "V_tg", ...
         vBgChannelName = "V_bg", ...
-        vTgLimits = [-6, 6], ...
+        vTgChannelName = "V_tg", ...
         vBgLimits = [-6, 6], ...
-        cnpTg1 = -1, ...
-        cnpBg1 = 1, ...
-        cnpTg2 = -2, ...
-        cnpBg2 = 2);
+        vTgLimits = [-6, 6], ...
+        vBg_n0E0 = 1, ...
+        vTg_n0E0 = -1, ...
+        vBg_n0ENot0 = 2, ...
+        vTg_n0ENot0 = -2);
     rack.addInstrument(handle_virtual_nE, "virtual_nE");
     rack.addChannel("virtual_nE", "n", "n_normalized", [], [], 0, 1);
     rack.addChannel("virtual_nE", "E", "E_normalized", [], [], 0, 1);
+    rack.addChannel("virtual_nE", "nE_within_bounds", "nE_within_bounds");
 end
 
 

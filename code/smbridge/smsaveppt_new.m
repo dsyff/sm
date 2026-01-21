@@ -1,5 +1,5 @@
-% SAVEPPT saves plots to PowerPoint.
-% function SAVEPPT(filespec,title,prnopt) saves the current Matlab figure
+% SAVEPPT_NEW saves plots to PowerPoint.
+% function SAVEPPT_NEW(filespec,title,prnopt) saves the current Matlab figure
 %  window or Simulink model window to a PowerPoint file designated by
 %  filespec.  If filespec is omitted, the user is prompted to enter
 %  one via UIPUTFILE.  If the path is omitted from filespec, the
@@ -32,7 +32,7 @@
 %  However, if you want to save a specific figure or simulink model
 %  without title text, you must use the function-call method:
 %  >> saveppt('models.ppt','','-f8')
-
+%
 %Ver 2.2, Copyright 2005, Mark W. Brown, mwbrown@ieee.org
 %  changed slide type to include title.
 %  added input parameter for title text.
@@ -41,7 +41,7 @@
 %  swapped order of opening PPT and copying to clipboard (thanks to David Abraham)
 %  made PPT invisible during save operations (thanks to Noah Siegel)
 
-function smsaveppt(filespec,text,prnopt)
+function smsaveppt_new(filespec,text,prnopt)
 
 % Establish valid file name:
 if nargin<1 || isempty(filespec)
@@ -65,11 +65,14 @@ end
 % Start an ActiveX session with PowerPoint:
 ppt = actxserver('PowerPoint.Application');
 
-% Capture current figure/model into clipboard:
-if nargin<3
-    print -dmeta
-else
-    print('-dmeta',prnopt)
+% Capture current figure/model into clipboard unless an image file is provided:
+use_image_file = isfield(text, 'imagePath') && ~isempty(text.imagePath);
+if ~use_image_file
+    if nargin<3
+        print -dmeta
+    else
+        print('-dmeta',prnopt)
+    end
 end
 
 if ~exist(filespec,'file')
@@ -111,56 +114,71 @@ set(new_slide.Shapes.Title.TextFrame.TextRange.Font,'Bold',true);
 slide_H = op.PageSetup.SlideHeight;
 slide_W = op.PageSetup.SlideWidth;
 
-% Paste the contents of the Clipboard:
+% Paste the contents of the Clipboard or insert image file:
 %Thomas -07292022 added 2 retries
 %Thomas -05262024 changed to infinite retries
 
-try
-    pic1 = invoke(new_slide.Shapes,'Paste');
-catch
-    success = false;
-    while ~success
-        try
-            warning("Pasting screenshot into ppt failed. Retrying in 10 seconds... -Thomas");
-            pause(10);
-            if nargin<3
-                print -dmeta
-            else
-                print('-dmeta',prnopt)
+if use_image_file
+    img_info = imfinfo(text.imagePath);
+    pic_H_over_W = img_info.Height / img_info.Width;
+    title_top = get(new_slide.Shapes.Title, 'Top');
+    title_height = get(new_slide.Shapes.Title, 'Height');
+    title_bottom = title_top + title_height;
+    pic_H_scaled = slide_H - title_bottom;
+    pic_W_scaled = pic_H_scaled / pic_H_over_W;
+    pic_left = (slide_W - pic_W_scaled) / 2;
+    pic1 = invoke(new_slide.Shapes,'AddPicture', text.imagePath, 0, 1, ...
+        single(pic_left), single(title_bottom), single(pic_W_scaled), single(pic_H_scaled));
+else
+    try
+        pic1 = invoke(new_slide.Shapes,'Paste');
+    catch
+        success = false;
+        while ~success
+            try
+                warning("Pasting screenshot into ppt failed. Retrying in 10 seconds... -Thomas");
+                pause(10);
+                if nargin<3
+                    print -dmeta
+                else
+                    print('-dmeta',prnopt)
+                end
+                warning("Pasting into ppt in 10 seconds... -Thomas");
+                pause(10);
+                pic1 = invoke(new_slide.Shapes,'Paste');
+                success = true;
+            catch
             end
-            warning("Pasting into ppt in 10 seconds... -Thomas");
-            pause(10);
-            pic1 = invoke(new_slide.Shapes,'Paste');
-            success = true;
-        catch
         end
     end
 end
 
-% Get height and width of picture:
-pic_H = get(pic1,'Height');
-pic_W = get(pic1,'Width');
+% Get height and width of picture and scale/position:
+if ~use_image_file
+    pic_H = get(pic1,'Height');
+    pic_W = get(pic1,'Width');
 
-pic_H_over_W = pic_H / pic_W;
+    pic_H_over_W = pic_H / pic_W;
 
-maxwidth=slide_W;
-maxheight=slide_H - 30;
+    maxwidth=slide_W;
+    maxheight=slide_H - 30;
 
-max_H_over_W = maxheight / maxwidth;
+    max_H_over_W = maxheight / maxwidth;
 
-if max_H_over_W >= pic_H_over_W
-    pic_W_scaled = maxwidth;
-    pic_H_scaled = maxwidth * pic_H_over_W;
-else
-    pic_H_scaled = maxheight;
-    pic_W_scaled = maxheight / pic_H_over_W;
+    if max_H_over_W >= pic_H_over_W
+        pic_W_scaled = maxwidth;
+        pic_H_scaled = maxwidth * pic_H_over_W;
+    else
+        pic_H_scaled = maxheight;
+        pic_W_scaled = maxheight / pic_H_over_W;
+    end
+    %pic_W_scaled = pic_W_scaled * 2;
+    %pic_H_scaled = pic_H_scaled * 2;
+    set(pic1,'Height', pic_H_scaled);
+    set(pic1,'Width', pic_W_scaled);
+    set(pic1,'Left',0);
+    set(pic1,'Top', slide_H - pic_H_scaled);
 end
-%pic_W_scaled = pic_W_scaled * 2;
-%pic_H_scaled = pic_H_scaled * 2;
-set(pic1,'Height', pic_H_scaled);
-set(pic1,'Width', pic_W_scaled);
-set(pic1,'Left',0);
-set(pic1,'Top', slide_H - pic_H_scaled);
 
 % if (pic_H > maxheight || pic_W > maxwidth)
 %     if (pic_H/425 > pic_W/525)

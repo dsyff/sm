@@ -58,6 +58,8 @@
 % Notes:
 % - rampRate, rampThreshold, softMin, softMax are optional.
 % - Use [] to skip an optional argument position.
+% - softMin/softMax are enforced by instrumentRack (smset/rackSet) only.
+%   Direct instrument.setChannel calls bypass these software limits.
 %
 % Examples:
 %   rack.addChannel("clock", "timeStamp", "time");
