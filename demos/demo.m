@@ -403,16 +403,26 @@ if ST3215HS_Use
     % new servos default to ID 1
     % be sure to release the serial port before reprogramming the servo ID
 
+    % IMPORTANT: Power the servo(s) from 12V. The reported load_*_percent depends
+    % on supply voltage; if you use a different voltage, the stop threshold
+    % for calibrateSoftLimits() needs to be changed.
+
     % remove servoId_2 = and _2 channels if you only have one servo
     % for ST3215HS, there are 4096 positions. So a scan from 0 to 360 should have 4097 points.
-    handle_ST3215HS = instrument_ST3215HS(ST3215HS_Serial, ...
-        servoId_1 = 10, ...
-        servoId_2 = 11);
+    handle_ST3215HS = instrument_ST3215HS(ST3215HS_Serial, servoId_1 = 10, servoId_2 = 11);
     rack.addInstrument(handle_ST3215HS, "ST3215HS");
     rack.addChannel("ST3215HS", "position_1_deg", "ST3215HS_pos1_deg");
     rack.addChannel("ST3215HS", "load_1_percent", "ST3215HS_load1_percent");
-    rack.addChannel("ST3215HS", "position_2_deg", "ST3215HS_pos2_deg");
-    rack.addChannel("ST3215HS", "load_2_percent", "ST3215HS_load2_percent");
+
+    % Optional: calibrate soft limits (can take time; comment out to skip).
+    handle_ST3215HS.calibrateSoftLimits(1);
+    if handle_ST3215HS.hasServo2
+        rack.addChannel("ST3215HS", "position_2_deg", "ST3215HS_pos2_deg");
+        rack.addChannel("ST3215HS", "load_2_percent", "ST3215HS_load2_percent");
+
+        % Optional: calibrate soft limits (can take time; comment out to skip).
+        handle_ST3215HS.calibrateSoftLimits(2);
+    end
 end
 
 if Andor_Use
