@@ -853,7 +853,11 @@ function saveData()
     pngFile = sprintf("%s.png", figstring);
     png_saved = true;
     try
-        exportgraphics(figHandle, pngFile, Resolution = 300, Padding = "tight");
+        if verLessThan('matlab', '25.1') % Padding name-value starts in R2025a
+            exportgraphics(figHandle, pngFile, Resolution = 300);
+        else
+            exportgraphics(figHandle, pngFile, Resolution = 300, Padding = "tight");
+        end
     catch pngError
         png_saved = false;
         fprintf("smrun_new: Failed to export PNG (%s).\n", pngError.message);
