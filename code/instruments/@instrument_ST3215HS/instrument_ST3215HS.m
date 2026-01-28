@@ -824,10 +824,8 @@ classdef instrument_ST3215HS < instrumentInterface
             startTick = mod(round(startDeg * obj.ticksPerDegree), ticksPerRev);
             startDeg = startTick / obj.ticksPerDegree; % quantized to a tick
 
-            if verbose
-                fprintf("calibrateSoftLimits: %s startTick=%d threshold=%g %%\n", ...
-                    positionChannel, startTick, loadThreshold_percent);
-            end
+            fprintf("calibrateSoftLimits: %s startTick=%d startDeg=%.3f loadCh=%s threshold=%g %%\n", ...
+                positionChannel, startTick, startDeg, loadChannel, loadThreshold_percent);
 
             % Defaults: unbounded unless threshold is hit.
             softMinDeg = -Inf;
@@ -870,6 +868,19 @@ classdef instrument_ST3215HS < instrumentInterface
 
             % Return to start after scanning to avoid leaving the servo at an endpoint.
             obj.setChannel(positionChannel, startDeg);
+
+            if isfinite(softMinDeg)
+                softMinTick = round(softMinDeg * obj.ticksPerDegree);
+            else
+                softMinTick = NaN;
+            end
+            if isfinite(softMaxDeg)
+                softMaxTick = round(softMaxDeg * obj.ticksPerDegree);
+            else
+                softMaxTick = NaN;
+            end
+            fprintf("calibrateSoftLimits: %s result: soft limits=[%.3f, %.3f] deg ticks=[%g, %g]\n", ...
+                positionChannel, softMinDeg, softMaxDeg, softMinTick, softMaxTick);
         end
 
         function restoreRequireSetCheck_(obj, prevValue)

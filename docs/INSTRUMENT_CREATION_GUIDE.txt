@@ -185,6 +185,15 @@ Clears the communication buffer. Override for instruments with buffered I/O:
       flush(obj.communicationHandle);
   end
 
+Recommendation:
+  - Implement flush when your instrument uses buffered I/O.
+  - Do NOT call flush repeatedly inside get/set helpers unless the instrument
+    behaves poorly and this is absolutely necessary. Unexplained buffer content
+    is usually from interrupted reads/scans, and frequent flushing wastes time.
+  - The rack/main scripts already flush all instruments on init and before each
+    scan (see smready and smrun_new). instrumentRack.addInstrument also flushes
+    once per instrument during registration.
+
 
 ================================================================================
 4. VIRTUAL INSTRUMENT CLASSES

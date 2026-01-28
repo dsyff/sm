@@ -51,7 +51,10 @@ K10CR1_Serial = ""; % Leave blank to use the first detected device
 BK889B_Serial = "COM3";
 
 % ST3215-HS bus servos via Waveshare Bus Servo Adapter (A)
-ST3215HS_Serial = "COM3";
+ST3215HS_Serial = "COM4";
+
+% WS2811 color LED controller (Pico 2 USB CDC)
+colorLED_Serial = "COM5";
 
 % Thorlabs CS165MU camera (TLCamera SDK)
 CS165MU_Serial = ""; % Leave blank to use the first detected camera
@@ -101,6 +104,7 @@ Attodry2100_Use = 0;
 
 BK889B_Use = 0;
 ST3215HS_Use = 0;
+colorLED_Use = 1;
 E4980AL_Use = 0;
 MFLI_Use = 0;
 SDG2042X_mixed_Use = 0;
@@ -409,7 +413,7 @@ if ST3215HS_Use
 
     % remove servoId_2 = and _2 channels if you only have one servo
     % for ST3215HS, there are 4096 positions. So a scan from 0 to 360 should have 4097 points.
-    handle_ST3215HS = instrument_ST3215HS(ST3215HS_Serial, servoId_1 = 10, servoId_2 = 11);
+    handle_ST3215HS = instrument_ST3215HS(ST3215HS_Serial, servoId_1 = 12, servoId_2 = 13);
     rack.addInstrument(handle_ST3215HS, "ST3215HS");
     rack.addChannel("ST3215HS", "position_1_deg", "ST3215HS_pos1_deg");
     rack.addChannel("ST3215HS", "load_1_percent", "ST3215HS_load1_percent");
@@ -423,6 +427,15 @@ if ST3215HS_Use
         % Optional: calibrate soft limits (can take time; comment out to skip).
         handle_ST3215HS.calibrateSoftLimits(2);
     end
+end
+
+if colorLED_Use
+    handle_colorLED = instrument_colorLED(colorLED_Serial);
+    rack.addInstrument(handle_colorLED, "colorLED");
+    rack.addChannel("colorLED", "R", "colorLED_R", [], [], 0, 1);
+    rack.addChannel("colorLED", "G", "colorLED_G", [], [], 0, 1);
+    rack.addChannel("colorLED", "B", "colorLED_B", [], [], 0, 1);
+    rack.addChannel("colorLED", "RGB", "colorLED_RGB", [], [], 0, 1);
 end
 
 if Andor_Use
