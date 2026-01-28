@@ -1,0 +1,93 @@
+INSTRUCTIONS FOR CODING AGENT (Raspberry Pi Pico 2 / RP2350 + single WS2811 LED + USB serial)
+
+Goal
+- Firmware for Raspberry Pi Pico 2 (RP2350) using Arduino (arduino-pico core is preferred) that:
+  1) Exposes a USB CDC serial port to PC.
+  2) Parses simple ASCII commands terminated by newline (\n).
+  3) Drives exactly one WS2811 LED via a single data pin using an existing Arduino LED library if convenient.
+  4) Does not allocate dynamically at runtime (no String, no new/malloc in loop). Preallocate all buffers.
+
+Target behavior (PC commands)
+- Commands are case-insensitive; ignore leading/trailing whitespace.
+- Responses end with "\r\n" (CRLF) for terminal friendliness.
+- Supported commands:
+  1) "*IDN?"            -> respond: "RPI,PICO2,WS2811,1.0\r\n"
+  2) "COLOR r,g,b"      -> set LED color (r,g,b are integers 0..255)
+       Examples accepted:
+         "COLOR 255,255,255"
+         "COLOR 255, 255, 255"
+         "COLOR 0 128 64"  (spaces also acceptable if easy)
+     Response: "OK\r\n" on success, "ERR\r\n" on parse/range error.
+  3) "OFF"              -> sets r=g=b=0, response "OK\r\n"
+  4) "GET"              -> respond "COLOR r,g,b\r\n" with current stored color
+  5) "HELP"             -> list supported commands briefly
+- Robustness:
+  - Unknown commands -> "ERR\r\n"
+  - Empty line -> ignore
+  - If line too long -> flush until newline, respond "ERR\r\n"
+
+Hardware assumptions
+- One WS2811-controlled single RGB LED (or a WS2811 pixel). Data pin user-selectable in code, default GPIO = 2 (or choose a safe default).
+- If LED is powered at 5V, note level shifting may be needed; code should not assume 5V logic.
+
+Implementation constraints (memory + timing)
+- Absolutely avoid Arduino String and dynamic memory in steady-state:
+  - No String concatenation, no heap allocation in loop()
+  - Use fixed-size char buffers and fixed-size parsing arrays
+- Preallocate:
+  - Input line buffer: e.g. 96 or 128 bytes static char lineBuf[]
+  - Output buffer: optional static char outBuf[96]
+  - Store current color as 3 uint8_t variables
+- Use non-blocking serial read:
+  - Accumulate chars until '\n' (also ignore '\r')
+  - Process full line promptly
+- LED driving should not block serial for long:
+  - For one LED, Adafruit_NeoPixel show() is fine if it uses PIO on RP2350; still keep show() usage minimal (only on color change).
+  - Do not reinitialize LED driver for each command.
+
+Library / stack choice
+- Use Earle Philhower’s arduino-pico core for RP2350/Pico 2.
+- Preferred LED library:
+  - Adafruit_NeoPixel OR FastLED, whichever is known to work on RP2350 under arduino-pico.
+  - Configure for WS2811 timing (NEO_KHZ400) if appropriate for your LED/driver. If your specific WS2811 device expects 800 kHz (some do), allow compile-time switch.
+- Create one pixel object; call begin() once in setup; clear+show once in setup.
+
+Parsing requirements
+- Implement a small, deterministic parser:
+  - Convert command to uppercase in-place (or compare case-insensitive).
+  - For COLOR: parse three integers.
+    - Accept separators: comma and/or spaces.
+    - Reject missing components, extra garbage, or out-of-range values.
+  - Use strtol for integer parsing; validate end pointers.
+- Avoid expensive operations and repeated scanning where possible; but correctness is priority.
+
+USB serial settings
+- Use Serial (USB CDC) with a high baud setting if needed, but note baud is mostly ignored for USB CDC. Still call Serial.begin(115200).
+- Ensure Serial is ready:
+  - Optionally wait a short bounded time for Serial to enumerate (e.g., up to 2 seconds) but do not block indefinitely.
+- Consider increasing USB CDC RX/TX buffering if arduino-pico provides config macros; do this only if needed.
+
+Deliverables
+1) A single Arduino sketch (.ino) that compiles for Raspberry Pi Pico 2 (RP2350).
+2) Clear pin definition at top:
+   - LED_PIN
+   - LED_TYPE / timing selection (WS2811 400k vs 800k) via #define
+3) Comments explaining:
+   - Command set
+   - Memory strategy (fixed buffers)
+   - Any assumptions about WS2811 timing flag
+4) Optional: a tiny PC-side example (Python) showing how to send "*IDN?" and "COLOR 255,255,255" over the COM port.
+
+Testing checklist
+- On boot: LED off, respond to *IDN?
+- Send HELP: get list
+- Send COLOR 10,20,30: LED updates; GET returns same values
+- Send malformed lines:
+  - "COLOR 256,0,0" -> ERR
+  - "COLOR 1,2" -> ERR
+  - long line > buffer -> ERR and recover cleanly
+- Confirm serial still responsive while repeatedly changing color (e.g., 50–100 Hz updates)
+
+Notes
+- Keep loop() lean: read serial, process completed lines, update LED only when color changes.
+- If show() is slow or disables interrupts noticeably, ensure input buffer can absorb bursts; but for one LED, it should be fine.
