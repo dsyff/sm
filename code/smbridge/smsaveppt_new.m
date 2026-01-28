@@ -46,9 +46,6 @@ function smsaveppt_new(filespec,text,prnopt)
 % Establish valid file name:
 if nargin<1 || isempty(filespec)
     return
-    [fname, fpath] = uiputfile('*.ppt');
-    if fpath == 0; return; end
-    filespec = fullfile(fpath,fname);
 else
     [fpath,fname,fext] = fileparts(filespec);
     if isempty(fpath); fpath = pwd; end
@@ -213,14 +210,14 @@ if (~isempty(text.consts))&&(~isempty(text.body))
     T2=cellstr(text.body);
     g2='';
     for i=1:length(T2)
-        g2=[g2 T2{i} '\n'];
+        g2=[g2 T2{i} newline];
     end
     g=sprintf('%s\n%s',g1,g2);
 elseif ~isempty(text.body)
     T2=cellstr(text.body);
     g2='';
     for i=1:length(T2)
-        g2=[g2 T2{i} '\n'];
+        g2=[g2 T2{i} newline];
     end
     g=sprintf('%s',g2);
 elseif ~isempty(text.consts)
