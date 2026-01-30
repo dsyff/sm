@@ -4,3 +4,4 @@
 - The main loop inside `smrun_new.m` must be fast. Pre-emptively do any computation or initialization that can be done before the loop.
 - In MATLAB, always prefer double quotes and strings unless a function explicitly requires char arrays.
 - Prefer `Name = value` format over `"Name", value` pairs.
+- Remember to set `_Use` flags to 0 in `demo.m` before pushing new changes.

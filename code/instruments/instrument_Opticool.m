@@ -60,6 +60,7 @@ classdef instrument_Opticool < instrumentInterface
         
         function currentTarget = getCurrentTargetMagneticField(obj)
             [~, currentTarget, ~, ~, ~] = obj.communicationHandle.GetFieldSetpoints(0, 0, 0, 0);
+            currentTarget = currentTarget / 1e4;
         end
     end
 
@@ -71,6 +72,7 @@ classdef instrument_Opticool < instrumentInterface
                     [~, obj.readValues, obj.temperatureStatus] = handle.GetTemperature(0, obj.temperatureStatus);
                 case 2
                     [~, obj.readValues, obj.fieldStatus] = handle.GetField(0, obj.fieldStatus);
+                    obj.readValues = obj.readValues / 1e4;
             end
         end
 
@@ -87,7 +89,7 @@ classdef instrument_Opticool < instrumentInterface
                 case 1
                     handle.SetTemperature(setValues, 50, obj.temperatureApproach);
                 case 2
-                    handle.SetField(setValues, 110, obj.fieldApproach, obj.fieldMode);
+                    handle.SetField(setValues * 1e4, 110, obj.fieldApproach, obj.fieldMode);
             end
         end
 
@@ -100,7 +102,7 @@ classdef instrument_Opticool < instrumentInterface
                         %warning("Opticool target temperature was changed elsewhere.");
                     end
 
-                    [~, obj.readValues, obj.temperatureStatus] = handle.GetTemperature(0, obj.temperatureStatus);
+                    [~, ~, obj.temperatureStatus] = handle.GetTemperature(0, obj.temperatureStatus);
                     TF = (string(obj.temperatureStatus) == "Stable");
                 case 2
                     %GetFieldSetpoints is not working, so we cannot check if the target magnetic field was changed elsewhere.
@@ -109,7 +111,7 @@ classdef instrument_Opticool < instrumentInterface
                     %    warning("Opticool target magnetic field was changed elsewhere.");
                     %end
 
-                    [~, obj.readValues, obj.fieldStatus] = handle.GetField(0, obj.fieldStatus);
+                    [~, ~, obj.fieldStatus] = handle.GetField(0, obj.fieldStatus);
                     TF = (string(obj.fieldStatus) == "StableDriven");
             end
         end
