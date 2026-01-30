@@ -25,9 +25,14 @@ function sm_new_Callback(what,arg)
 end
 
 function Open(h)
-    global smaux
+    global smaux bridge
     try
         smbridgeAddSharedPaths();
+        if exist("bridge", "var") && ~isempty(bridge) && isobject(bridge) && isprop(bridge, "experimentRootPath")
+            if strlength(string(bridge.experimentRootPath)) == 0
+                bridge.experimentRootPath = pwd;
+            end
+        end
         smpptEnsureGlobals();
         smdatapathEnsureGlobals();
         smrunEnsureGlobals();
@@ -86,23 +91,110 @@ function QueueCreate
 end
 
 function OpenScans
-    global smaux
-    [file,path] = uigetfile('*.mat','Select Rack File');
-    if file
-        load(fullfile(path,file));
-        if exist('scans','var')
-            smaux.scans=scans;
+    global smaux bridge
+    choice = questdlg("Load scans from folder or files?", "Open Scans", ...
+        "Folder", "Files", "Cancel", "Files");
+    if choice == "Folder"
+        folderPath = uigetdir;
+        if isequal(folderPath, 0)
+            return;
+        end
+        listing = dir(fullfile(folderPath, "*.mat"));
+        if isempty(listing)
+            return;
+        end
+        fileList = fullfile(folderPath, {listing.name});
+    elseif choice == "Files"
+        [files, path] = uigetfile('*.mat', 'Select Scan File(s)', 'MultiSelect', 'on');
+        if isequal(files, 0)
+            return;
+        end
+        if iscell(files)
+            fileList = fullfile(path, files);
+        else
+            fileList = fullfile(path, {files});
+        end
+    else
+        return;
+    end
+
+    if ~isfield(smaux, "scans") || ~iscell(smaux.scans)
+        smaux.scans = {};
+    end
+
+    for fileIdx = 1:numel(fileList)
+        filePath = fileList{fileIdx};
+        try
+            payload = load(filePath);
+        catch
+            continue;
+        end
+
+        scansToAdd = {};
+        if isfield(payload, "smscan") && isstruct(payload.smscan)
+            scansToAdd = {payload.smscan};
+        elseif isfield(payload, "scan") && isstruct(payload.scan)
+            scansToAdd = {payload.scan};
+        elseif isfield(payload, "scans")
+            if iscell(payload.scans)
+                scansToAdd = payload.scans;
+            elseif isstruct(payload.scans)
+                scansToAdd = num2cell(payload.scans);
+            end
+        end
+
+        for scanIdx = 1:numel(scansToAdd)
+            scanCandidate = scansToAdd{scanIdx};
+            if ~isstruct(scanCandidate) || ~isfield(scanCandidate, "loops")
+                continue;
+            end
+            scanCandidate = smscanSanitizeForBridge(scanCandidate);
+            if isempty(scanCandidate)
+                continue;
+            end
+
+            smaux.scans{end+1} = scanCandidate; %#ok<AGROW>
         end
     end
     UpdateToGUI;
 end
 
 function SaveScans
-    global smaux
-    [file,path] = uiputfile('*.mat','Save Scan File');
-    if file
-        scans = smaux.scans;
-        save(fullfile(path,file),'scans');
+    global smaux bridge
+    if ~isfield(smaux, "scans") || isempty(smaux.scans)
+        return;
+    end
+    rootPath = string(pwd);
+    if exist("bridge", "var") && ~isempty(bridge) && isobject(bridge) && isprop(bridge, "experimentRootPath")
+        if strlength(string(bridge.experimentRootPath)) == 0
+            bridge.experimentRootPath = pwd;
+        end
+        rootPath = string(bridge.experimentRootPath);
+    end
+    timestamp = char(datetime("now", "Format", "yyyyMMdd_HHmmss"));
+    targetFolder = fullfile(rootPath, "scans_" + string(timestamp));
+    if ~exist(targetFolder, "dir")
+        mkdir(targetFolder);
+    end
+
+    for scanIdx = 1:numel(smaux.scans)
+        scanCandidate = smaux.scans{scanIdx};
+        if ~isstruct(scanCandidate)
+            continue;
+        end
+        baseName = "scan";
+        if isfield(scanCandidate, "name") && ~isempty(scanCandidate.name)
+            baseName = string(scanCandidate.name);
+        end
+        baseName = regexprep(baseName, '[\\/:*?"<>|.]', "_");
+        filename = baseName;
+        suffix = 0;
+        while exist(fullfile(targetFolder, filename + ".mat"), "file")
+            suffix = suffix + 1;
+            filename = baseName + " (" + suffix + ")";
+        end
+        smscan = scanCandidate; %#ok<NASGU>
+        save(fullfile(targetFolder, filename + ".mat"), "smscan");
     end
 end
 
@@ -252,12 +344,23 @@ function PPTauto
 end
 
 function PPTFile
-    global smaux
+    global smaux bridge
     [pptFile, pptPath] = uiputfile('*.ppt', 'Append to Presentation');
     if isequal(pptFile, 0)
         return;
     end
-    selectedFile = fullfile(pptPath, pptFile);
+    rootPath = string(pwd);
+    if exist("bridge", "var") && ~isempty(bridge) && isobject(bridge) && isprop(bridge, "experimentRootPath")
+        if strlength(string(bridge.experimentRootPath)) == 0
+            bridge.experimentRootPath = pwd;
+        end
+        rootPath = string(bridge.experimentRootPath);
+    end
+    [~, pptName, pptExt] = fileparts(pptFile);
+    if strlength(string(pptExt)) == 0
+        pptExt = ".ppt";
+    end
+    selectedFile = fullfile(rootPath, string(pptName) + string(pptExt));
     enabled = false;
     if isstruct(smaux) && isfield(smaux, 'sm') && isstruct(smaux.sm) ...
             && isfield(smaux.sm, 'pptauto_cbh') && ishandle(smaux.sm.pptauto_cbh)
@@ -301,11 +404,38 @@ function Comments
 end
 
 function SavePath
-    global smaux
-    x=uigetdir;
+    global smaux bridge
+    x = uigetdir;
     if x
-        smaux.datadir = x;
-        smdatapathUpdateGlobalState('main', smaux.datadir);
+        rootPath = string(pwd);
+        if exist("bridge", "var") && ~isempty(bridge) && isobject(bridge) && isprop(bridge, "experimentRootPath")
+            if strlength(string(bridge.experimentRootPath)) == 0
+                bridge.experimentRootPath = pwd;
+            end
+            rootPath = string(bridge.experimentRootPath);
+        end
+        pickedPath = string(x);
+        targetPath = pickedPath;
+        if strlength(rootPath) > 0
+            if startsWith(pickedPath, rootPath, "IgnoreCase", true)
+                relPath = extractAfter(pickedPath, strlength(rootPath));
+                if startsWith(relPath, filesep)
+                    relPath = extractAfter(relPath, 1);
+                end
+                if strlength(relPath) == 0
+                    relPath = "data";
+                end
+            else
+                [~, relPath] = fileparts(char(pickedPath));
+                relPath = string(relPath);
+                if strlength(relPath) == 0
+                    relPath = "data";
+                end
+            end
+            targetPath = fullfile(rootPath, relPath);
+        end
+        smaux.datadir = targetPath;
+        smdatapathUpdateGlobalState("main", smaux.datadir);
     end
     UpdateToGUI;
 end
@@ -529,7 +659,7 @@ function scan = UpdateConstants(scan)
 end
 
 function UpdateToGUI
-    global smaux
+    global smaux bridge
     try
         %populates available scans
         scannames = {};
@@ -582,19 +712,34 @@ function UpdateToGUI
         end
         
         %populate data path sth
-        if isfield(smaux,'datadir') && exist(smaux.datadir,'dir')
-            currentPath = smdatapathGetState();
-            if ~strcmp(currentPath, smaux.datadir)
-                smdatapathUpdateGlobalState('main', smaux.datadir);
-            else
-                smdatapathApplyStateToGui('main');
+        rootPath = string(pwd);
+        if exist("bridge", "var") && ~isempty(bridge) && isobject(bridge) && isprop(bridge, "experimentRootPath")
+            if strlength(string(bridge.experimentRootPath)) == 0
+                bridge.experimentRootPath = pwd;
+            end
+            rootPath = string(bridge.experimentRootPath);
+        end
+        if isfield(smaux, 'datadir') && ~isempty(smaux.datadir)
+            candidatePath = string(smaux.datadir);
+            if ~startsWith(candidatePath, rootPath, "IgnoreCase", true)
+                [~, relPath] = fileparts(char(candidatePath));
+                relPath = string(relPath);
+                if strlength(relPath) == 0
+                    relPath = "data";
+                end
+                smaux.datadir = fullfile(rootPath, relPath);
             end
         else
             smaux.datadir = smdatapathDefaultPath();
-            if ~exist(smaux.datadir, 'dir')
-                mkdir(smaux.datadir);
-            end
-            smdatapathApplyStateToGui('main');
+        end
+        if ~exist(smaux.datadir, 'dir')
+            mkdir(smaux.datadir);
+        end
+        currentPath = smdatapathGetState();
+        if ~strcmp(char(currentPath), char(smaux.datadir))
+            smdatapathUpdateGlobalState("main", smaux.datadir);
+        else
+            smdatapathApplyStateToGui("main");
         end
         
         %populate run number eth
@@ -688,18 +833,27 @@ function smpptAttachMainGui()
         targetEnabled = logical(get(handles.checkbox, 'Value'));
     end
     targetFile = currentFile;
+    rootPath = string(pwd);
+    if exist("bridge", "var") && ~isempty(bridge) && isobject(bridge) && isprop(bridge, "experimentRootPath")
+        if strlength(string(bridge.experimentRootPath)) == 0
+            bridge.experimentRootPath = pwd;
+        end
+        rootPath = string(bridge.experimentRootPath);
+    end
     if isempty(targetFile)
         if isfield(smaux, 'pptsavefile') && ~isempty(smaux.pptsavefile)
             targetFile = smaux.pptsavefile;
         else
             % Set default short name
-            targetFile = 'log.ppt';
-            % Store pwd as experimentRootPath if not already set
-            global bridge;
-            if isempty(bridge.experimentRootPath)
-                bridge.experimentRootPath = pwd;
-            end
+            targetFile = "log.ppt";
         end
+    end
+    if strlength(rootPath) > 0
+        [~, pptName, pptExt] = fileparts(targetFile);
+        if strlength(string(pptExt)) == 0
+            pptExt = ".ppt";
+        end
+        targetFile = fullfile(rootPath, string(pptName) + string(pptExt));
     end
     if targetEnabled ~= currentEnabled || ~strcmp(char(targetFile), char(currentFile))
         smpptUpdateGlobalState('main', targetEnabled, targetFile);

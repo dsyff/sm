@@ -4,6 +4,10 @@ classdef instrument_ST3215HS < instrumentInterface
     % Protocol is adapted directly from Waveshare SCServo Arduino library:
     % temp/waveshare servo/ST Servo/SCServo/{SCS.cpp, SMS_STS.cpp}
     %
+    % IMPORTANT: Power the servo(s) from 12V. The reported load_*_percent depends
+    % on supply voltage; if you use a different voltage, the stall/stop threshold
+    % used by calibrateSoftLimits() may need to be changed.
+    %
     % Channels:
     %   - "position_1_deg" : servo 1 position in degrees
     %   - "load_1_percent" : servo 1 load (signed percent, -100..+100)
@@ -34,7 +38,8 @@ classdef instrument_ST3215HS < instrumentInterface
         ticksPerDegree (1, 1) double {mustBePositive} = 4096 / 360;
 
         % Default threshold used by calibrateSoftLimits().
-        defaultLoadThreshold_percent (1, 1) double {mustBePositive} = 10;
+        % IMPORTANT: This threshold is only meaningful if the servo is powered from 12V.
+        defaultLoadThreshold_percent (1, 1) double {mustBePositive} = 5;
 
         % Delay between the two reads used by setCheckChannelHelper() for
         % "settled-ness" detection. A small nonzero delay helps avoid false
@@ -152,9 +157,6 @@ classdef instrument_ST3215HS < instrumentInterface
                 % load_* channels are read-only, so setTolerances would be unused/misleading.
                 obj.addChannel("load_2_percent");
             end
-
-            % Always calibrate on startup (soft limits used to gate setWrite)
-            %obj.calibrateSoftLimits();
         end
 
         function TF = pingServoId(obj, servoId, NameValueArgs)
@@ -404,6 +406,10 @@ classdef instrument_ST3215HS < instrumentInterface
             % (and therefore the instrument's settling checks), reading servo load
             % at each step. When |load| exceeds defaultLoadThreshold_percent, the
             % last safe position is stored as a soft limit.
+            %
+            % IMPORTANT: This relies on load_*_percent behavior which depends on
+            % supply voltage. Power the servo(s) from 12V, otherwise you may need
+            % to change defaultLoadThreshold_percent before running this.
             %
             % Note: this method temporarily forces requireSetCheck=true to ensure
             % each 1-tick move has actually settled before the load is sampled.
@@ -818,10 +824,8 @@ classdef instrument_ST3215HS < instrumentInterface
             startTick = mod(round(startDeg * obj.ticksPerDegree), ticksPerRev);
             startDeg = startTick / obj.ticksPerDegree; % quantized to a tick
 
-            if verbose
-                fprintf("calibrateSoftLimits: %s startTick=%d threshold=%g %%\n", ...
-                    positionChannel, startTick, loadThreshold_percent);
-            end
+            fprintf("calibrateSoftLimits: %s startTick=%d startDeg=%.3f loadCh=%s threshold=%g %%\n", ...
+                positionChannel, startTick, startDeg, loadChannel, loadThreshold_percent);
 
             % Defaults: unbounded unless threshold is hit.
             softMinDeg = -Inf;
@@ -864,6 +868,19 @@ classdef instrument_ST3215HS < instrumentInterface
 
             % Return to start after scanning to avoid leaving the servo at an endpoint.
             obj.setChannel(positionChannel, startDeg);
+
+            if isfinite(softMinDeg)
+                softMinTick = round(softMinDeg * obj.ticksPerDegree);
+            else
+                softMinTick = NaN;
+            end
+            if isfinite(softMaxDeg)
+                softMaxTick = round(softMaxDeg * obj.ticksPerDegree);
+            else
+                softMaxTick = NaN;
+            end
+            fprintf("calibrateSoftLimits: %s result: soft limits=[%.3f, %.3f] deg ticks=[%g, %g]\n", ...
+                positionChannel, softMinDeg, softMaxDeg, softMinTick, softMaxTick);
         end
 
         function restoreRequireSetCheck_(obj, prevValue)

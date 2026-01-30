@@ -10,10 +10,7 @@ function data = smrun_new(scan, filename)
 % Space bar - pauses operation
 % Escape key - exits operation gracefully
 
-global smdata;
-global smscan;
-global smaux;
-global instrumentRackGlobal
+global smdata smscan instrumentRackGlobal bridge; %#ok<GVMIS>
 
 smbridgeAddSharedPaths();
 
@@ -79,7 +76,7 @@ end
 
 if ~isfield(scan, 'saveloop')
     scan.saveloop = [min(2, max(nloops, 2)) 1];
-elseif length(scan.saveloop) == 1
+elseif isscalar(scan.saveloop)
     scan.saveloop(2) = 1;
 end
 
@@ -193,7 +190,6 @@ totpoints = prod(npoints);
 
 scan_for_save_template = buildScanForSaveTemplate();
 
-datadim = zeros(sum(ngetchan), 5);
 data = cell(1, sum(ngetchan));
 ndim = zeros(1, sum(ngetchan));
 dataloop = zeros(1, sum(ngetchan));
@@ -208,7 +204,7 @@ for i = 1:nloops
     for j = 1:ngetchan(i)
         ind = sum(ngetchan(1:i-1)) + j;
         dim = baseDim;
-        if length(dim) == 1
+        if isscalar(dim)
             dim(2) = 1;
         end
         data{ind} = nan(dim);
@@ -325,7 +321,6 @@ for i = 1:length(scan_disp)
     display_x_loops(i) = channel_loop_idx;
     xDim = dimForLoop(channel_loop_idx);
 
-    xlab = '';
     if xDim > 0
         axisLength = dataSize(xDim);
         [loopAxis, loopLabel] = buildLoopAxis(channel_loop_idx);
@@ -556,8 +551,6 @@ end
 % Cache figure handle checks
 scan_should_exit = false;
 temp_file_counter = 0;
-figure_check_counter = 0;
-figure_check_interval = 10;  % Check figure every 10 points
 
 % Find dummy loops
 isdummy = false(1, nloops);
@@ -813,7 +806,7 @@ function saveData()
     end
 
     prevWarningState = warning;
-    warningCleanup = onCleanup(@() warning(prevWarningState)); %#ok<NASGU>
+    warningCleanup = onCleanup(@() warning(prevWarningState));
     [figpath, figname] = fileparts(filename);
     if isempty(figname)
         figstring = filename;
@@ -853,7 +846,11 @@ function saveData()
     pngFile = sprintf("%s.png", figstring);
     png_saved = true;
     try
-        exportgraphics(figHandle, pngFile, Resolution = 300, Padding = "tight");
+        if isMATLABReleaseOlderThan("R2025a") % Padding name-value starts in R2025a
+            exportgraphics(figHandle, pngFile, Resolution = 300);
+        else
+            exportgraphics(figHandle, pngFile, Resolution = 300, Padding = "tight");
+        end
     catch pngError
         png_saved = false;
         fprintf("smrun_new: Failed to export PNG (%s).\n", pngError.message);
@@ -881,7 +878,7 @@ function saveData()
                 % Safely handle comments for body text
                 if isfield(scan, 'comments') && ~isempty(scan.comments)
                     if iscell(scan.comments)
-                        text_data.body = strvcat(scan.comments{:});
+                        text_data.body = char(scan.comments{:});
                     elseif ischar(scan.comments)
                         text_data.body = scan.comments;
                     else
@@ -896,7 +893,6 @@ function saveData()
                     % If path is relative, try to resolve using bridge.experimentRootPath
                     [pptPath, pptName, pptExt] = fileparts(pptFile);
                     if isempty(pptPath)
-                        global bridge;
                         if ~isempty(bridge) && isprop(bridge, 'experimentRootPath') && ~isempty(bridge.experimentRootPath)
                             pptFile = fullfile(bridge.experimentRootPath, [pptName pptExt]);
                         end

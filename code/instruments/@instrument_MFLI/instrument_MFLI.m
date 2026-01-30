@@ -60,6 +60,9 @@ classdef instrument_MFLI < instrumentInterface
                 % phase_n in degrees
                 obj.addChannel(sprintf("phase_%d", i), setTolerances = 1e-3);
 
+                % signed_amplitude_n in V (phase encodes sign)
+                obj.addChannel(sprintf("signed_amplitude_%d", i), setTolerances = 1e-3);
+
                 % frequency_n in Hz
                 obj.addChannel(sprintf("frequency_%d", i));
 
@@ -89,11 +92,11 @@ classdef instrument_MFLI < instrumentInterface
 
         function getValues = getReadChannelHelper(obj, channelIndex)
             % Optimized channel handling using modular arithmetic
-            % Channel order: Amplitude, Phase, Frequency, Harmonic, On (per generator)
+            % Channel order: Amplitude, Phase, Signed Amplitude, Frequency, Harmonic, On (per generator)
 
             idx_zero = channelIndex - 1;
-            group_idx = floor(idx_zero / 5); % 0-3 (Generator Index)
-            type_idx = mod(idx_zero, 5);     % 0-4 (Channel Type)
+            group_idx = floor(idx_zero / 6); % 0-3 (Generator Index)
+            type_idx = mod(idx_zero, 6);     % 0-5 (Channel Type)
 
             switch type_idx
                 case 0 % Amplitude
@@ -102,13 +105,29 @@ classdef instrument_MFLI < instrumentInterface
                 case 1 % Phase
                     path = sprintf('/%s/demods/%d/phaseshift', obj.device_id, group_idx);
                     getValues = ziDAQ('getDouble', path);
-                case 2 % Frequency
+                case 2 % Signed Amplitude
+                    amplitude_path = sprintf('/%s/sigouts/0/amplitudes/%d', obj.device_id, group_idx);
+                    phase_path = sprintf('/%s/demods/%d/phaseshift', obj.device_id, group_idx);
+                    amplitude = ziDAQ('getDouble', amplitude_path);
+                    phase = ziDAQ('getDouble', phase_path);
+                    phase_wrapped = mod(phase, 360);
+                    phase_tol = 1; % degrees
+                    dist0 = min(phase_wrapped, 360 - phase_wrapped);
+                    dist180 = abs(phase_wrapped - 180);
+                    if dist0 <= phase_tol
+                        getValues = abs(amplitude);
+                    elseif dist180 <= phase_tol
+                        getValues = -abs(amplitude);
+                    else
+                        error("signed_amplitude_%d expects phase near 0 or 180 degrees. Received phase %.3f.", group_idx + 1, phase_wrapped);
+                    end
+                case 3 % Frequency
                     path = sprintf('/%s/oscs/%d/freq', obj.device_id, group_idx);
                     getValues = ziDAQ('getDouble', path);
-                case 3 % Harmonic
+                case 4 % Harmonic
                     path = sprintf('/%s/demods/%d/harmonic', obj.device_id, group_idx);
                     getValues = double(ziDAQ('getInt', path));
-                case 4 % On
+                case 5 % On
                     path = sprintf('/%s/sigouts/0/enables/%d', obj.device_id, group_idx);
                     getValues = double(ziDAQ('getInt', path));
             end
@@ -116,8 +135,8 @@ classdef instrument_MFLI < instrumentInterface
 
         function setWriteChannelHelper(obj, channelIndex, setValues)
             idx_zero = channelIndex - 1;
-            group_idx = floor(idx_zero / 5); % 0-3 (Generator Index)
-            type_idx = mod(idx_zero, 5);     % 0-4 (Channel Type)
+            group_idx = floor(idx_zero / 6); % 0-3 (Generator Index)
+            type_idx = mod(idx_zero, 6);     % 0-5 (Channel Type)
 
             switch type_idx
                 case 0 % Amplitude
@@ -126,13 +145,18 @@ classdef instrument_MFLI < instrumentInterface
                 case 1 % Phase
                     path = sprintf('/%s/demods/%d/phaseshift', obj.device_id, group_idx);
                     ziDAQ('setDouble', path, setValues);
-                case 2 % Frequency
+                case 2 % Signed Amplitude
+                    amplitude_path = sprintf('/%s/sigouts/0/amplitudes/%d', obj.device_id, group_idx);
+                    phase_path = sprintf('/%s/demods/%d/phaseshift', obj.device_id, group_idx);
+                    ziDAQ('setDouble', amplitude_path, abs(setValues));
+                    ziDAQ('setDouble', phase_path, 180 * (setValues < 0));
+                case 3 % Frequency
                     path = sprintf('/%s/oscs/%d/freq', obj.device_id, group_idx);
                     ziDAQ('setDouble', path, setValues);
-                case 3 % Harmonic
+                case 4 % Harmonic
                     path = sprintf('/%s/demods/%d/harmonic', obj.device_id, group_idx);
                     ziDAQ('setInt', path, int64(setValues));
-                case 4 % On
+                case 5 % On
                     path = sprintf('/%s/sigouts/0/enables/%d', obj.device_id, group_idx);
                     ziDAQ('setInt', path, int64(setValues));
             end
