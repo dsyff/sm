@@ -15,6 +15,7 @@
 
 ## 🔑 KEY CONCEPTS:
 - **Batch Optimization**: getWrite/getRead separation and smart ordering for performance
+	- Prefer batched rack calls when possible: `rackGet(["ch1","ch2"])` and `rackSetWrite(["ch1","ch2"], [v1; v2])`
 - **Vector Channels**: Multi-element channels that save instrument read time (e.g., XY, XTheta, YTheta, RTheta) supported in smgui and instruments (get only, no vector setting). Vector channels are plotted and saved as scalar channels with `_#` appended (e.g., `XY_1` is X and `XY_2` is Y).
 - **GUI Split**: `smgui_small_new` edits a single scan; `sm`/`sm_new_Callback` manage the scans library + queue. Rack menu items in the scan GUI are placeholders.
 - **Loading Data**: `smload` returns a `payload` struct with named channel arrays in `.channels` and set axes in `.setchannels`.

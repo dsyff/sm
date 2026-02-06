@@ -80,24 +80,19 @@ classdef virtualInstrument_nE < virtualInstrumentInterface
         end
 
         function getValues = getReadChannelHelper(obj, channelIndex)
-            rack = obj.getMasterRack();
-            vtg = rack.rackGet(obj.vTgChannelName);
-            vbg = rack.rackGet(obj.vBgChannelName);
-            [n, E] = obj.computeNormalizedStateFromVoltages(vtg, vbg);
             switch channelIndex
-                case 1
-                    getValues = n;
-                case 2
-                    getValues = E;
+                case {1, 2}
+                    rack = obj.getMasterRack();
+                    gateValues = rack.rackGet([obj.vTgChannelName, obj.vBgChannelName]);
+                    [n, E] = obj.computeNormalizedStateFromVoltages(gateValues(1), gateValues(2));
+                    if channelIndex == 1
+                        getValues = n;
+                    else
+                        getValues = E;
+                    end
                 case 3
-                    nRaw = obj.nMin + obj.nStored * obj.nSpan;
-                    ERaw = obj.EMin + obj.EStored * obj.ESpan;
-                    delta = obj.M * [nRaw; ERaw];
-                    vtgTarget = obj.vTg_n0E0 + delta(1);
-                    vbgTarget = obj.vBg_n0E0 + delta(2);
-                    unclamped = vtgTarget >= obj.vTgLimits(1) && vtgTarget <= obj.vTgLimits(2) && ...
-                        vbgTarget >= obj.vBgLimits(1) && vbgTarget <= obj.vBgLimits(2);
-                    getValues = double(unclamped);
+                    [~, ~, withinBounds] = obj.computeGateVoltages(obj.nStored, obj.EStored);
+                    getValues = double(withinBounds);
             end
         end
 
@@ -141,12 +136,14 @@ classdef virtualInstrument_nE < virtualInstrumentInterface
             end
         end
 
-        function [vtg, vbg] = computeGateVoltages(obj, n, E)
+        function [vtg, vbg, withinBounds] = computeGateVoltages(obj, n, E)
             nRaw = obj.nMin + n * obj.nSpan;
             ERaw = obj.EMin + E * obj.ESpan;
             delta = obj.M * [nRaw; ERaw];
             vtg = obj.vTg_n0E0 + delta(1);
             vbg = obj.vBg_n0E0 + delta(2);
+            withinBounds = vtg >= obj.vTgLimits(1) && vtg <= obj.vTgLimits(2) && ...
+                vbg >= obj.vBgLimits(1) && vbg <= obj.vBgLimits(2);
             vtg = min(max(vtg, obj.vTgLimits(1)), obj.vTgLimits(2));
             vbg = min(max(vbg, obj.vBgLimits(1)), obj.vBgLimits(2));
         end
@@ -181,17 +178,18 @@ classdef virtualInstrument_nE < virtualInstrumentInterface
         end
         
         function setHardwareFromState(obj)
-            [vtg, vbg] = obj.computeGateVoltages(obj.nStored, obj.EStored);
+            [vtg, vbg, withinBounds] = obj.computeGateVoltages(obj.nStored, obj.EStored);
+            if ~withinBounds
+                return;
+            end
             rack = obj.getMasterRack();
-            rack.rackSetWrite(obj.vTgChannelName, vtg);
-            rack.rackSetWrite(obj.vBgChannelName, vbg);
+            rack.rackSetWrite([obj.vTgChannelName, obj.vBgChannelName], [vtg; vbg]);
         end
 
         function initializeStoredStateFromHardware(obj)
             rack = obj.getMasterRack();
-            vtg = rack.rackGet(obj.vTgChannelName);
-            vbg = rack.rackGet(obj.vBgChannelName);
-            [n, E] = obj.computeNormalizedStateFromVoltages(vtg, vbg);
+            gateValues = rack.rackGet([obj.vTgChannelName, obj.vBgChannelName]);
+            [n, E] = obj.computeNormalizedStateFromVoltages(gateValues(1), gateValues(2));
             obj.nStored = n;
             obj.EStored = E;
         end
