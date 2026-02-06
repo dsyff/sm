@@ -223,7 +223,7 @@ end
 
 if K2450_A_Use
     handle_K2450_A = instrument_K2450(gpibAddress(K2450_A_GPIB, adaptorIndex));
-    handle_K2450_A.requireSetCheck = false; %dose not wait for instrument to reach set value
+    handle_K2450_A.requireSetCheck = false; %does not wait for instrument to reach set value
     %handle_K2450_A.reset(); % only reset if output ramped to zero
 
     % Configure instrument communication and settings
@@ -250,7 +250,7 @@ end
 
 if K2450_B_Use
     handle_K2450_B = instrument_K2450(gpibAddress(K2450_B_GPIB, adaptorIndex));
-    handle_K2450_B.requireSetCheck = false; %dose not wait for instrument to reach set value
+    handle_K2450_B.requireSetCheck = false; %does not wait for instrument to reach set value
     %handle_K2450_B.reset(); % only reset if output ramped to zero
 
     % Configure instrument communication and settings
@@ -277,7 +277,7 @@ end
 
 if K2450_C_Use
     handle_K2450_C = instrument_K2450(gpibAddress(K2450_C_GPIB, adaptorIndex));
-    handle_K2450_C.requireSetCheck = false; %dose not wait for instrument to reach set value
+    handle_K2450_C.requireSetCheck = false; %does not wait for instrument to reach set value
     %handle_K2450_C.reset(); % only reset if output ramped to zero
 
     % Configure instrument communication and settings
@@ -304,7 +304,7 @@ end
 
 if K2400_A_Use
     handle_K2400_A = instrument_K2400(gpibAddress(K2400_A_GPIB, adaptorIndex));
-    handle_K2400_A.requireSetCheck = false; %dose not wait for instrument to reach set value
+    handle_K2400_A.requireSetCheck = false; %does not wait for instrument to reach set value
     %handle_K2400_A.reset(); % only reset if output ramped to zero
 
     % Configure instrument communication and settings
@@ -330,7 +330,7 @@ end
 
 if K2400_B_Use
     handle_K2400_B = instrument_K2400(gpibAddress(K2400_B_GPIB, adaptorIndex));
-    handle_K2400_B.requireSetCheck = false; %dose not wait for instrument to reach set value
+    handle_K2400_B.requireSetCheck = false; %does not wait for instrument to reach set value
     %handle_K2400_B.reset(); % only reset if output ramped to zero
 
     % Configure instrument communication and settings
@@ -356,7 +356,7 @@ end
 
 if K2400_C_Use
     handle_K2400_C = instrument_K2400(gpibAddress(K2400_C_GPIB, adaptorIndex));
-    handle_K2400_C.requireSetCheck = false; %dose not wait for instrument to reach set value
+    handle_K2400_C.requireSetCheck = false; %does not wait for instrument to reach set value
     %handle_K2400_C.reset(); % only reset if output ramped to zero
 
     % Configure instrument communication and settings
