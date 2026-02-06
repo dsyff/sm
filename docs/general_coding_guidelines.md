@@ -5,3 +5,4 @@
 - In MATLAB, always prefer double quotes and strings unless a function explicitly requires char arrays.
 - Prefer `Name = value` format over `"Name", value` pairs.
 - Remember to set `_Use` flags to 0 in `demo.m` before pushing new changes.
+- Prefer datetime/duration classes over @now.
