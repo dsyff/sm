@@ -2813,7 +2813,9 @@ classdef measurementEngine < handle
                 end
             end
         end
+    end
 
+    methods (Static)
         function engineWorkerMain_(engineToClient, recipe, workerFprintfQueue, experimentRootPath, options)
             % Worker process entrypoint: build rack, then serve requests.
             %
