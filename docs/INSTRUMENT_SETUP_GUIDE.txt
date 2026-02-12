@@ -1,6 +1,7 @@
 %% INSTRUMENT SETUP GUIDE
 % Canonical setup scripts:
 % - Recipe (worker engine): `demos/demo.m`
+% - Recipe (worker engine, n/E example, no hardware required): `demos/demo_nE.m`
 % - Legacy rack-on-client debug example (git-ignored): `tests/demo_nE.m`
 %
 % Keep the relevant demo(s) up to date when you add/change instruments/channels.
@@ -82,6 +83,41 @@
 %   recipe.addInstrument("h", "instrument_ClassName", "friendlyName", ...);
 %   recipe.addChannel("friendlyName", "instChanName", "userChanName");
 %   smready(recipe);
+%
+% Optional local-debug path with the same recipe (no engine worker):
+%   smready(recipe, singleThreaded = true);
+%
+% RACK SCRIPT -> RECIPE SCRIPT MIGRATION
+% --------------------------------------
+% Use this when converting a legacy main script that currently does:
+%   rack = instrumentRack(...); ... smready(rack);
+%
+% 1) Replace rack construction:
+%      rack = instrumentRack(true);
+%   -> recipe = instrumentRackRecipe();
+%
+% 2) Convert each physical-instrument block:
+%      handle_K2450 = instrument_K2450(gpibAddress(18, 0));
+%      handle_K2450.requireSetCheck = false;
+%      rack.addInstrument(handle_K2450, "K2450_A");
+%   -> recipe.addInstrument("handle_K2450", "instrument_K2450", "K2450_A", gpibAddress(18, 0));
+%      recipe.addStatement("handle_K2450.requireSetCheck = false;");
+%
+% 3) Convert channels 1:1:
+%      rack.addChannel(...) -> recipe.addChannel(...)
+%
+% 4) Convert virtual-instrument construction:
+%      handle_v = virtualInstrument_nE("virtual_nE", rack, ...);
+%      rack.addInstrument(handle_v, "virtual_nE");
+%   -> recipe.addVirtualInstrument("handle_v", "virtualInstrument_nE", "virtual_nE", "virtual_nE", ...);
+%
+% 5) Replace final setup call:
+%      smready(rack);
+%   -> smready(recipe);                         % worker engine default
+%      smready(recipe, singleThreaded = true); % local debug with same recipe
+%
+% 6) If an instrument needs extra client workers, make it explicit in recipe:
+%      recipe.addInstrument(..., numeWorkersRequested = N);
 %
 % COMMON PITFALLS
 % --------------
