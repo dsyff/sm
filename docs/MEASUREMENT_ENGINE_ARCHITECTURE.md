@@ -7,6 +7,7 @@ It supports:
 
 - **Rack mode (single-threaded)**: the rack is constructed on the client and the measurement loop runs on the client.
 - **Recipe mode (worker engine)**: the rack is constructed on an engine worker from an `instrumentRackRecipe`, and the measurement loop runs on that worker.
+- **Recipe mode (single-threaded debug)**: the recipe is materialized on the client (`singleThreaded=true`) and the measurement loop runs on the client.
 
 The legacy GUIs (`smgui_small`, `sm`) are supported through `smbridge` (`smready` + `smguiBridge`).
 
@@ -28,6 +29,12 @@ engine = measurementEngine.fromRack(rack);
 
 ```matlab
 engine = measurementEngine(recipe);
+```
+
+For local debugging with the same recipe (no engine worker):
+
+```matlab
+engine = measurementEngine(recipe, singleThreaded = true);
 ```
 
 In recipe mode, the engine:

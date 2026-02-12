@@ -505,4 +505,5 @@ end
 
 %% wrap up setup
 % smready(recipe, singleThreaded = true); % Debug: run recipe on client instead of engine worker.
+%smready(recipe, verboseClient=true, verboseWorker=true); % Debug: allow logging to files.
 smready(recipe);

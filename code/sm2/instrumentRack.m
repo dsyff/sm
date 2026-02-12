@@ -418,31 +418,54 @@ classdef (Sealed) instrumentRack < handle
         end
         
         function disp(obj)
-            obj.dispLine();
-            obj.dispTime();
-            obj.dispLine();
-            experimentContext.print("<strong> Settings: </strong>");
+            experimentContext.print(obj.formattedDisplayText());
+        end
+
+        function txt = formattedDisplayText(obj)
+            divider = join(repelem("=", 120), "");
+
             propertyNames = string({metaclass(obj).PropertyList.Name});
             setAccess = string({metaclass(obj).PropertyList.SetAccess});
             propertyNames = propertyNames(setAccess == "public");
-            for propertyName = propertyNames
-                experimentContext.print("%s = %s", propertyName, string(obj.(propertyName)));
+
+            settingsLines = strings(numel(propertyNames), 1);
+            for idx = 1:numel(propertyNames)
+                propertyName = propertyNames(idx);
+                settingsLines(idx) = propertyName + " = " + string(obj.(propertyName));
             end
-            obj.dispLine();
+
             tempInstrumentTable = obj.instrumentTable(:, 2:end);
             tempInstrumentTable.Properties.VariableNames(1) = "instruments";
-            experimentContext.print(tempInstrumentTable);
-            obj.dispLine();
+            instrumentLines = splitlines(string(formattedDisplayText(tempInstrumentTable)));
+            if numel(instrumentLines) > 1 && strlength(instrumentLines(end)) == 0
+                instrumentLines = instrumentLines(1:end-1);
+            end
+
             tempChannelTable = obj.channelTable(:, 2:end);
             tempChannelTable.Properties.VariableNames(1) = "instruments";
             tempChannelTable.rampRates = cellfun(@(x) x.', tempChannelTable.rampRates, UniformOutput = false);
             tempChannelTable.rampThresholds = cellfun(@(x) x.', tempChannelTable.rampThresholds, UniformOutput = false);
             tempChannelTable.softwareMins = cellfun(@(x) x.', tempChannelTable.softwareMins, UniformOutput = false);
             tempChannelTable.softwareMaxs = cellfun(@(x) x.', tempChannelTable.softwareMaxs, UniformOutput = false);
-            experimentContext.print(tempChannelTable);
-            obj.dispLine();
-            obj.dispTime();
-            obj.dispLine();
+            channelLines = splitlines(string(formattedDisplayText(tempChannelTable)));
+            if numel(channelLines) > 1 && strlength(channelLines(end)) == 0
+                channelLines = channelLines(1:end-1);
+            end
+
+            lines = [ ...
+                divider
+                string(datetime("now"))
+                divider
+                " Settings: "
+                settingsLines
+                divider
+                instrumentLines
+                divider
+                channelLines
+                divider
+                string(datetime("now"))
+                divider];
+            txt = strjoin(lines, newline);
         end
         
         function displayReadDelaySortedChannelTable(obj)

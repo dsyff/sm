@@ -1,5 +1,6 @@
 global smscan smaux smdata bridge; %#ok<NUSED>
 %#ok<*GVMIS,*UNRCH>
+% NOTE: This demo uses toy/virtual instruments only; no hardware is required.
 
 %% initialize
 path(pathdef);

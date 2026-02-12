@@ -3009,7 +3009,7 @@ classdef measurementEngine < handle
                         err = [];
                         text = "";
                         try
-                            text = string(evalc("disp(rack)"));
+                            text = string(formattedDisplayText(rack));
                         catch ME
                             ok = false;
                             err = measurementEngine.serializeException_(ME);

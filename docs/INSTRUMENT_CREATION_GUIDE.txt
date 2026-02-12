@@ -18,7 +18,7 @@ There are two canonical setup styles:
     workflow. Useful for hardware bring-up and single-threaded debugging.
 
 If you create/edit an instrument class or change channel names/sizes, update the
-relevant demo(s) accordingly (and keep `demos/INSTRUMENT_SETUP_GUIDE.txt`
+relevant demo(s) accordingly (and keep `docs/INSTRUMENT_SETUP_GUIDE.txt`
 consistent).
 
 

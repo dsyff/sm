@@ -2,9 +2,11 @@
 
 ## 🚀 QUICK START:
 - Clone or download the latest `sm-dev` or `sm-main` repository to your desktop
-- Copy the newest `demos/demo.m` (recipe workflow; rack built on a worker engine) and adapt it to your experiment
+- Copy the newest recipe demo (`demos/demo.m` or `demos/demo_nE.m`) and adapt it to your experiment
+- `demos/demo_nE.m` is hardware-free (toy + virtual instruments) and is safe to play with on any machine
 - For recipe-based local debugging (no engine worker), call `smready(recipe, singleThreaded=true)`
 - Explicit-rack debug-only scripts belong in `tests/` (git-ignored), not `demos/`
+- For rack-script migration to recipe, see `docs/INSTRUMENT_SETUP_GUIDE.txt` ("RACK SCRIPT -> RECIPE SCRIPT MIGRATION")
 - The familiar GUI interface is largely unchanged from the original system
 - Use `smget("channel")` and `smset("channel", value)` for quick access
 - Use `smplot('filename.mat')` to recreate plots
@@ -44,4 +46,4 @@
 
 ---
 
-📅 **Last Updated**: 20260206
+📅 **Last Updated**: 20260212
