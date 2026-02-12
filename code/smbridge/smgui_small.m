@@ -1,4 +1,7 @@
-function varargout = smgui_small_new(varargin)
+function varargout = smgui_small(varargin)
+%#ok<*GVMIS>
+%#ok<*INUSD>
+%#ok<*NUSED>
 % Runs special measure's GUI
 % to fix: -- deselect plots after changing setchannels
 %         -- selecting files/directories/run numbers
@@ -23,6 +26,7 @@ function varargout = smgui_small_new(varargin)
 
 %thomas 2023.12
  global smdata smscan smaux rack bridge;
+varargout = cell(1, nargout);
  
  smbridgeAddSharedPaths();
  smpptEnsureGlobals();
@@ -80,13 +84,13 @@ end
 
 
  
-switch nargin
-    case 1
-        eval(varargin{1});
-        return;
-    case 2
-        eval([varargin{1} '(varargin{2});']);
-        return;
+if nargin > 0
+    if nargout > 0
+        [varargout{1:nargout}] = feval(varargin{:});
+    else
+        feval(varargin{:});
+    end
+    return;
 end
 
     if isfield(smaux,'smgui') && ishandle(smaux.smgui.figure1)
@@ -307,8 +311,6 @@ end
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     %     Programming the GUI     %
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    plotchoices.string={};
-    plotchoices.loop=[];
 
     Update();
     registerSmallGuiWithPptState();
@@ -362,7 +364,7 @@ function LoadScan(hObject,eventdata)
 end
 
 function EditRack(hObject,eventdata)
-    msgbox("Edit Rack is not implemented in sm1.5. Use your setup script (demos/demo.m) to edit the rack.", ...
+    msgbox("Edit Rack is not implemented in sm1.5. Edit your setup script (e.g., demos/demo.m; debug-only explicit-rack scripts live in tests/).", ...
         "Not Implemented", "help");
 end
 
@@ -453,13 +455,11 @@ function loopcvars_eth_Callback(hObject,eventdata,i,j,k)
         range=smscan.loops(i).setchanranges{j}(2)-smscan.loops(i).setchanranges{j}(1);
         smscan.loops(i).setchanranges{j}(1)=val-range/2;
         smscan.loops(i).setchanranges{j}(2)=val+range/2;
-        rng=smscan.loops(i).setchanranges{j};
     elseif k==5 % Change the range of the channel
         val = str2double(get(obj,'String'));
         mid = (smscan.loops(i).setchanranges{j}(2)+smscan.loops(i).setchanranges{j}(1))/2;
         smscan.loops(i).setchanranges{j}(1)=mid-val/2;
         smscan.loops(i).setchanranges{j}(2)=mid+val/2;
-        rng=smscan.loops(i).setchanranges{j};
     elseif k==6 % change the stepsize *FOR ALL CHANNELS IN THIS LOOP*
         val = str2double(get(obj,'String'));
         range=smscan.loops(i).setchanranges{j}(2)-smscan.loops(i).setchanranges{j}(1);
@@ -581,42 +581,44 @@ end
 
 %Callback for update constants pushbutton
 function UpdateConstants(varargin)
-    global smaux smscan instrumentRackGlobal;
+    global smaux smscan engine;
 
     % Constants channel dropdowns are scalar-only channelFriendlyNames.
-    if ~exist("instrumentRackGlobal", "var") || isempty(instrumentRackGlobal)
-        error("instrumentRackGlobal not found. Please run setupSmguiWithNewInstruments() first.");
+    if ~exist("engine", "var") || isempty(engine) || ~isa(engine, "measurementEngine")
+        error("smgui_small:MissingEngine", "measurementEngine not found. Please run smready(...) first.");
     end
 
-    allchans = string.empty(1, 0);
-    if isfield(smscan.consts, "setchan")
-        allchans = string({smscan.consts.setchan});
-    end
-
-    setchans = string.empty(1, 0);
-    setvals = double.empty(1, 0);
-    for i = 1:length(smscan.consts)
-        if smscan.consts(i).set
-            setchans(end+1) = string(smscan.consts(i).setchan); %#ok<AGROW>
-            setvals(end+1) = double(smscan.consts(i).val); %#ok<AGROW>
-        end
-    end
-
-    if ~isempty(setchans)
-        instrumentRackGlobal.rackSet(setchans, setvals(:));
-    end
-
-    if isempty(allchans)
+    if ~isfield(smscan, "consts") || isempty(smscan.consts)
         return;
     end
-    newvals = instrumentRackGlobal.rackGet(allchans);
 
-    for i = 1:length(smscan.consts)
-        smscan.consts(i).val = newvals(i);
-        if abs(floor(log10(newvals(i)))) > 3
-            set(smaux.smgui.consts_eth(i), "String", sprintf("%0.1e", newvals(i)));
+    consts = smscan.consts;
+    if ~isfield(consts, "set")
+        [consts.set] = deal(1);
+    end
+
+    setMask = [consts.set] == 1;
+    if any(setMask)
+        setchans = string({consts(setMask).setchan});
+        setvals = double([consts(setMask).val]).';
+        engine.rackSet(setchans(:), setvals);
+    end
+
+    getMask = ~setMask;
+    if ~any(getMask)
+        return;
+    end
+
+    getchans = string({consts(getMask).setchan});
+    newvals = engine.rackGet(getchans(:));
+    getIdx = find(getMask);
+    for k = 1:numel(getIdx)
+        i = getIdx(k);
+        smscan.consts(i).val = newvals(k);
+        if abs(floor(log10(newvals(k)))) > 3
+            set(smaux.smgui.consts_eth(i), "String", sprintf("%0.1e", newvals(k)));
         else
-            set(smaux.smgui.consts_eth(i), "String", round(1000 * newvals(i)) / 1000);
+            set(smaux.smgui.consts_eth(i), "String", round(1000 * newvals(k)) / 1000);
         end
     end
 end
@@ -727,14 +729,13 @@ global smaux smscan bridge;
             end
         end
         set(smaux.smgui.filename_eth,'String',savedataFile);
-        smscan.name=savedataFile;
     end
 end
 
 % Callback for ppt file location pushbutton
 function SavePPT(varargin)
 global smaux bridge;
-    [pptFile,pptPath] = uiputfile('*.ppt','Append to Presentation');
+    [pptFile, ~] = uiputfile('*.ppt','Append to Presentation');
     if isequal(pptFile, 0)
         return;
     end
@@ -1001,7 +1002,7 @@ function [plotchoicesAll, plotchoices2d] = buildPlotChoices()
             scalarChanNames = convertVectorToScalarNames(vectorChanName);
             for k=1:length(scalarChanNames)
                 full_idx = full_idx + 1;
-                plotchoicesAll.string={plotchoicesAll.string{:} scalarChanNames{k}};
+                plotchoicesAll.string = [plotchoicesAll.string scalarChanNames(k)];
                 plotchoicesAll.loop=[plotchoicesAll.loop i];
                 plotchoicesAll.full_index=[plotchoicesAll.full_index full_idx];
             end
@@ -1017,7 +1018,7 @@ end
 
 % Callback for running the scan (call to smrun)
 function Run(varargin)
-    global smaux smscan smdata instrumentRackGlobal;
+    global smaux smscan engine;
 
     syncScanPptFromGUI();
 
@@ -1027,8 +1028,8 @@ function Run(varargin)
         filestring = get(smaux.smgui.filename_eth,'String');
     end
     if isempty(filestring)
-        error('smgui_small_new:MissingFilename', ...
-            'A base filename must be selected before running.');
+        error("smgui_small:MissingFilename", ...
+            "A base filename must be selected before running.");
     end
 
     if ~isfield(smaux, 'datadir') || isempty(smaux.datadir)
@@ -1040,38 +1041,14 @@ function Run(varargin)
     smdatapathUpdateGlobalState('small', smaux.datadir);
     smdatapathApplyStateToGui('small');
 
-    runCandidate = smrunGetState();
-    useRunPrefix = ~isnan(runCandidate);
+    % Sync scan name from the title textbox (don't overwrite with filename).
+    smscan.name = sanitizeFilename(get(smaux.smgui.scantitle_eth, 'String'));
 
-    % Final safety net: sanitize filename for Windows
-    filestring_safe = sanitizeFilename(filestring);
-    
-    if useRunPrefix
-        runToUse = smrunNextAvailableRunNumber(smaux.datadir, runCandidate);
-        runstring = sprintf('%03u', runToUse);
-        datasaveFile = fullfile(smaux.datadir,[runstring '_' filestring_safe '.mat']);
-    else
-        datasaveFile = fullfile(smaux.datadir,[filestring_safe '.mat']);
+    if ~exist("engine", "var") || isempty(engine) || ~isa(engine, "measurementEngine")
+        error("smgui_small:MissingEngine", "measurementEngine not found. Please run smready(...) first.");
     end
 
-    UpdateConstants;
-
-    % Try to run with new system first
-    % Check if instrumentRackGlobal is available (needed by smget_new/smset_new)
-    if ~exist('instrumentRackGlobal', 'var') || isempty(instrumentRackGlobal)
-        error('instrumentRackGlobal not found. Please run setupSmguiWithNewInstruments() first.');
-    end
-
-    % Use the modified smrun that works with our new system
-    data = smrun_new(smscan, datasaveFile);
-
-    % PowerPoint save functionality moved to smrun_new
-
-    if useRunPrefix
-        nextRun = smrunIncrement(runToUse);
-        smrunUpdateGlobalState('small', nextRun);
-    end
-    smrunApplyStateToGui('small');
+    engine.run(smscan, "", "safe");
 
 end
 
@@ -1086,7 +1063,7 @@ function ToScans(varargin)
         end
         smaux.scans{end+1}=smscan;
         sm
-        sm_new_Callback('UpdateToGUI');
+        sm_Callback('UpdateToGUI');
     catch ME
         % Create detailed error message
         errorMsg = sprintf('Error in ToScans:\n\n%s\n\nFile: %s\nLine: %d\n\nStack trace:\n', ...
@@ -1113,7 +1090,7 @@ function ToQueue(varargin)
         end
         smaux.smq{end+1}=smscan;
         sm
-        sm_new_Callback('UpdateToGUI');
+        sm_Callback('UpdateToGUI');
     catch ME
         % Create detailed error message
         errorMsg = sprintf('Error in ToQueue:\n\n%s\n\nFile: %s\nLine: %d\n\nStack trace:\n', ...
@@ -1132,10 +1109,6 @@ end
 % updates the GUI components
 function Update(varargin)
     global smaux smscan smdata;
-    plotchoices.string={};
-    plotchoices.loop=[];
-
-    numloops = 1;
 
     if ~isstruct(smscan)
         smscan.loops(1).npoints=100;
@@ -1198,9 +1171,6 @@ function scaninit(varargin)
         set(smaux.smgui.saveloop_eth,'String',smscan.saveloop);
         if isfield(smscan,'name')
             set(smaux.smgui.scantitle_eth,'String',smscan.name);
-            %JDSY 2012-09-18 changed to make smscan.name the filename as
-            %well
-            set(smaux.smgui.filename_eth,'String',smscan.name)
         end
         for i=1:length(smscan.loops)
             smscan.loops(i).numchans=length(smscan.loops(i).setchan);
@@ -1388,7 +1358,7 @@ function makeloopchannelset(i,j)
         'HorizontalAlignment','right',...
         'Position',pos+[55 -5 45 h(1)]);
 
-    if strmatch('none',smscan.loops(i).setchan{j}, 'exact')
+    if strcmp('none', smscan.loops(i).setchan{j})
         chanval=1;
     else
         try
@@ -1417,7 +1387,6 @@ function makeloopchannelset(i,j)
                                chanNameStr, class(chanName), ME.message);
             
             % Add list of available channels
-            global smdata;
             if exist('smdata', 'var') && isfield(smdata, 'channels') && ~isempty(smdata.channels)
                 for k = 1:min(10, length(smdata.channels))  % Show first 10 channels
                     debugMsg = [debugMsg sprintf('  %d: %s\n', k, smdata.channels(k).name)];
@@ -1575,6 +1544,7 @@ function makeloopgetchans(i)
     %smaux.smgui.loopvars_getchans_pmh=[];  %JDSY 7/1/9/2011
     channelnames = getChannelNamesForContext('vector');  % Use vector names for get channels
     channelnames_str = string(channelnames);
+    channelnames_str = channelnames_str(:);
 
     selected_names = string.empty(1, 0);
     for loopIdx = 1:length(smscan.loops)
@@ -1587,7 +1557,7 @@ function makeloopgetchans(i)
             if isempty(chanName)
                 continue;
             end
-            selected_names(end+1) = string(chanName); %#ok<AGROW>
+            selected_names(end+1) = string(chanName);
         end
     end
 
@@ -1597,9 +1567,10 @@ function makeloopgetchans(i)
             chanName = smscan.loops(i).getchan{j};
             current_name = string(chanName);
             available_names = setdiff(channelnames_str, selected_names, "stable");
+            available_names = available_names(:);
             if ~isempty(current_name)
                 if ~any(available_names == current_name)
-                    available_names = [current_name, available_names]; %#ok<AGROW>
+                    available_names = [current_name; available_names];
                 end
             end
 
@@ -1626,7 +1597,6 @@ function makeloopgetchans(i)
                                chanNameStr, class(chanName), ME.message);
             
             % Add list of available channels
-            global smdata;
             if exist('smdata', 'var') && isfield(smdata, 'channels') && ~isempty(smdata.channels)
                 for k = 1:min(10, length(smdata.channels))  % Show first 10 channels
                     debugMsg = [debugMsg sprintf('  %d: %s\n', k, smdata.channels(k).name)];
@@ -1643,19 +1613,19 @@ function makeloopgetchans(i)
         end
         smaux.smgui.loopvars_getchans_pmh(i,j) = uicontrol('Parent',smaux.smgui.loop_panels_ph(i),...
             'Style','popupmenu',...
-            'String',[string("none") available_names],...
+            'String',["none"; available_names(:)],...
             'Value',chanval,...
             'HorizontalAlignment','center',...
             'Position',[60+90*(mod((j-1),7)) 40-30*floor((j-1)/7) 80 20],...
             'Callback',{@GetChannel,i,j});
     end
 
-    if numgetchans==0 j=0;
+    if numgetchans==0, j=0;
     end
 
     smaux.smgui.loopvars_getchans_pmh(i,j+1) = uicontrol('Parent',smaux.smgui.loop_panels_ph(i),...
         'Style','popupmenu',...
-        'String',[string("none") setdiff(channelnames_str, selected_names, "stable")],...
+        'String',["none"; setdiff(channelnames_str, selected_names, "stable")],...
         'Value',1,...
         'HorizontalAlignment','center',...
         'Position',[60+90*(mod(j,7)) 40-30*floor(j/7) 80 20],...
@@ -1690,7 +1660,7 @@ function makeconstpanel(varargin)
     pos1 = [5 parentsize(4)-40 0 0];
     cols = 4;      
     for i=1:numconsts
-        if strmatch('none',smscan.consts(i).setchan, 'exact')
+        if strcmp('none', smscan.consts(i).setchan)
             chanval=1;
         else
             try
@@ -1719,7 +1689,6 @@ function makeconstpanel(varargin)
                                    chanNameStr, class(chanName), ME.message);
                 
                 % Add list of available channels
-                global smdata;
                 if exist('smdata', 'var') && isfield(smdata, 'channels') && ~isempty(smdata.channels)
                     for k = 1:min(10, length(smdata.channels))  % Show first 10 channels
                         debugMsg = [debugMsg sprintf('  %d: %s\n', k, smdata.channels(k).name)];
@@ -1865,7 +1834,7 @@ end
 
 
 function registerSmallGuiWithPptState()
-    global smaux
+    global smaux bridge
     smpptEnsureGlobals();
     if ~isstruct(smaux) || ~isfield(smaux, 'smgui') || ~isstruct(smaux.smgui)
         return;

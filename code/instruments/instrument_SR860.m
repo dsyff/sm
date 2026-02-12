@@ -27,6 +27,9 @@ classdef instrument_SR860 < instrumentInterface
             % Assign object properties
             obj.address = address;
             obj.communicationHandle = handle;
+            if startsWith(upper(string(address)), "GPIB")
+                obj.writeCommandInterval = seconds(0.2);
+            end
 
             % Add channels - based on legacy channel mapping
             % Note: SR860 uses 0-based indexing for AUX channels
@@ -203,11 +206,11 @@ classdef instrument_SR860 < instrumentInterface
                     
                     % Handle invalid response (matches legacy behavior exactly)
                     attempts = attempts + 1;
-                    disp(datetime);
+                    experimentContext.print(datetime("now"));
                     if isempty(response) || response == ""
-                        disp("SR860 timed out during query.");
+                        experimentContext.print("SR860 timed out during query.");
                     else
-                        disp("SR860 returned " + response);
+                        experimentContext.print("SR860 returned " + response);
                     end
                     
                     % Re-send the query command (this is the key insight from legacy code)
@@ -216,8 +219,8 @@ classdef instrument_SR860 < instrumentInterface
 
                 catch ME
                     attempts = attempts + 1;
-                    disp(datetime);
-                    disp("SR860 communication error: " + ME.message);
+                    experimentContext.print(datetime("now"));
+                    experimentContext.print("SR860 communication error: " + ME.message);
                     
                     % Re-send the query command on communication error too
                     obj.getWriteChannelHelper(channelIndex);
@@ -258,11 +261,11 @@ classdef instrument_SR860 < instrumentInterface
                     
                     % Handle invalid response (matches legacy behavior)
                     attempts = attempts + 1;
-                    disp(datetime);
+                    experimentContext.print(datetime("now"));
                     if isempty(response) || response == ""
-                        disp("SR860 SNAP timed out during query (attempt " + attempts + "/" + maxAttempts + ")");
+                        experimentContext.print("SR860 SNAP timed out during query (attempt " + attempts + "/" + maxAttempts + ")");
                     else
-                        disp("SR860 SNAP returned invalid: " + response + " (attempt " + attempts + "/" + maxAttempts + ")");
+                        experimentContext.print("SR860 SNAP returned invalid: " + response + " (attempt " + attempts + "/" + maxAttempts + ")");
                     end
                     
                     if attempts < maxAttempts
@@ -273,8 +276,8 @@ classdef instrument_SR860 < instrumentInterface
                     
                 catch ME
                     attempts = attempts + 1;
-                    disp(datetime);
-                    disp("SR860 SNAP communication error (attempt " + attempts + "/" + maxAttempts + "): " + ME.message);
+                    experimentContext.print(datetime("now"));
+                    experimentContext.print("SR860 SNAP communication error (attempt " + attempts + "/" + maxAttempts + "): " + ME.message);
                     
                     if attempts < maxAttempts
                         % Re-send the SNAP command for retry

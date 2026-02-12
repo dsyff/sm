@@ -1,6 +1,9 @@
-%% INSTRUMENT SETUP GUIDE (see demos/demo.m for the canonical full setup script)
-% Users typically copy/paste + edit demos/demo.m. Keep it up to date when you add
-% or change instruments/channels.
+%% INSTRUMENT SETUP GUIDE
+% Canonical setup scripts:
+% - Recipe (worker engine): `demos/demo.m`
+% - Legacy rack-on-client debug example (git-ignored): `tests/demo_nE.m`
+%
+% Keep the relevant demo(s) up to date when you add/change instruments/channels.
 %
 % QUICK REFERENCE
 % ---------------
@@ -10,10 +13,10 @@
 % 3) Optional: set instrument properties / send direct hardware commands
 % 4) Add instrument to rack
 % 5) Add user-facing channels to rack
-% 6) smready(rack)
+% 6) smready(rack)  OR  smready(recipe)
 %
 % STEP 0: Add sm-dev or sm-main code folder to the path
-% This matches demos/demo.m and keeps sminit available.
+% This matches tests/demo_nE.m and keeps sminit available.
 % Example:
 %   username = string(getenv("USERNAME"));
 %   sm_dev_path = fullfile("C:\Users", username, "Desktop", "sm-dev");
@@ -43,6 +46,9 @@
 % Notes:
 % - This can be done before or after rack.addInstrument(...) (demo.m does both).
 % - Prefer instrument class methods when available; use direct commands for gaps.
+% - Framework write pacing is controlled by `handle.writeCommandInterval`
+%   (default `seconds(0)`). Current convention for GPIB-backed drivers is
+%   `seconds(0.2)` to avoid overdriving slower command paths.
 %
 % STEP 4: add instrument to rack
 % Syntax: rack.addInstrument(handle, "instName")
@@ -52,7 +58,7 @@
 %   rack.addInstrument(handle_K2450, "K2450_A");
 %
 % STEP 5: add channels to rack (user-facing names used by smget/smset)
-% Full signature (matches demos/demo.m):
+% Full signature (matches explicit-rack debug scripts like tests/demo_nE.m):
 %   rack.addChannel("instName", "instChanName", "userChanName", rampRate, rampThreshold, softMin, softMax)
 %
 % Notes:
@@ -68,6 +74,14 @@
 %
 % STEP 6: finish setup + launch GUI
 %   smready(rack);
+%
+% RECIPE MODE (worker engine)
+% ---------------------------
+% For recipe-based setups (recommended), build an `instrumentRackRecipe` instead:
+%   recipe = instrumentRackRecipe();
+%   recipe.addInstrument("h", "instrument_ClassName", "friendlyName", ...);
+%   recipe.addChannel("friendlyName", "instChanName", "userChanName");
+%   smready(recipe);
 %
 % COMMON PITFALLS
 % --------------

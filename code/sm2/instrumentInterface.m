@@ -20,11 +20,20 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
         setTimeout (1, 1) duration = minutes(1);
         setInterval (1, 1) duration = seconds(2);
         requireSetCheck (1, 1) logical = true;
+        writeCommandInterval (1, 1) duration = seconds(0);
+    end
+
+    properties (SetAccess = protected)
+        % Number of *additional* pool workers required by this instrument.
+        % 0 means the instrument is self-contained in the calling process.
+        numWorkersRequired (1, 1) double {mustBeNonnegative, mustBeInteger} = 0;
     end
 
     properties (Access = private)
         lastGetChannelIndex;
         lastSetValues = {};
+        channelNameToIndex = dictionary(string.empty(0, 1), uint32.empty(0, 1));
+        lastWriteCommandTic = [];
     end
 
     methods (Abstract, Access = ?instrumentInterface)
@@ -83,23 +92,84 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
             % Override in specific instruments if flushing is needed
         end
     end
+
+    methods (Access = ?measurementEngine, Sealed)
+        function validateWorkersRequestedFromRecipe(obj, numeWorkersRequested)
+            arguments
+                obj
+                numeWorkersRequested (1, 1) double {mustBeNonnegative, mustBeInteger}
+            end
+
+            if double(obj.numWorkersRequired) ~= double(numeWorkersRequested)
+                error("instrumentInterface:WorkersRequestedMismatch", ...
+                    "%s declares numWorkersRequired=%d but recipe requested numeWorkersRequested=%d.", ...
+                    class(obj), double(obj.numWorkersRequired), double(numeWorkersRequested));
+            end
+        end
+    end
     
     methods (Access = ?instrumentRack, Sealed)
 
-        function getWriteChannel(obj, channel)
+        function channelIndex = findChannelIndexForRack(obj, channel)
             arguments
                 obj;
                 channel (1, 1) string {mustBeNonzeroLengthText};
             end
-            obj.performGetWrite(channel);
+            channelIndex = obj.findChannelIndex(channel);
         end
 
-        function getValues = getReadChannel(obj, channel)
+        function channelSize = findChannelSizeByIndexForRack(obj, channelIndex)
             arguments
                 obj;
-                channel (1, 1) string {mustBeNonzeroLengthText};
+                channelIndex (1, 1) {mustBePositive, mustBeInteger};
             end
-            getValues = obj.performGetRead(channel);
+            channelIndex = obj.normalizeChannelIndex(channelIndex);
+            channelSize = obj.channelTable.channelSizes(channelIndex);
+        end
+
+        function getWriteChannelByIndex(obj, channelIndex)
+            arguments
+                obj;
+                channelIndex (1, 1) {mustBePositive, mustBeInteger};
+            end
+            channelIndex = obj.normalizeChannelIndex(channelIndex);
+            obj.performGetWriteByIndex(channelIndex);
+        end
+
+        function getValues = getReadChannelByIndex(obj, channelIndex)
+            arguments
+                obj;
+                channelIndex (1, 1) {mustBePositive, mustBeInteger};
+            end
+            channelIndex = obj.normalizeChannelIndex(channelIndex);
+            getValues = obj.performGetReadByIndex(channelIndex);
+        end
+
+        function getValues = getChannelByIndex(obj, channelIndex)
+            arguments
+                obj;
+                channelIndex (1, 1) {mustBePositive, mustBeInteger};
+            end
+            channelIndex = obj.normalizeChannelIndex(channelIndex);
+            obj.performGetWriteByIndex(channelIndex);
+            getValues = obj.performGetReadByIndex(channelIndex);
+        end
+
+        function setWriteChannelByIndex(obj, channelIndex, setValues)
+            arguments
+                obj;
+                channelIndex (1, 1) {mustBePositive, mustBeInteger};
+                setValues double {mustBeVector};
+            end
+            obj.setWriteChannelByIndexCore(channelIndex, setValues);
+        end
+
+        function TF = setCheckChannelByIndex(obj, channelIndex)
+            arguments
+                obj;
+                channelIndex (1, 1) {mustBePositive, mustBeInteger};
+            end
+            TF = obj.setCheckChannelByIndexCore(channelIndex);
         end
 
     end
@@ -111,8 +181,9 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 obj;
                 channel (1, 1) string {mustBeNonzeroLengthText};
             end
-            obj.performGetWrite(channel);
-            getValues = obj.performGetRead(channel);
+            channelIndex = obj.findChannelIndex(channel);
+            obj.performGetWriteByIndex(channelIndex);
+            getValues = obj.performGetReadByIndex(channelIndex);
         end
 
         function setChannel(obj, channel, setValues)
@@ -139,22 +210,7 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 setValues double {mustBeVector};
             end
             channelIndex = obj.findChannelIndex(channel);
-            % check validity of setValues
-            obj.checkSize(channelIndex, setValues);
-            % LLM note: After checkSize and the arguments validation above,
-            % helper overrides receive a column double whose length matches
-            % the declared channel. Redundant scalar extractors (e.g. in
-            % virtual instruments) are unnecessary.
-            assert(all(~isnan(setValues)), "setWrite for channel %s received nan value(s). Received:\n%s", channel, formattedDisplayText(setValues));
-            % enforce column vector
-            if ~isscalar(setValues) && isrow(setValues)
-                setValues = setValues.';
-            end
-            obj.setWriteChannelHelper(channelIndex, setValues);
-            obj.lastSetValues{channelIndex} = setValues;
-
-            % make sure that this cannot be between getWrite and getRead
-            obj.lastGetChannelIndex = [];
+            obj.setWriteChannelByIndexCore(channelIndex, setValues);
         end
 
         function TF = setCheckChannel(obj, channel)
@@ -171,9 +227,7 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
             end
             
             channelIndex = obj.findChannelIndex(channel);
-            channelLastSetValues = obj.lastSetValues{channelIndex};
-            assert(~isempty(channelLastSetValues), "setWriteChannel for channel %s has not been called succesfully yet.", channel);
-            TF = obj.setCheckChannelHelper(channelIndex, channelLastSetValues);
+            TF = obj.setCheckChannelByIndexCore(channelIndex);
         end
 
         function channelIndex = findChannelIndex(obj, channel)
@@ -181,8 +235,8 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 obj;
                 channel (1, 1) string {mustBeNonzeroLengthText};
             end
-            channelIndex = find(obj.channelTable.channels == channel);
-            assert(~isempty(channelIndex), "%s is not found in the instrument.", channel);
+            assert(isKey(obj.channelNameToIndex, channel), "%s is not found in the instrument.", channel);
+            channelIndex = double(obj.channelNameToIndex(channel));
         end
 
         function channelSize = findChannelSize(obj, channel)
@@ -266,15 +320,16 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
 
     methods (Access = private, Sealed)
 
-        function performGetWrite(obj, channel)
-            channelIndex = obj.findChannelIndex(channel);
+        function performGetWriteByIndex(obj, channelIndex)
+            obj.enforceWriteCommandInterval();
             obj.getWriteChannelHelper(channelIndex);
             obj.lastGetChannelIndex = channelIndex;
         end
 
-        function getValues = performGetRead(obj, channel)
+        function getValues = performGetReadByIndex(obj, channelIndex)
+            channelIndex = obj.normalizeChannelIndex(channelIndex);
+            channel = obj.channelTable.channels(channelIndex);
             assert(~isempty(obj.lastGetChannelIndex), "getWrite has not been called for channel %s, or setWrite has been called", channel);
-            channelIndex = obj.findChannelIndex(channel);
             assert(channelIndex == obj.lastGetChannelIndex, "Last getWrite was channel %s, but getRead was called for channel %s.", obj.channelTable.channels(obj.lastGetChannelIndex), channel);
             getValues = obj.getReadChannelHelper(channelIndex);
             obj.checkSize(channelIndex, getValues);
@@ -284,9 +339,57 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
             end
         end
 
+        function channelIndex = normalizeChannelIndex(obj, channelIndex)
+            channelIndex = double(channelIndex);
+            assert(channelIndex >= 1 && channelIndex <= height(obj.channelTable), ...
+                "Channel index %d is out of range.", channelIndex);
+        end
+
+        function setWriteChannelByIndexCore(obj, channelIndex, setValues)
+            channelIndex = obj.normalizeChannelIndex(channelIndex);
+            channel = obj.channelTable.channels(channelIndex);
+            % check validity of setValues
+            obj.checkSize(channelIndex, setValues);
+            % LLM note: After checkSize and the arguments validation above,
+            % helper overrides receive a column double whose length matches
+            % the declared channel. Redundant scalar extractors (e.g. in
+            % virtual instruments) are unnecessary.
+            assert(all(~isnan(setValues)), "setWrite for channel %s received nan value(s). Received:\n%s", channel, formattedDisplayText(setValues));
+            % enforce column vector
+            if ~isscalar(setValues) && isrow(setValues)
+                setValues = setValues.';
+            end
+            obj.enforceWriteCommandInterval();
+            obj.setWriteChannelHelper(channelIndex, setValues);
+            obj.lastSetValues{channelIndex} = setValues;
+
+            % make sure that this cannot be between getWrite and getRead
+            obj.lastGetChannelIndex = [];
+        end
+
+        function TF = setCheckChannelByIndexCore(obj, channelIndex)
+            channelIndex = obj.normalizeChannelIndex(channelIndex);
+            channel = obj.channelTable.channels(channelIndex);
+            channelLastSetValues = obj.lastSetValues{channelIndex};
+            assert(~isempty(channelLastSetValues), "setWriteChannel for channel %s has not been called succesfully yet.", channel);
+            TF = obj.setCheckChannelHelper(channelIndex, channelLastSetValues);
+        end
+
         function checkSize(obj, channelIndex, values)
             channelSize = obj.channelTable.channelSizes(channelIndex);
             assert(length(values) == channelSize, "Expected channel %s to have length %d. Received length %d instead.", obj.channelTable.channels(channelIndex), channelSize, length(values));
+        end
+
+        function enforceWriteCommandInterval(obj)
+            intervalSeconds = seconds(obj.writeCommandInterval);
+            assert(intervalSeconds >= 0, "writeCommandInterval must be nonnegative.");
+            if intervalSeconds > 0 && ~isempty(obj.lastWriteCommandTic)
+                remaining = intervalSeconds - toc(obj.lastWriteCommandTic);
+                if remaining > 0
+                    pause(remaining);
+                end
+            end
+            obj.lastWriteCommandTic = tic;
         end
 
     end
@@ -300,10 +403,9 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 NameValueArgs.setTolerances (:, 1) double {mustBePositive} = 1E-6 * ones(channelSize, 1);
             end
             assert(length(NameValueArgs.setTolerances) == channelSize, "setTolerances must be a channelSize long column vector.")
-            if ~isempty(obj.channelTable)
-                assert(~any(channel == obj.channelTable.channels), "Channels must not repeat.");
-            end
+            assert(~isKey(obj.channelNameToIndex, channel), "Channels must not repeat.");
             obj.channelTable = [obj.channelTable; {channel, channelSize}];
+            obj.channelNameToIndex(channel) = uint32(height(obj.channelTable));
             obj.lastSetValues = cell(height(obj.channelTable), 1);
             obj.setTolerances = [obj.setTolerances, {NameValueArgs.setTolerances}];
         end

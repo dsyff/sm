@@ -76,7 +76,7 @@ handles.output = hObject;
 
 % Update handles structure
 guidata(hObject, handles);
-sm_new_Callback('Open',handles);
+sm_Callback('Open',handles);
 % UIWAIT makes sm wait for user response (see UIRESUME)
 % uiwait(handles.figure1);
 
@@ -97,7 +97,7 @@ function scans_lbh_Callback(hObject, eventdata, handles)
 % hObject    handle to scans_lbh (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('Scans');
+sm_Callback('Scans');
 
 
 % --- Executes during object creation, after setting all properties.
@@ -105,7 +105,7 @@ function scans_lbh_CreateFcn(hObject, eventdata, handles)
 % hObject    handle to scans_lbh (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    empty - handles not created until after all CreateFcns called
-sm_new_Callback('ScansCreate');
+sm_Callback('ScansCreate');
 % Hint: listbox controls usually have a white background on Windows.
 %       See ISPC and COMPUTER.
 if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
@@ -118,7 +118,7 @@ function queue_lbh_Callback(hObject, eventdata, handles)
 % hObject    handle to queue_lbh (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('Queue');
+sm_Callback('Queue');
 % Hints: contents = cellstr(get(hObject,'String')) returns queue_lbh contents as cell array
 %        contents{get(hObject,'Value')} returns selected item from queue_lbh
 
@@ -128,7 +128,7 @@ function queue_lbh_CreateFcn(hObject, eventdata, handles)
 % hObject    handle to queue_lbh (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    empty - handles not created until after all CreateFcns called
-sm_new_Callback('QueueCreate');
+sm_Callback('QueueCreate');
 % Hint: listbox controls usually have a white background on Windows.
 %       See ISPC and COMPUTER.
 if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
@@ -148,7 +148,7 @@ function openscans_Callback(hObject, eventdata, handles)
 % hObject    handle to openscans (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('OpenScans');
+sm_Callback('OpenScans');
 
 
 % --------------------------------------------------------------------
@@ -156,7 +156,7 @@ function savescans_Callback(hObject, eventdata, handles)
 % hObject    handle to savescans (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('SaveScans');
+sm_Callback('SaveScans');
 
 
 % --------------------------------------------------------------------
@@ -164,7 +164,7 @@ function openrack_Callback(hObject, eventdata, handles)
 % hObject    handle to openrack (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('OpenRack');
+sm_Callback('OpenRack');
 
 
 % --------------------------------------------------------------------
@@ -172,7 +172,7 @@ function saverack_Callback(hObject, eventdata, handles)
 % hObject    handle to saverack (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('SaveRack');
+sm_Callback('SaveRack');
 
 
 % --------------------------------------------------------------------
@@ -180,7 +180,7 @@ function editrack_Callback(hObject, eventdata, handles)
 % hObject    handle to editrack (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('EditRack');
+sm_Callback('EditRack');
 
 
 % --- Executes on selection change in smusers_lbh.
@@ -188,7 +188,7 @@ function smusers_lbh_Callback(hObject, eventdata, handles)
 % hObject    handle to smusers_lbh (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('SMusers');
+sm_Callback('SMusers');
 
 % Hints: contents = cellstr(get(hObject,'String')) returns smusers_lbh contents as cell array
 %        contents{get(hObject,'Value')} returns selected item from smusers_lbh
@@ -199,7 +199,7 @@ function smusers_lbh_CreateFcn(hObject, eventdata, handles)
 % hObject    handle to smusers_lbh (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    empty - handles not created until after all CreateFcns called
-sm_new_Callback('SMusersCreate');
+sm_Callback('SMusersCreate');
 % Hint: listbox controls usually have a white background on Windows.
 %       See ISPC and COMPUTER.
 if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
@@ -212,7 +212,7 @@ function enqueue_Callback(hObject, eventdata, handles)
 % hObject    handle to enqueue (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('Enqueue');
+sm_Callback('Enqueue');
 
 
 % --- Executes on button press in editscan_pbh.
@@ -220,7 +220,7 @@ function editscan_pbh_Callback(hObject, eventdata, handles)
 % hObject    handle to editscan_pbh (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('EditScan');
+sm_Callback('EditScan');
 
 
 % --- Executes on button press in removescan_pbh.
@@ -228,7 +228,7 @@ function removescan_pbh_Callback(hObject, eventdata, handles)
 % hObject    handle to removescan_pbh (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('RemoveScan');
+sm_Callback('RemoveScan');
 
 
 
@@ -236,7 +236,7 @@ function qtxt_eth_Callback(hObject, eventdata, handles)
 % hObject    handle to qtxt_eth (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('Qtxt');
+sm_Callback('Qtxt');
 % Hints: get(hObject,'String') returns contents of qtxt_eth as text
 %        str2double(get(hObject,'String')) returns contents of qtxt_eth as a double
 
@@ -258,14 +258,14 @@ function txtenqueue_Callback(hObject, eventdata, handles)
 % hObject    handle to txtenqueue (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('TXTenqueue');
+sm_Callback('TXTenqueue');
 
 % --- Executes on button press in pptauto_cbh.
 function pptauto_cbh_Callback(hObject, eventdata, handles)
 % hObject    handle to pptauto_cbh (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('PPTauto');
+sm_Callback('PPTauto');
 % Hint: get(hObject,'Value') returns toggle state of pptauto_cbh
 
 
@@ -274,7 +274,7 @@ function pptfile_pbh_Callback(hObject, eventdata, handles)
 % hObject    handle to pptfile_pbh (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('PPTFile');
+sm_Callback('PPTFile');
 
 
 
@@ -282,7 +282,7 @@ function comments_eth_Callback(hObject, eventdata, handles)
 % hObject    handle to comments_eth (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('Comments');
+sm_Callback('Comments');
 % Hints: get(hObject,'String') returns contents of comments_eth as text
 %        str2double(get(hObject,'String')) returns contents of comments_eth as a double
 
@@ -304,7 +304,7 @@ function pptsave_eth_Callback(hObject, eventdata, handles)
 % hObject    handle to pptsave_eth (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('PPTSaveFig');
+sm_Callback('PPTSaveFig');
 % Hints: get(hObject,'String') returns contents of pptsave_eth as text
 %        str2double(get(hObject,'String')) returns contents of pptsave_eth as a double
 
@@ -326,7 +326,7 @@ function pptsave_pbh_Callback(hObject, eventdata, handles)
 % hObject    handle to pptsave_pbh (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('PPTSaveNow');
+sm_Callback('PPTSaveNow');
 
 
 % --- Executes on button press in savepath_pbh.
@@ -334,7 +334,7 @@ function savepath_pbh_Callback(hObject, eventdata, handles)
 % hObject    handle to savepath_pbh (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('SavePath');
+sm_Callback('SavePath');
 
 
 
@@ -342,7 +342,7 @@ function run_eth_Callback(hObject, eventdata, handles)
 % hObject    handle to run_eth (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('RunNum');
+sm_Callback('RunNum');
 % Hints: get(hObject,'String') returns contents of run_eth as text
 %        str2double(get(hObject,'String')) returns contents of run_eth as a double
 
@@ -352,7 +352,7 @@ function run_eth_CreateFcn(hObject, eventdata, handles)
 % hObject    handle to run_eth (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    empty - handles not created until after all CreateFcns called
-sm_new_Callback('RunCreate');
+sm_Callback('RunCreate');
 % Hint: edit controls usually have a white background on Windows.
 %       See ISPC and COMPUTER.
 if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
@@ -365,7 +365,7 @@ function runincrement_cbh_Callback(hObject, eventdata, handles)
 % hObject    handle to runincrement_cbh (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('RunIncrement');
+sm_Callback('RunIncrement');
 % Hint: get(hObject,'Value') returns toggle state of runincrement_cbh
 
 
@@ -374,28 +374,28 @@ function run_pbh_Callback(hObject, eventdata, handles)
 % hObject    handle to run_pbh (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('Run');
+sm_Callback('Run');
 
 % --- Executes on button press in pause_pbh.
 function pause_pbh_Callback(hObject, eventdata, handles)
 % hObject    handle to pause_pbh (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('Pause');
+sm_Callback('Pause');
 
 % --- Executes on button press in pptfile2_pbh.
 function pptfile2_pbh_Callback(hObject, eventdata, handles)
 % hObject    handle to pptfile2_pbh (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('PPTFile2');
+sm_Callback('PPTFile2');
 
 % --- Executes on button press in pptsavepriority_cbh.
 function pptsavepriority_cbh_Callback(hObject, eventdata, handles)
 % hObject    handle to pptsavepriority_cbh (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('PPTPriority');
+sm_Callback('PPTPriority');
 % Hint: get(hObject,'Value') returns toggle state of pptsavepriority_cbh
 
 
@@ -404,7 +404,7 @@ function console_eth_Callback(hObject, eventdata, handles)
 % hObject    handle to console_eth (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('Console');
+sm_Callback('Console');
 % Hints: get(hObject,'String') returns contents of console_eth as text
 %        str2double(get(hObject,'String')) returns contents of console_eth as a double
 
@@ -426,7 +426,7 @@ function evaluate_pbh_Callback(hObject, eventdata, handles)
 % hObject    handle to evaluate_pbh (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('Eval');
+sm_Callback('Eval');
 
 
 % --- Executes on key press with focus on queue_lbh and none of its controls.
@@ -437,8 +437,8 @@ function queue_lbh_KeyPressFcn(hObject, eventdata, handles)
 %	Character: character interpretation of the key(s) that was pressed
 %	Modifier: name(s) of the modifier key(s) (i.e., control, shift) pressed
 % handles    structure with handles and user data (see GUIDATA)
-%sm_new_Callback('QueueKeyPress',eventdata);
-sm_new_Callback('QueueKey',eventdata);
+%sm_Callback('QueueKeyPress',eventdata);
+sm_Callback('QueueKey',eventdata);
 
 
 % --- Executes on key press with focus on scans_lbh and none of its controls.
@@ -449,7 +449,7 @@ function scans_lbh_KeyPressFcn(hObject, eventdata, handles)
 %	Character: character interpretation of the key(s) that was pressed
 %	Modifier: name(s) of the modifier key(s) (i.e., control, shift) pressed
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('ScansKey',eventdata);
+sm_Callback('ScansKey',eventdata);
 
 
 % --- Executes on button press in editscan2_pbh.
@@ -457,4 +457,4 @@ function editscan2_pbh_Callback(hObject, eventdata, handles)
 % hObject    handle to editscan2_pbh (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-sm_new_Callback('EditScan2');
+sm_Callback('EditScan2');

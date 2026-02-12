@@ -60,7 +60,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
         spectrographInitialized (1, 1) logical = false;
         needsAcquisition (1, 1) logical = true;
         cachedAcquisitionCount (1, 1) double = 0;
-        lastAcquisitionTime = [];
+        lastAcquisitionTime (1, 1) datetime = NaT
     end
     
     properties (Access = public)
@@ -91,7 +91,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             obj@instrumentInterface();
             
             obj.address = address;
-            fprintf("instrument_AndorSpectrometer: Initializing CCD (Andor SDK, defaults, cooling)...\n");
+            experimentContext.print("instrument_AndorSpectrometer: Initializing CCD (Andor SDK, defaults, cooling)...");
             try
                 obj.initializeCamera();
             catch cameraInitError
@@ -107,7 +107,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                         firstReport, secondReport);
                 end
             end
-            fprintf("instrument_AndorSpectrometer: CCD ready; attempting spectrograph initialization...\n");
+            experimentContext.print("instrument_AndorSpectrometer: CCD ready; attempting spectrograph initialization...");
             try
                 obj.initializeSpectrograph();
             catch spectroInitError
@@ -123,7 +123,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                         firstReport, secondReport);
                 end
             end
-            fprintf("instrument_AndorSpectrometer: Startup complete—temperature, wavelength, and grating channels ready.\n");
+            experimentContext.print("instrument_AndorSpectrometer: Startup complete—temperature, wavelength, and grating channels ready.");
             obj.addChannel("temperature_C", setTolerances = 2);
             obj.addChannel("exposure_time");
             obj.addChannel("center_wavelength_nm", setTolerances = 1E-2);
@@ -168,7 +168,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             obj.checkForSaturation(image, "Image");
             
             obj.invalidateSpectrumCache();
-            clear cleanupReadMode; %#ok<CLCLR> ensures read mode reset before returning
+            clear cleanupReadMode; % ensures read mode reset before returning
         end
 
         function info = currentGratingInfo(obj)
@@ -193,7 +193,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             info.home = logical(homeFlag);
             info.offset = double(offsetFlag);
 
-            fprintf("instrument_AndorSpectrometer: Grating %d -> lines/mm: %.3f, blaze: %s, home: %d, offset: %.0f\n", ...
+            experimentContext.print("instrument_AndorSpectrometer: Grating %d -> lines/mm: %.3f, blaze: %s, home: %d, offset: %.0f", ...
                 info.index, info.lines_per_mm, blazeText, info.home, info.offset);
         end
 
@@ -400,7 +400,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             pixelModeBits = uint32(capabilities.ulPixelMode);
             obj.pixelModeColorValue = bitshift(pixelModeBits, -double(obj.PIXELMODE_COLOR_SHIFT));
             if obj.pixelModeColorValue ~= 0
-                fprintf("instrument_AndorSpectrometer: Camera reports non-monochrome pixel mode value %u. Spectrum reads assume grayscale ordering.\n", obj.pixelModeColorValue);
+                experimentContext.print("instrument_AndorSpectrometer: Camera reports non-monochrome pixel mode value %u. Spectrum reads assume grayscale ordering.", obj.pixelModeColorValue);
             end
 
             xSize = single(0);
@@ -446,7 +446,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     "ATSpectrograph DLL was not found at %s.", dllPath);
             end
 
-            fprintf("instrument_AndorSpectrometer: Loading ATSpectrograph DLL and probing devices...\n");
+            experimentContext.print("instrument_AndorSpectrometer: Loading ATSpectrograph DLL and probing devices...");
             if ~libisloaded(libAlias)
                 [~, ~] = loadlibrary(dllPath, headerPath, 'alias', char(libAlias));
                 %[notfoundSymbols, loadWarnings] = loadlibrary(dllPath, headerPath, 'alias', char(libAlias));
@@ -472,7 +472,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     "No ATSpectrograph devices detected by the SDK.");
             end
 
-            fprintf("instrument_AndorSpectrometer: Spectrograph online; reading grating and wavelength settings...\n");
+            experimentContext.print("instrument_AndorSpectrometer: Spectrograph online; reading grating and wavelength settings...");
             obj.spectrographInitialized = false;
             obj.spectrographDevice = int32(0);
 
@@ -719,17 +719,16 @@ classdef instrument_AndorSpectrometer < instrumentInterface
 
             handle = obj.communicationHandle;
             for scanIndex = 1:acquisitionCount
-                if ~isempty(obj.lastAcquisitionTime)
-                    elapsed = toc(obj.lastAcquisitionTime);
-                    if elapsed < obj.minTimeBetweenAcquisitions_s
-                        %fprintf("instrument_AndorSpectrometer: Waiting %.0f seconds for cooldown.\n", obj.minTimeBetweenAcquisitions_s - elapsed);
-                        pause(obj.minTimeBetweenAcquisitions_s - elapsed);
+                if ~isnat(obj.lastAcquisitionTime)
+                    elapsed_s = seconds(datetime("now") - obj.lastAcquisitionTime);
+                    if elapsed_s < obj.minTimeBetweenAcquisitions_s
+                        pause(obj.minTimeBetweenAcquisitions_s - elapsed_s);
                     end
                 end
 
                 obj.checkCCDStatus(handle.StartAcquisition(), "StartAcquisition");
                 obj.waitForAcquisitionCompletion(handle, "GetStatus", 1);
-                obj.lastAcquisitionTime = tic;
+                obj.lastAcquisitionTime = datetime("now");
                 
                 buffer = NET.createArray("System.Int32", obj.pixelCount);
                 ret = handle.GetAcquiredData(buffer, uint32(obj.pixelCount));
@@ -810,7 +809,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
                     error("instrument_AndorSpectrometer:CCDError", ...
                         "CCD Error: Initialize failed with DRV_NOT_AVAILABLE (20992). Close SOLIS before using this driver in MATLAB.");
                 end
-                fprintf("instrument_AndorSpectrometer: CCD Warning: %s returned DRV_NOT_AVAILABLE (20992). This feature is not supported by the current camera configuration.\n", char(actionName));
+                experimentContext.print("instrument_AndorSpectrometer: CCD Warning: %s returned DRV_NOT_AVAILABLE (20992). This feature is not supported by the current camera configuration.", char(actionName));
                 return;
             end
             
@@ -878,9 +877,9 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             if nargin >= 2 && ~isempty(pixelModeBits)
                 pixelModeBits = uint32(pixelModeBits);
                 masks = [
-                    obj.PIXELMODE_32_BIT,
-                    obj.PIXELMODE_16_BIT,
-                    obj.PIXELMODE_14_BIT,
+                    obj.PIXELMODE_32_BIT;
+                    obj.PIXELMODE_16_BIT;
+                    obj.PIXELMODE_14_BIT;
                     obj.PIXELMODE_8_BIT
                     ];
                 values = uint32([32, 16, 14, 8]);
@@ -907,7 +906,7 @@ classdef instrument_AndorSpectrometer < instrumentInterface
             dataPerAccumulation = data ./ accumulationCount;
             saturationLevel = double(2.^double(obj.bitDepth) - 1);
             if any(dataPerAccumulation(:) >= saturationLevel)
-                fprintf("instrument_AndorSpectrometer: %s acquisition reached the ADC limit (>= %.0f). Consider reducing exposure or gain.\n", ...
+                experimentContext.print("instrument_AndorSpectrometer: %s acquisition reached the ADC limit (>= %.0f). Consider reducing exposure or gain.", ...
                     context, saturationLevel);
             end
         end

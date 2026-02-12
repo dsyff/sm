@@ -1,4 +1,4 @@
-global instrumentRackGlobal smscan smaux smdata bridge tareData; %#ok<NUSED>
+global engine smscan smaux smdata bridge; %#ok<GVMIS,NUSED>
 
 % Ensure sm-dev code folders on path (avoid instruments/private)
 st = dbstack("-completenames");
@@ -35,20 +35,18 @@ if isMATLABReleaseOlderThan("R2024a")
 end
 
 close all;
-% Clean up existing instruments to release serial ports
-if exist("instrumentRackGlobal", "var") && ~isempty(instrumentRackGlobal)
+% Clean up existing engine to release resources
+if exist("engine", "var") && ~isempty(engine) && isa(engine, "measurementEngine")
     try
-        delete(instrumentRackGlobal);
+        delete(engine);
     catch ME
-        fprintf("sminit deleteInstrumentRackGlobalFailed: %s\n", ME.message);
+        fprintf("sminit deleteEngineFailed: %s\n", ME.message);
     end
-    clear instrumentRackGlobal;
+    clear engine;
 end
 
 delete(visadevfind);
 delete(serialportfind);
-clear;
+clearvars codeDir codeEntries folderPath i name st;
 %clear all;
-global instrumentRackGlobal smscan smaux smdata bridge tareData;
-%#ok<GVMIS,NUSED>
 

@@ -1,33 +1,41 @@
-function smready(rack)
-%SMREADY Finish rack setup and launch the SM GUI environment.
-%   SMREADY(rack) flushes instrument buffers, displays the rack summary,
-%   initializes the SM GUI bridge, and launches the SM graphical interface.
-%
-%   Inputs:
-%       rack - instrumentRack instance configured for the current session.
-%
-%   The function updates global state expected by legacy SM scripts.
+function smready(source, options)
+%SMREADY Initialize measurement engine and launch SM GUIs.
 
 arguments
-    rack (1, 1) instrumentRack
+    source (1, 1)
+    options.singleThreaded (1, 1) logical = false
+    options.verboseClient (1, 1) logical = false
+    options.verboseWorker (1, 1) logical = false
+    options.workerLogFile (1, 1) string = ""
+    options.clientLogFile (1, 1) string = ""
+    options.experimentRootPath {mustBeTextScalar} = ""
 end
 
-% Globals expected across the SM environment
-global instrumentRackGlobal smscan smaux smdata bridge tareData;
+global engine smscan smaux smdata bridge %#ok<GVMIS,NUSED>
 
-% Flush communication buffers to remove startup chatter
-rack.flush();
+if ~(isa(source, "instrumentRack") || isa(source, "instrumentRackRecipe"))
+    error("smready:InvalidInput", "smready expects instrumentRack or instrumentRackRecipe.");
+end
 
-fprintf("Main rack starts.\n");
-disp(rack)
-fprintf("Main rack ends.\n");
+if isa(source, "instrumentRack")
+    engine = measurementEngine.fromRack(source, ...
+        verboseClient = options.verboseClient, ...
+        clientLogFile = options.clientLogFile, ...
+        experimentRootPath = string(options.experimentRootPath));
+else
+    engine = measurementEngine(source, ...
+        singleThreaded = options.singleThreaded, ...
+        verboseClient = options.verboseClient, ...
+        verboseWorker = options.verboseWorker, ...
+        workerLogFile = options.workerLogFile, ...
+        clientLogFile = options.clientLogFile, ...
+        experimentRootPath = string(options.experimentRootPath));
+end
+engine.printRack();
 
-% Initialize GUI bridge and global rack reference
-bridge = smguiBridge(rack);
+bridge = smguiBridge(engine);
 bridge.initializeSmdata();
-instrumentRackGlobal = rack;
 
-% Launch GUI components
-smgui_small_new();
+smgui_small();
 sm;
 end

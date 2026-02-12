@@ -11,11 +11,13 @@ dogFlush(handle_strainWatchdog);
 man2Dog = handle_strainWatchdog.man2Dog;
 dog2Man = handle_strainWatchdog.dog2Man;
 dogFuture = handle_strainWatchdog.dogFuture;
-if dogFuture.State ~= "running"
-    if isprop(dogFuture, "Error") && ~isempty(dogFuture.Error)
-        throw(dogFuture.Error);
-    else
-        error("strainWatchdog is not running");
+if ~isempty(dogFuture)
+    if dogFuture.State ~= "running"
+        if isprop(dogFuture, "Error") && ~isempty(dogFuture.Error)
+            throw(dogFuture.Error);
+        else
+            error("strainWatchdog is not running");
+        end
     end
 end
 
@@ -23,7 +25,7 @@ end
 send(man2Dog, command);
 startTime = datetime("now");
 while dog2Man.QueueLength == 0
-    if ~matches(dogFuture.State, "running")
+    if ~isempty(dogFuture) && ~matches(dogFuture.State, "running")
         if isprop(dogFuture.Error, "remotecause")
             rethrow(dogFuture.Error.remotecause{1});
         else

@@ -438,9 +438,10 @@ classdef instrument_CS165MU < instrumentInterface
             obj.tlCamera.IssueSoftwareTrigger;
 
             timeout_s = max(1, double(obj.tlCamera.ExposureTime_us) / 1e6 * 5);
-            startTime = tic;
+            startTime = datetime("now");
+            timeout = seconds(timeout_s);
             imageFrame = [];
-            while toc(startTime) < timeout_s
+            while datetime("now") - startTime < timeout
                 if obj.tlCamera.NumberOfQueuedFrames > 0
                     imageFrame = obj.tlCamera.GetPendingFrameOrNull;
                     if ~isempty(imageFrame)
@@ -456,7 +457,7 @@ classdef instrument_CS165MU < instrumentInterface
 
             image2D = obj.frameToImage2D(imageFrame);
             delete(imageFrame);
-            clear cleanup; %#ok<CLCLR>
+            clear cleanup;
         end
 
         function image2D = tryGetOneFrameOrTrigger(obj)
@@ -479,8 +480,9 @@ classdef instrument_CS165MU < instrumentInterface
                 end
 
                 timeout_s = max(1, double(obj.tlCamera.ExposureTime_us) / 1e6 * 5);
-                startTime = tic;
-                while toc(startTime) < timeout_s
+                startTime = datetime("now");
+                timeout = seconds(timeout_s);
+                while datetime("now") - startTime < timeout
                     if obj.tlCamera.NumberOfQueuedFrames > 0
                         imageFrame = obj.tlCamera.GetPendingFrameOrNull;
                         if ~isempty(imageFrame)

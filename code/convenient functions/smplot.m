@@ -1,5 +1,5 @@
 function smplot(folderOrSource, fileNum, nThMatch, varargin)
-% SMPLOT Replicates the final smrun_new figure from saved scan data.
+% SMPLOT Replicates the final scan figure from saved scan data.
 
 if nargin == 0
     error('smplot requires at least a folder or save payload.');
@@ -60,7 +60,7 @@ dispStruct = resolveDisplay(opts.dispOverride, scan, dataloop);
 [axisValues, axisLabels] = buildAxes(scandef, npoints);
 
 figNum = chooseFigureNumber(opts.figureOverride, scan);
-figHandle = figure(figNum); %#ok<LFIG>
+figHandle = figure(figNum);
 clf(figHandle);
 try
     figHandle.WindowState = 'maximized';
@@ -204,7 +204,7 @@ fprintf('Plot created from: %s\n', char(sourceLabel));
         folderStr = string(folderInput);
         if strlength(folderStr) == 0
             listing = dir('*.mat');
-            basePath = string('');
+            basePath = "";
         else
             listing = dir(fullfile(folderStr, '*.mat'));
             basePath = folderStr;
@@ -247,8 +247,8 @@ fprintf('Plot created from: %s\n', char(sourceLabel));
         loops = [];
         for defIdx = 1:numel(definition)
             loopChans = ensureCell(definition(defIdx).getchan);
-            names = [names, loopChans]; %#ok<AGROW>
-            loops = [loops, repmat(defIdx, 1, numel(loopChans))]; %#ok<AGROW>
+            names = [names, loopChans];
+            loops = [loops, repmat(defIdx, 1, numel(loopChans))];
         end
     end
 
@@ -321,7 +321,7 @@ fprintf('Plot created from: %s\n', char(sourceLabel));
             firstRange = loopDef.setchanranges{1};
             if numel(firstRange) >= 2
                 vals = linspace(firstRange(1), firstRange(2), count);
-            elseif numel(firstRange) == 1
+            elseif isscalar(firstRange)
                 vals = repmat(firstRange(1), 1, count);
             end
         elseif isfield(loopDef, 'rng') && ~isempty(loopDef.rng)

@@ -1,4 +1,4 @@
-global instrumentRackGlobal smscan smaux smdata bridge tareData; %#ok<NUSED>
+global smscan smaux smdata bridge; %#ok<NUSED>
 %#ok<*GVMIS,*UNRCH>
 
 
@@ -104,7 +104,7 @@ Attodry2100_Use = 0;
 
 BK889B_Use = 0;
 ST3215HS_Use = 0;
-colorLED_Use = 1;
+colorLED_Use = 0;
 E4980AL_Use = 0;
 MFLI_Use = 0;
 SDG2042X_mixed_Use = 0;
@@ -112,24 +112,9 @@ SDG2042X_pure_Use = 0;
 SDG2042X_mixed_TARB_Use = 0;
 
 
-%% Create instrumentRack
-rack = instrumentRack(false); % TF to skip safety dialog for setup script
+%% Create instrumentRackRecipe
+recipe = instrumentRackRecipe();
 
-
-%% Instrument Setup Guide
-% -------------------------------------------------------------------------
-%
-% 1. Add Instrument to Rack:
-%    rack.addInstrument(instrumentHandle, "instrumentFriendlyName");
-%
-% 2. Add Channel to Rack:
-%    rack.addChannel("instrumentFriendlyName", "channelName", "channelFriendlyName", ...
-%                    rampRate, rampThreshold, softMin, softMax);
-%    % Note: rampRate, rampThreshold, softMin, softMax are optional.
-%
-% For a complete guide and examples, see: demos/INSTRUMENT_SETUP_GUIDE.txt
-%
-% -------------------------------------------------------------------------
 
 %% Create strain controller first (if enabled) - manages K2450s A&B and cryostat internally
 if strainController_Use
@@ -143,13 +128,6 @@ if strainController_Use
         Montana2_Use = 0;
     end
 
-    currentPool = (gcp('nocreate'));
-    if isempty(currentPool) || currentPool.Busy
-        delete(currentPool);
-        parpool("Processes");
-    end
-
-    %handle_strainController.plotLastSession();
     if strain_cryostat == "Opticool"
         strainCellNumber_default = 1;
     elseif strain_cryostat == "Montana2"
@@ -158,651 +136,358 @@ if strainController_Use
         error("demo:InvalidStrainCryostat", "strain_cryostat must be either 'Opticool' or 'Montana2'");
     end
 
-    handle_strainController = instrument_strainController("strainController_1", ...
+    recipe.addInstrument("handle_strainController", "instrument_strainController", "strain", "strainController_1", ...
         address_E4980AL = gpibAddress(E4980AL_GPIB, adaptorIndex_strain), ...
         address_K2450_A = gpibAddress(K2450_A_GPIB, adaptorIndex_strain), ...
         address_K2450_B = gpibAddress(K2450_B_GPIB, adaptorIndex_strain), ...
         address_Montana2 = Montana2_IP, ...
         address_Opticool = Opticool_IP, ...
         cryostat = strain_cryostat, ...
-        strainCellNumber = strainCellNumber_default);
+        strainCellNumber = strainCellNumber_default, ...
+        numeWorkersRequested = 1);
 
-    if exist("tareData", "var") && isempty(tareData)
-        tareData = handle_strainController.tare();
-    else
-        % if crash, load doglog
-        handle_strainController.tare(tareData.d_0);
-    end
+    % Strain controller constructor restores tareData from logs (or tares if missing).
 
-    rack.addInstrument(handle_strainController, "strain");
-    rack.addChannel("strain", "del_d", "del_d", [], [], -5E-5, 5E-5);
-    rack.addChannel("strain", "T", "T");
-    rack.addChannel("strain", "Cp", "Cp");
-    rack.addChannel("strain", "Q", "Q");
-    rack.addChannel("strain", "C", "C");
-    rack.addChannel("strain", "d", "d");
-    rack.addChannel("strain", "V_str_o", "V_str_o");
-    rack.addChannel("strain", "V_str_i", "V_str_i");
-    rack.addChannel("strain", "I_str_o", "I_str_o");
-    rack.addChannel("strain", "I_str_i", "I_str_i");
-    rack.addChannel("strain", "activeControl", "activeControl");
-
-    fprintf("Strain controller rack starts.\n");
-    strainControllerRackSummary = handle_strainController.getRack();
-    disp(strainControllerRackSummary);
-    fprintf("Strain controller rack ends.\n");
-    fprintf("Strain controller initialized and tared.\n");
+    recipe.addChannel("strain", "del_d", "del_d", [], [], -5E-5, 5E-5);
+    recipe.addChannel("strain", "T", "T");
+    recipe.addChannel("strain", "Cp", "Cp");
+    recipe.addChannel("strain", "Q", "Q");
+    recipe.addChannel("strain", "C", "C");
+    recipe.addChannel("strain", "d", "d");
+    recipe.addChannel("strain", "V_str_o", "V_str_o");
+    recipe.addChannel("strain", "V_str_i", "V_str_i");
+    recipe.addChannel("strain", "I_str_o", "I_str_o");
+    recipe.addChannel("strain", "I_str_i", "I_str_i");
+    recipe.addChannel("strain", "activeControl", "activeControl");
 end
 
 
 %% Create other instruments using new sm2
 if counter_Use
-    handle_counter = instrument_counter("counter");
-    handle_counter.requireSetCheck = false;
-    rack.addInstrument(handle_counter, "counter");
-    rack.addChannel("counter", "count", "count");
+    recipe.addInstrument("handle_counter", "instrument_counter", "counter", "counter");
+    recipe.addStatement("handle_counter.requireSetCheck = false;");
+    recipe.addChannel("counter", "count", "count");
 end
 
 if clock_Use
-    handle_clock = instrument_clock("clock");
-    rack.addInstrument(handle_clock, "clock");
-    rack.addChannel("clock", "timeStamp", "time");
+    recipe.addInstrument("handle_clock", "instrument_clock", "clock", "clock");
+    recipe.addChannel("clock", "timeStamp", "time");
 end
 
 if toyBLG_Use
-    handle_toyBLG = instrument_toyBLG("toyBLG");
-    rack.addInstrument(handle_toyBLG, "toyBLG");
-    rack.addChannel("toyBLG", "h_tg", "toyBLG_h_tg");
-    rack.addChannel("toyBLG", "h_bg", "toyBLG_h_bg");
-    rack.addChannel("toyBLG", "n0", "toyBLG_n0");
-    rack.addChannel("toyBLG", "D0_V_per_nm", "toyBLG_D0_V_per_nm");
-    rack.addChannel("toyBLG", "V_bg", "toyBLG_V_bg", [], [], -10, 10);
-    rack.addChannel("toyBLG", "V_tg", "toyBLG_V_tg", [], [], -10, 10);
-    rack.addChannel("toyBLG", "Rxx", "toyBLG_Rxx");
+    recipe.addInstrument("handle_toyBLG", "instrument_toyBLG", "toyBLG", "toyBLG");
+    recipe.addChannel("toyBLG", "h_tg", "toyBLG_h_tg");
+    recipe.addChannel("toyBLG", "h_bg", "toyBLG_h_bg");
+    recipe.addChannel("toyBLG", "n0", "toyBLG_n0");
+    recipe.addChannel("toyBLG", "D0_V_per_nm", "toyBLG_D0_V_per_nm");
+    recipe.addChannel("toyBLG", "V_bg", "toyBLG_V_bg", [], [], -10, 10);
+    recipe.addChannel("toyBLG", "V_tg", "toyBLG_V_tg", [], [], -10, 10);
+    recipe.addChannel("toyBLG", "Rxx", "toyBLG_Rxx");
 end
 
 if K2450_A_Use
-    handle_K2450_A = instrument_K2450(gpibAddress(K2450_A_GPIB, adaptorIndex));
-    handle_K2450_A.requireSetCheck = false; %does not wait for instrument to reach set value
-    %handle_K2450_A.reset(); % only reset if output ramped to zero
-
-    % Configure instrument communication and settings
-    h = handle_K2450_A.communicationHandle;
-
-    %writeline(h,"source:voltage:read:back off"); %do not measure voltage
-    writeline(h,":sense:current:range 1e-7"); %sets the sense current range
-    writeline(h,"source:voltage:Ilimit 1e-7"); %sets a current limit protector
-    writeline(h,":source:voltage:range 20"); %sets the source voltage range
-    %writeline(h,":source:voltage:range:auto ON"); %use auto range for voltage
-    %writeline(h,":route:terminals rear"); %use rear terminal
-    writeline(h,"NPLcycles 0.2"); %number of power line cycles per measurement
-    writeline(h,":OUTP ON");
-    pause(2);
-    %handle_K2450_A.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
-    %handle_K2450_A.setSetTolerances("V_source", 5E-3); %used to determine if voltage has been reached
-
-    % Add to rack and configure channels
-    rack.addInstrument(handle_K2450_A, "K2450_A");
-    rack.addChannel("K2450_A", "V_source", "V_bg", 1, 0.5, -10, 10); % 1V/s ramp rate, 0.5V threshold
-    rack.addChannel("K2450_A", "I_measure", "I_bg");
-    rack.addChannel("K2450_A", "VI", "VI_bg");
+    recipe.addInstrument("handle_K2450_A", "instrument_K2450", "K2450_A", gpibAddress(K2450_A_GPIB, adaptorIndex));
+    recipe.addStatement("handle_K2450_A.requireSetCheck = false;" + newline + ...
+        "h = handle_K2450_A.communicationHandle;" + newline + ...
+        "writeline(h, ':sense:current:range 1e-7');" + newline + ...
+        "writeline(h, 'source:voltage:Ilimit 1e-7');" + newline + ...
+        "writeline(h, ':source:voltage:range 20');" + newline + ...
+        "writeline(h, 'NPLcycles 0.2');" + newline + ...
+        "writeline(h, ':OUTP ON');" + newline + ...
+        "pause(2);");
+    recipe.addChannel("K2450_A", "V_source", "V_bg", 1, 0.5, -10, 10);
+    recipe.addChannel("K2450_A", "I_measure", "I_bg");
+    recipe.addChannel("K2450_A", "VI", "VI_bg");
 end
 
 if K2450_B_Use
-    handle_K2450_B = instrument_K2450(gpibAddress(K2450_B_GPIB, adaptorIndex));
-    handle_K2450_B.requireSetCheck = false; %does not wait for instrument to reach set value
-    %handle_K2450_B.reset(); % only reset if output ramped to zero
-
-    % Configure instrument communication and settings
-    h = handle_K2450_B.communicationHandle;
-
-    %writeline(h,"source:voltage:read:back off"); %do not measure voltage
-    writeline(h,":sense:current:range 1e-7"); %sets the sense current range
-    writeline(h,"source:voltage:Ilimit 1e-7"); %sets a current limit protector
-    writeline(h,":source:voltage:range 20"); %sets the source voltage range
-    %writeline(h,":source:voltage:range:auto ON"); %use auto range for voltage
-    %writeline(h,":route:terminals rear"); %use rear terminal
-    writeline(h,"NPLcycles 0.2"); %number of power line cycles per measurement
-    writeline(h,":OUTP ON");
-    pause(2);
-    %handle_K2450_B.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
-    %handle_K2450_B.setSetTolerances("V_source", 5E-3); %used to determine if voltage has been reached
-
-    % Add to rack and configure channels
-    rack.addInstrument(handle_K2450_B, "K2450_B");
-    rack.addChannel("K2450_B", "V_source", "V_tg", 1, 0.5, -10, 10); % 1V/s ramp rate, 0.5V threshold
-    rack.addChannel("K2450_B", "I_measure", "I_tg");
-    rack.addChannel("K2450_B", "VI", "VI_tg");
+    recipe.addInstrument("handle_K2450_B", "instrument_K2450", "K2450_B", gpibAddress(K2450_B_GPIB, adaptorIndex));
+    recipe.addStatement("handle_K2450_B.requireSetCheck = false;" + newline + ...
+        "h = handle_K2450_B.communicationHandle;" + newline + ...
+        "writeline(h, ':sense:current:range 1e-7');" + newline + ...
+        "writeline(h, 'source:voltage:Ilimit 1e-7');" + newline + ...
+        "writeline(h, ':source:voltage:range 20');" + newline + ...
+        "writeline(h, 'NPLcycles 0.2');" + newline + ...
+        "writeline(h, ':OUTP ON');" + newline + ...
+        "pause(2);");
+    recipe.addChannel("K2450_B", "V_source", "V_tg", 1, 0.5, -10, 10);
+    recipe.addChannel("K2450_B", "I_measure", "I_tg");
+    recipe.addChannel("K2450_B", "VI", "VI_tg");
 end
 
 if K2450_C_Use
-    handle_K2450_C = instrument_K2450(gpibAddress(K2450_C_GPIB, adaptorIndex));
-    handle_K2450_C.requireSetCheck = false; %does not wait for instrument to reach set value
-    %handle_K2450_C.reset(); % only reset if output ramped to zero
-
-    % Configure instrument communication and settings
-    h = handle_K2450_C.communicationHandle;
-
-    %writeline(h,"source:voltage:read:back off"); %do not measure voltage
-    writeline(h,":sense:current:range 1e-7"); %sets the sense current range
-    writeline(h,"source:voltage:Ilimit 1e-7"); %sets a current limit protector
-    writeline(h,":source:voltage:range 20"); %sets the source voltage range
-    %writeline(h,":source:voltage:range:auto ON"); %use auto range for voltage
-    %writeline(h,":route:terminals rear"); %use rear terminal
-    writeline(h,"NPLcycles 0.2"); %number of power line cycles per measurement
-    writeline(h,":OUTP ON");
-    pause(2);
-    %handle_K2450_C.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
-    %handle_K2450_C.setSetTolerances("V_source", 5E-3); %used to determine if voltage has been reached
-
-    % Add to rack and configure channels
-    rack.addInstrument(handle_K2450_C, "K2450_C");
-    rack.addChannel("K2450_C", "V_source", "V_tg", 1, 0.5, -10, 10); % 1V/s ramp rate, 0.5V threshold
-    rack.addChannel("K2450_C", "I_measure", "I_tg");
-    rack.addChannel("K2450_C", "VI", "VI_tg");
+    recipe.addInstrument("handle_K2450_C", "instrument_K2450", "K2450_C", gpibAddress(K2450_C_GPIB, adaptorIndex));
+    recipe.addStatement("handle_K2450_C.requireSetCheck = false;" + newline + ...
+        "h = handle_K2450_C.communicationHandle;" + newline + ...
+        "writeline(h, ':sense:current:range 1e-7');" + newline + ...
+        "writeline(h, 'source:voltage:Ilimit 1e-7');" + newline + ...
+        "writeline(h, ':source:voltage:range 20');" + newline + ...
+        "writeline(h, 'NPLcycles 0.2');" + newline + ...
+        "writeline(h, ':OUTP ON');" + newline + ...
+        "pause(2);");
+    recipe.addChannel("K2450_C", "V_source", "V_tg", 1, 0.5, -10, 10);
+    recipe.addChannel("K2450_C", "I_measure", "I_tg");
+    recipe.addChannel("K2450_C", "VI", "VI_tg");
 end
 
 if K2400_A_Use
-    handle_K2400_A = instrument_K2400(gpibAddress(K2400_A_GPIB, adaptorIndex));
-    handle_K2400_A.requireSetCheck = false; %does not wait for instrument to reach set value
-    %handle_K2400_A.reset(); % only reset if output ramped to zero
-
-    % Configure instrument communication and settings
-    h = handle_K2400_A.communicationHandle;
-
-    writeline(h,":sense:current:range 1e-7"); %sets the sense current range
-    writeline(h,"sense:current:protection 1e-7"); %sets a current limit protector
-    writeline(h,":source:voltage:range 20"); %sets the source voltage range
-    %writeline(h,":source:voltage:range:auto 1"); %use auto range for voltage
-    %writeline(h,":rout:term rear"); %use rear terminal
-    writeline(h,":CURRent:NPLCycles 0.2"); %number of power line cycles per measurement
-    writeline(h,":output on");
-    pause(2);
-    %handle_K2400_A.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
-    %handle_K2400_A.setSetTolerances("V_source", 5E-3); %used to determine if voltage has been reached
-
-    % Add to rack and configure channels
-    rack.addInstrument(handle_K2400_A, "K2400_A");
-    rack.addChannel("K2400_A", "V_source", "V_bg", 1, 0.5, -10, 10); % 1V/s ramp rate, 0.5V threshold
-    rack.addChannel("K2400_A", "I_measure", "I_bg");
-    rack.addChannel("K2400_A", "VI", "VI_bg");
+    recipe.addInstrument("handle_K2400_A", "instrument_K2400", "K2400_A", gpibAddress(K2400_A_GPIB, adaptorIndex));
+    recipe.addStatement("handle_K2400_A.requireSetCheck = false;" + newline + ...
+        "h = handle_K2400_A.communicationHandle;" + newline + ...
+        "writeline(h, ':sense:current:range 1e-7');" + newline + ...
+        "writeline(h, 'sense:current:protection 1e-7');" + newline + ...
+        "writeline(h, ':source:voltage:range 20');" + newline + ...
+        "writeline(h, ':CURRent:NPLCycles 0.2');" + newline + ...
+        "writeline(h, ':output on');" + newline + ...
+        "pause(2);");
+    recipe.addChannel("K2400_A", "V_source", "V_bg", 1, 0.5, -10, 10);
+    recipe.addChannel("K2400_A", "I_measure", "I_bg");
+    recipe.addChannel("K2400_A", "VI", "VI_bg");
 end
 
 if K2400_B_Use
-    handle_K2400_B = instrument_K2400(gpibAddress(K2400_B_GPIB, adaptorIndex));
-    handle_K2400_B.requireSetCheck = false; %does not wait for instrument to reach set value
-    %handle_K2400_B.reset(); % only reset if output ramped to zero
-
-    % Configure instrument communication and settings
-    h = handle_K2400_B.communicationHandle;
-
-    writeline(h,":sense:current:range 1e-7"); %sets the sense current range
-    writeline(h,"sense:current:protection 1e-7"); %sets a current limit protector
-    writeline(h,":source:voltage:range 20"); %sets the source voltage range
-    %writeline(h,":source:voltage:range:auto 1"); %use auto range for voltage
-    %writeline(h,":rout:term rear"); %use rear terminal
-    writeline(h,":CURRent:NPLCycles 0.2"); %number of power line cycles per measurement
-    writeline(h,":output on");
-    pause(2);
-    %handle_K2400_B.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
-    %handle_K2400_B.setSetTolerances("V_source", 5E-3); %used to determine if voltage has been reached
-
-    % Add to rack and configure channels
-    rack.addInstrument(handle_K2400_B, "K2400_B");
-    rack.addChannel("K2400_B", "V_source", "V_tg", 1, 0.5, -10, 10); % 1V/s ramp rate, 0.5V threshold
-    rack.addChannel("K2400_B", "I_measure", "I_tg");
-    rack.addChannel("K2400_B", "VI", "VI_tg");
+    recipe.addInstrument("handle_K2400_B", "instrument_K2400", "K2400_B", gpibAddress(K2400_B_GPIB, adaptorIndex));
+    recipe.addStatement("handle_K2400_B.requireSetCheck = false;" + newline + ...
+        "h = handle_K2400_B.communicationHandle;" + newline + ...
+        "writeline(h, ':sense:current:range 1e-7');" + newline + ...
+        "writeline(h, 'sense:current:protection 1e-7');" + newline + ...
+        "writeline(h, ':source:voltage:range 20');" + newline + ...
+        "writeline(h, ':CURRent:NPLCycles 0.2');" + newline + ...
+        "writeline(h, ':output on');" + newline + ...
+        "pause(2);");
+    recipe.addChannel("K2400_B", "V_source", "V_tg", 1, 0.5, -10, 10);
+    recipe.addChannel("K2400_B", "I_measure", "I_tg");
+    recipe.addChannel("K2400_B", "VI", "VI_tg");
 end
 
 if K2400_C_Use
-    handle_K2400_C = instrument_K2400(gpibAddress(K2400_C_GPIB, adaptorIndex));
-    handle_K2400_C.requireSetCheck = false; %does not wait for instrument to reach set value
-    %handle_K2400_C.reset(); % only reset if output ramped to zero
-
-    % Configure instrument communication and settings
-    h = handle_K2400_C.communicationHandle;
-
-    writeline(h,":sense:current:range 1e-7"); %sets the sense current range
-    writeline(h,"sense:current:protection 1e-7"); %sets a current limit protector
-    writeline(h,":source:voltage:range 20"); %sets the source voltage range
-    %writeline(h,":source:voltage:range:auto 1"); %use auto range for voltage
-    %writeline(h,":rout:term rear"); %use rear terminal
-    writeline(h,":CURRent:NPLCycles 0.2"); %number of power line cycles per measurement
-    writeline(h,":output on");
-    pause(2);
-    %handle_K2400_C.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
-    %handle_K2400_C.setSetTolerances("V_source", 5E-3); %used to determine if voltage has been reached
-
-    % Add to rack and configure channels
-    rack.addInstrument(handle_K2400_C, "K2400_C");
-    rack.addChannel("K2400_C", "V_source", "V_tg", 1, 0.5, -10, 10); % 1V/s ramp rate, 0.5V threshold
-    rack.addChannel("K2400_C", "I_measure", "I_tg");
-    rack.addChannel("K2400_C", "VI", "VI_tg");
+    recipe.addInstrument("handle_K2400_C", "instrument_K2400", "K2400_C", gpibAddress(K2400_C_GPIB, adaptorIndex));
+    recipe.addStatement("handle_K2400_C.requireSetCheck = false;" + newline + ...
+        "h = handle_K2400_C.communicationHandle;" + newline + ...
+        "writeline(h, ':sense:current:range 1e-7');" + newline + ...
+        "writeline(h, 'sense:current:protection 1e-7');" + newline + ...
+        "writeline(h, ':source:voltage:range 20');" + newline + ...
+        "writeline(h, ':CURRent:NPLCycles 0.2');" + newline + ...
+        "writeline(h, ':output on');" + newline + ...
+        "pause(2);");
+    recipe.addChannel("K2400_C", "V_source", "V_tg", 1, 0.5, -10, 10);
+    recipe.addChannel("K2400_C", "I_measure", "I_tg");
+    recipe.addChannel("K2400_C", "VI", "VI_tg");
 end
 
-
 if K10CR1_Use
-    handle_K10CR1 = instrument_K10CR1(K10CR1_Serial);
-    rack.addInstrument(handle_K10CR1, "K10CR1");
-    rack.addChannel("K10CR1", "position_deg", "K10CR1_position_deg");
+    recipe.addInstrument("handle_K10CR1", "instrument_K10CR1", "K10CR1", K10CR1_Serial);
+    recipe.addChannel("K10CR1", "position_deg", "K10CR1_position_deg");
 end
 
 if CS165MU_Use
-    handle_CS165MU = instrument_CS165MU(CS165MU_Serial);
-    handle_CS165MU.requireSetCheck = false;
-    rack.addInstrument(handle_CS165MU, "CS165MU");
-    rack.addChannel("CS165MU", "continuous", "CS165MU_continuous");
-    rack.addChannel("CS165MU", "exposure_ms", "CS165MU_exposure_ms");
-    rack.addChannel("CS165MU", "bin", "CS165MU_bin");
-    rack.addChannel("CS165MU", "roi_origin_x_px", "CS165MU_roi_x_px");
-    rack.addChannel("CS165MU", "roi_origin_y_px", "CS165MU_roi_y_px");
-    rack.addChannel("CS165MU", "roi_width_px", "CS165MU_roi_w_px");
-    rack.addChannel("CS165MU", "roi_height_px", "CS165MU_roi_h_px");
-    rack.addChannel("CS165MU", "queued_frames", "CS165MU_queued_frames");
+    recipe.addInstrument("handle_CS165MU", "instrument_CS165MU", "CS165MU", CS165MU_Serial);
+    recipe.addStatement("handle_CS165MU.requireSetCheck = false;");
+    recipe.addChannel("CS165MU", "continuous", "CS165MU_continuous");
+    recipe.addChannel("CS165MU", "exposure_ms", "CS165MU_exposure_ms");
+    recipe.addChannel("CS165MU", "bin", "CS165MU_bin");
+    recipe.addChannel("CS165MU", "roi_origin_x_px", "CS165MU_roi_x_px");
+    recipe.addChannel("CS165MU", "roi_origin_y_px", "CS165MU_roi_y_px");
+    recipe.addChannel("CS165MU", "roi_width_px", "CS165MU_roi_w_px");
+    recipe.addChannel("CS165MU", "roi_height_px", "CS165MU_roi_h_px");
+    recipe.addChannel("CS165MU", "queued_frames", "CS165MU_queued_frames");
 end
 
 if ST3215HS_Use
-    % to reprogram the servo ID, connect a single servo to the adapter and run
-    % instrument_ST3215HS.reprogramSTServoId(ST3215HS_Serial, originalID, newID);
-    % new servos default to ID 1
-    % be sure to release the serial port before reprogramming the servo ID
-
-    % IMPORTANT: Power the servo(s) from 12V. The reported load_*_percent depends
-    % on supply voltage; if you use a different voltage, the stop threshold
-    % for calibrateSoftLimits() needs to be changed.
-
-    % remove servoId_2 = and _2 channels if you only have one servo
-    % for ST3215HS, there are 4096 positions. So a scan from 0 to 360 should have 4097 points.
-    handle_ST3215HS = instrument_ST3215HS(ST3215HS_Serial, servoId_1 = 12, servoId_2 = 13);
-    rack.addInstrument(handle_ST3215HS, "ST3215HS");
-    rack.addChannel("ST3215HS", "position_1_deg", "ST3215HS_pos1_deg");
-    rack.addChannel("ST3215HS", "load_1_percent", "ST3215HS_load1_percent");
-
-    % Optional: calibrate soft limits (can take time; comment out to skip).
-    handle_ST3215HS.calibrateSoftLimits(1);
-    if handle_ST3215HS.hasServo2
-        rack.addChannel("ST3215HS", "position_2_deg", "ST3215HS_pos2_deg");
-        rack.addChannel("ST3215HS", "load_2_percent", "ST3215HS_load2_percent");
-
-        % Optional: calibrate soft limits (can take time; comment out to skip).
-        handle_ST3215HS.calibrateSoftLimits(2);
-    end
+    recipe.addInstrument("handle_ST3215HS", "instrument_ST3215HS", "ST3215HS", ST3215HS_Serial, servoId_1 = 12, servoId_2 = 13);
+    recipe.addChannel("ST3215HS", "position_1_deg", "ST3215HS_pos1_deg");
+    recipe.addChannel("ST3215HS", "load_1_percent", "ST3215HS_load1_percent");
+    recipe.addStatement("handle_ST3215HS.calibrateSoftLimits(1);" + newline + ...
+        "if handle_ST3215HS.hasServo2" + newline + ...
+        "  handle_ST3215HS.calibrateSoftLimits(2);" + newline + ...
+        "end");
+    recipe.addChannel("ST3215HS", "position_2_deg", "ST3215HS_pos2_deg");
+    recipe.addChannel("ST3215HS", "load_2_percent", "ST3215HS_load2_percent");
 end
 
 if colorLED_Use
-    handle_colorLED = instrument_colorLED(colorLED_Serial);
-    rack.addInstrument(handle_colorLED, "colorLED");
-    rack.addChannel("colorLED", "R", "colorLED_R", [], [], 0, 1);
-    rack.addChannel("colorLED", "G", "colorLED_G", [], [], 0, 1);
-    rack.addChannel("colorLED", "B", "colorLED_B", [], [], 0, 1);
-    rack.addChannel("colorLED", "RGB", "colorLED_RGB", [], [], 0, 1);
+    recipe.addInstrument("handle_colorLED", "instrument_colorLED", "colorLED", colorLED_Serial);
+    recipe.addChannel("colorLED", "R", "colorLED_R", [], [], 0, 1);
+    recipe.addChannel("colorLED", "G", "colorLED_G", [], [], 0, 1);
+    recipe.addChannel("colorLED", "B", "colorLED_B", [], [], 0, 1);
+    recipe.addChannel("colorLED", "RGB", "colorLED_RGB", [], [], 0, 1);
 end
 
 if Andor_Use
-    handle_AndorSpectrometer = instrument_AndorSpectrometer("AndorSpectrometer");
-    handle_AndorSpectrometer.minTimeBetweenAcquisitions_s = 300;
-    % check handle_AndorSpectrometer for properties
-    rack.batchGetTimeout = minutes(10);
-    rack.addInstrument(handle_AndorSpectrometer, "AndorSpectrometer");
-    rack.addChannel("AndorSpectrometer", "temperature_C", "CCD_T_C"); % cooler temperature in C
-    rack.addChannel("AndorSpectrometer", "exposure_time", "exposure"); % in seconds
-    rack.addChannel("AndorSpectrometer", "center_wavelength_nm", "center_wavelength_nm"); % center wavelength in nm
-    rack.addChannel("AndorSpectrometer", "grating", "grating"); % spectrograph grating index
-    rack.addChannel("AndorSpectrometer", "pixel_index", "pixel_index"); % pixel index for readout
-    rack.addChannel("AndorSpectrometer", "wavelength_nm", "wavelength_nm"); % wavelength corresponding to current pixel
-    rack.addChannel("AndorSpectrometer", "counts_single", "CCD_counts_1x");
-    rack.addChannel("AndorSpectrometer", "counts_double", "CCD_counts_2x");
-    rack.addChannel("AndorSpectrometer", "counts_triple", "CCD_counts_3x");
-    handle_AndorSpectrometer.currentGratingInfo();
+    recipe.addInstrument("handle_AndorSpectrometer", "instrument_AndorSpectrometer", "AndorSpectrometer", "AndorSpectrometer");
+    recipe.addStatement("handle_AndorSpectrometer.minTimeBetweenAcquisitions_s = 300;" + newline + ...
+        "rack.batchGetTimeout = minutes(10);");
+    recipe.addChannel("AndorSpectrometer", "temperature_C", "CCD_T_C");
+    recipe.addChannel("AndorSpectrometer", "exposure_time", "exposure");
+    recipe.addChannel("AndorSpectrometer", "center_wavelength_nm", "center_wavelength_nm");
+    recipe.addChannel("AndorSpectrometer", "grating", "grating");
+    recipe.addChannel("AndorSpectrometer", "pixel_index", "pixel_index");
+    recipe.addChannel("AndorSpectrometer", "wavelength_nm", "wavelength_nm");
+    recipe.addChannel("AndorSpectrometer", "counts_single", "CCD_counts_1x");
+    recipe.addChannel("AndorSpectrometer", "counts_double", "CCD_counts_2x");
+    recipe.addChannel("AndorSpectrometer", "counts_triple", "CCD_counts_3x");
+    recipe.addStatement("handle_AndorSpectrometer.currentGratingInfo();");
 end
 
 if SR860_1_Use
-    handle_SR860_1 = instrument_SR860(gpibAddress(SR860_1_GPIB, adaptorIndex));
-    handle_SR860_1.requireSetCheck = false;
-
-    % Configure instrument (based on legacy setup)
-    h = handle_SR860_1.communicationHandle;
-    % Uncomment and modify settings as needed:
-    %writeline(h, "isrc 0"); % Input source: 0=A, 1=A-B
-    %writeline(h, "ivmd 0"); % Input source: 0=voltage, 1=current
-    %writeline(h, "ignd 1"); % Input grounding: 0=float, 1=ground
-    %writeline(h, "icpl 0"); % Input coupling: 0=AC, 1=DC
-
-    % Add to rack and configure channels
-    rack.addInstrument(handle_SR860_1, "SR860_1");
-    %rack.addChannel("SR860_1", "X", "Ixx_X");
-    %rack.addChannel("SR860_1", "Theta", "Ixx_Th");
-    rack.addChannel("SR860_1", "frequency", "Freq");
-    rack.addChannel("SR860_1", "amplitude", "V_exc");
-    %rack.addChannel("SR860_1", "Y", "Ixx_Y");
-    %rack.addChannel("SR860_1", "R", "Ixx_R");
-    %rack.addChannel("SR860_1", "phase", "Ixx_Phase");
-    %rack.addChannel("SR860_1", "aux_in_1", "Ixx_AuxIn1");
-    %rack.addChannel("SR860_1", "aux_in_2", "Ixx_AuxIn2");
-    %rack.addChannel("SR860_1", "aux_in_3", "Ixx_AuxIn3");
-    %rack.addChannel("SR860_1", "aux_in_4", "Ixx_AuxIn4");
-    %rack.addChannel("SR860_1", "aux_out_1", "Ixx_AuxOut1");
-    %rack.addChannel("SR860_1", "aux_out_2", "Ixx_AuxOut2");
-    %rack.addChannel("SR860_1", "aux_out_3", "Ixx_AuxOut3");
-    %rack.addChannel("SR860_1", "aux_out_4", "Ixx_AuxOut4");
-    rack.addChannel("SR860_1", "sensitivity", "Ixx_Sens"); % in volts; multiply by 1E-6 for amps
-    %rack.addChannel("SR860_1", "time_constant", "Ixx_TimeConst");
-    %rack.addChannel("SR860_1", "sync_filter", "Ixx_SyncFilter");
-    %rack.addChannel("SR860_1", "XY", "Ixx_XY");
-    rack.addChannel("SR860_1", "XTheta", "Ixx_XTheta");
-    %rack.addChannel("SR860_1", "YTheta", "Ixx_YTheta");
-    %rack.addChannel("SR860_1", "RTheta", "Ixx_RTheta");
-    %rack.addChannel("SR860_1", "dc_offset", "Ixx_dc_offset");
+    recipe.addInstrument("handle_SR860_1", "instrument_SR860", "SR860_1", gpibAddress(SR860_1_GPIB, adaptorIndex));
+    recipe.addStatement("handle_SR860_1.requireSetCheck = false;");
+    recipe.addChannel("SR860_1", "frequency", "Freq");
+    recipe.addChannel("SR860_1", "amplitude", "V_exc");
+    recipe.addChannel("SR860_1", "sensitivity", "Ixx_Sens");
+    recipe.addChannel("SR860_1", "XTheta", "Ixx_XTheta");
 end
 
 if SR830_1_Use
-    handle_SR830_1 = instrument_SR830(gpibAddress(SR830_1_GPIB, adaptorIndex));
-    handle_SR830_1.requireSetCheck = false;
-
-    % Configure instrument (based on legacy setup)
-    h = handle_SR830_1.communicationHandle;
-    % Uncomment and modify settings as needed:
-    %writeline(h, "isrc 0"); % Input source: 0=A, 1=A-B, 2=I(1MOhm), 3=I(100MOhm)
-    %writeline(h, "ignd 1"); % Input grounding: 0=float, 1=ground
-    %writeline(h, "icpl 0"); % Input coupling: 0=AC, 1=DC
-    %writeline(h, "ilin 0"); % Input line notch filter: 0=none, 1=line, 2=2xline, 3=both
-    %writeline(h, "rmod 0"); % Reserve mode: 0=high, 1=normal, 2=low
-    %writeline(h, "slp 0"); % Output filter slope: 0=6dB, 1=12dB, 2=18dB, 3=24dB
-
-    % Add to rack and configure channels
-    rack.addInstrument(handle_SR830_1, "SR830_1");
-    %rack.addChannel("SR830_1", "X", "Ixx_X");
-    %rack.addChannel("SR830_1", "Theta", "Ixx_Th");
-    rack.addChannel("SR830_1", "frequency", "Freq");
-    rack.addChannel("SR830_1", "amplitude", "V_exc");
-    %rack.addChannel("SR830_1", "Y", "Ixx_Y");
-    %rack.addChannel("SR830_1", "R", "Ixx_R");
-    %rack.addChannel("SR830_1", "phase", "Ixx_Phase");
-    %rack.addChannel("SR830_1", "aux_in_1", "Ixx_AuxIn1");
-    %rack.addChannel("SR830_1", "aux_in_2", "Ixx_AuxIn2");
-    %rack.addChannel("SR830_1", "aux_in_3", "Ixx_AuxIn3");
-    %rack.addChannel("SR830_1", "aux_in_4", "Ixx_AuxIn4");
-    %rack.addChannel("SR830_1", "aux_out_1", "Ixx_AuxOut1");
-    %rack.addChannel("SR830_1", "aux_out_2", "Ixx_AuxOut2");
-    %rack.addChannel("SR830_1", "aux_out_3", "Ixx_AuxOut3");
-    %rack.addChannel("SR830_1", "aux_out_4", "Ixx_AuxOut4");
-    rack.addChannel("SR830_1", "sensitivity", "Ixx_Sens"); % in volts; multiply by 1E-6 for amps
-    %rack.addChannel("SR830_1", "time_constant", "Ixx_TimeConst");
-    %rack.addChannel("SR830_1", "sync_filter", "Ixx_SyncFilter");
-    %rack.addChannel("SR830_1", "XY", "Ixx_XY");
-    rack.addChannel("SR830_1", "XTheta", "Ixx_XTheta");
-    %rack.addChannel("SR830_1", "YTheta", "Ixx_YTheta");
-    %rack.addChannel("SR830_1", "RTheta", "Ixx_RTheta");
-    %rack.addChannel("SR830_1", "dc_offset", "Ixx_dc_offset");
+    recipe.addInstrument("handle_SR830_1", "instrument_SR830", "SR830_1", gpibAddress(SR830_1_GPIB, adaptorIndex));
+    recipe.addStatement("handle_SR830_1.requireSetCheck = false;");
+    recipe.addChannel("SR830_1", "frequency", "Freq");
+    recipe.addChannel("SR830_1", "amplitude", "V_exc");
+    recipe.addChannel("SR830_1", "sensitivity", "Ixx_Sens");
+    recipe.addChannel("SR830_1", "XTheta", "Ixx_XTheta");
 end
 
 if SR830_2_Use
-    handle_SR830_2 = instrument_SR830(gpibAddress(SR830_2_GPIB, adaptorIndex));
-    handle_SR830_2.requireSetCheck = false;
-
-    % Configure instrument (based on legacy setup)
-    h = handle_SR830_2.communicationHandle;
-    % Uncomment and modify settings as needed:
-    %writeline(h, "isrc 0"); % Input source: 0=A, 1=A-B, 2=I(1MOhm), 3=I(100MOhm)
-    %writeline(h, "ignd 1"); % Input grounding: 0=float, 1=ground
-    %writeline(h, "icpl 0"); % Input coupling: 0=AC, 1=DC
-    %writeline(h, "ilin 0"); % Input line notch filter: 0=none, 1=line, 2=2xline, 3=both
-    %writeline(h, "rmod 0"); % Reserve mode: 0=high, 1=normal, 2=low
-    %writeline(h, "slp 0"); % Output filter slope: 0=6dB, 1=12dB, 2=18dB, 3=24dB
-
-    % Add to rack and configure channels
-    rack.addInstrument(handle_SR830_2, "SR830_2");
-    %rack.addChannel("SR830_2", "X", "Vxx1_X");
-    %rack.addChannel("SR830_2", "Theta", "Vxx1_Th");
-    %rack.addChannel("SR830_2", "Y", "Vxx1_Y");
-    %rack.addChannel("SR830_2", "R", "Vxx1_R");
-    %rack.addChannel("SR830_2", "frequency", "Vxx1_Freq");
-    %rack.addChannel("SR830_2", "amplitude", "Vxx1_Amp");
-    %rack.addChannel("SR830_2", "phase", "Vxx1_Phase");
-    %rack.addChannel("SR830_2", "aux_in_1", "Vxx1_AuxIn1");
-    %rack.addChannel("SR830_2", "aux_in_2", "Vxx1_AuxIn2");
-    %rack.addChannel("SR830_2", "aux_in_3", "Vxx1_AuxIn3");
-    %rack.addChannel("SR830_2", "aux_in_4", "Vxx1_AuxIn4");
-    %rack.addChannel("SR830_2", "aux_out_1", "Vxx1_AuxOut1");
-    %rack.addChannel("SR830_2", "aux_out_2", "Vxx1_AuxOut2");
-    %rack.addChannel("SR830_2", "aux_out_3", "Vxx1_AuxOut3");
-    %rack.addChannel("SR830_2", "aux_out_4", "Vxx1_AuxOut4");
-    rack.addChannel("SR830_2", "sensitivity", "Vxx1_Sens"); % in volts; multiply by 1E-6 for amps
-    %rack.addChannel("SR830_2", "time_constant", "Vxx1_TimeConst");
-    %rack.addChannel("SR830_2", "sync_filter", "Vxx1_SyncFilter");
-    %rack.addChannel("SR830_2", "XY", "Vxx1_XY");
-    rack.addChannel("SR830_2", "XTheta", "Vxx1_XTheta");
-    %rack.addChannel("SR830_2", "YTheta", "Vxx1_YTheta");
-    %rack.addChannel("SR830_2", "RTheta", "Vxx1_RTheta");
+    recipe.addInstrument("handle_SR830_2", "instrument_SR830", "SR830_2", gpibAddress(SR830_2_GPIB, adaptorIndex));
+    recipe.addStatement("handle_SR830_2.requireSetCheck = false;");
+    recipe.addChannel("SR830_2", "sensitivity", "Vxx1_Sens");
+    recipe.addChannel("SR830_2", "XTheta", "Vxx1_XTheta");
 end
 
 if SR830_3_Use
-    handle_SR830_3 = instrument_SR830(gpibAddress(SR830_3_GPIB, adaptorIndex));
-    handle_SR830_3.requireSetCheck = false;
-
-    % Configure instrument (based on legacy setup)
-    h = handle_SR830_3.communicationHandle;
-    % Uncomment and modify settings as needed:
-    %writeline(h, "isrc 0"); % Input source: 0=A, 1=A-B, 2=I(1MOhm), 3=I(100MOhm)
-    %writeline(h, "ignd 1"); % Input grounding: 0=float, 1=ground
-    %writeline(h, "icpl 0"); % Input coupling: 0=AC, 1=DC
-    %writeline(h, "ilin 0"); % Input line notch filter: 0=none, 1=line, 2=2xline, 3=both
-    %writeline(h, "rmod 0"); % Reserve mode: 0=high, 1=normal, 2=low
-    %writeline(h, "slp 0"); % Output filter slope: 0=6dB, 1=12dB, 2=18dB, 3=24dB
-
-    % Add to rack and configure channels
-    rack.addInstrument(handle_SR830_3, "SR830_3");
-    %rack.addChannel("SR830_3", "R", "Vxx2_R");
-    %rack.addChannel("SR830_3", "X", "Vxx2_X");
-    %rack.addChannel("SR830_3", "Theta", "Vxx2_Th");
-    %rack.addChannel("SR830_3", "Y", "Vxx2_Y");
-    %rack.addChannel("SR830_3", "frequency", "Vxx2_Freq");
-    %rack.addChannel("SR830_3", "amplitude", "Vxx2_Amp");
-    %rack.addChannel("SR830_3", "phase", "Vxx2_Phase");
-    %rack.addChannel("SR830_3", "aux_in_1", "Vxx2_AuxIn1");
-    %rack.addChannel("SR830_3", "aux_in_2", "Vxx2_AuxIn2");
-    %rack.addChannel("SR830_3", "aux_in_3", "Vxx2_AuxIn3");
-    %rack.addChannel("SR830_3", "aux_in_4", "Vxx2_AuxIn4");
-    %rack.addChannel("SR830_3", "aux_out_1", "Vxx2_AuxOut1");
-    %rack.addChannel("SR830_3", "aux_out_2", "Vxx2_AuxOut2");
-    %rack.addChannel("SR830_3", "aux_out_3", "Vxx2_AuxOut3");
-    %rack.addChannel("SR830_3", "aux_out_4", "Vxx2_AuxOut4");
-    rack.addChannel("SR830_3", "sensitivity", "Vxx2_Sens"); % in volts; multiply by 1E-6 for amps
-    %rack.addChannel("SR830_3", "time_constant", "Vxx2_TimeConst");
-    %rack.addChannel("SR830_3", "sync_filter", "Vxx2_SyncFilter");
-    %rack.addChannel("SR830_3", "XY", "Vxx2_XY");
-    rack.addChannel("SR830_3", "XTheta", "Vxx2_XTheta");
-    %rack.addChannel("SR830_3", "YTheta", "Vxx2_YTheta");
-    %rack.addChannel("SR830_3", "RTheta", "Vxx2_RTheta");
+    recipe.addInstrument("handle_SR830_3", "instrument_SR830", "SR830_3", gpibAddress(SR830_3_GPIB, adaptorIndex));
+    recipe.addStatement("handle_SR830_3.requireSetCheck = false;");
+    recipe.addChannel("SR830_3", "sensitivity", "Vxx2_Sens");
+    recipe.addChannel("SR830_3", "XTheta", "Vxx2_XTheta");
 end
 
 if SR830_4_Use
-    handle_SR830_4 = instrument_SR830(gpibAddress(SR830_4_GPIB, adaptorIndex));
-    handle_SR830_4.requireSetCheck = false;
-
-    % Configure instrument (based on legacy setup)
-    h = handle_SR830_4.communicationHandle;
-    % Uncomment and modify settings as needed:
-    %writeline(h, "isrc 0"); % Input source: 0=A, 1=A-B, 2=I(1MOhm), 3=I(100MOhm)
-    %writeline(h, "ignd 1"); % Input grounding: 0=float, 1=ground
-    %writeline(h, "icpl 0"); % Input coupling: 0=AC, 1=DC
-    %writeline(h, "ilin 0"); % Input line notch filter: 0=none, 1=line, 2=2xline, 3=both
-    %writeline(h, "rmod 0"); % Reserve mode: 0=high, 1=normal, 2=low
-    %writeline(h, "slp 0"); % Output filter slope: 0=6dB, 1=12dB, 2=18dB, 3=24dB
-
-    % Add to rack and configure channels
-    rack.addInstrument(handle_SR830_4, "SR830_4");
-    %rack.addChannel("SR830_4", "R", "Vxx3_R");
-    %rack.addChannel("SR830_4", "X", "Vxx3_X");
-    %rack.addChannel("SR830_4", "Theta", "Vxx3_Th");
-    %rack.addChannel("SR830_4", "Y", "Vxx3_Y");
-    %rack.addChannel("SR830_4", "frequency", "Vxx3_Freq");
-    %rack.addChannel("SR830_4", "amplitude", "Vxx3_Amp");
-    %rack.addChannel("SR830_4", "phase", "Vxx3_Phase");
-    %rack.addChannel("SR830_4", "aux_in_1", "Vxx3_AuxIn1");
-    %rack.addChannel("SR830_4", "aux_in_2", "Vxx3_AuxIn2");
-    %rack.addChannel("SR830_4", "aux_in_3", "Vxx3_AuxIn3");
-    %rack.addChannel("SR830_4", "aux_in_4", "Vxx3_AuxIn4");
-    %rack.addChannel("SR830_4", "aux_out_1", "Vxx3_AuxOut1");
-    %rack.addChannel("SR830_4", "aux_out_2", "Vxx3_AuxOut2");
-    %rack.addChannel("SR830_4", "aux_out_3", "Vxx3_AuxOut3");
-    %rack.addChannel("SR830_4", "aux_out_4", "Vxx3_AuxOut4");
-    rack.addChannel("SR830_4", "sensitivity", "Vxx3_Sens"); % in volts; multiply by 1E-6 for amps
-    %rack.addChannel("SR830_4", "time_constant", "Vxx3_TimeConst");
-    %rack.addChannel("SR830_4", "sync_filter", "Vxx3_SyncFilter");
-    %rack.addChannel("SR830_4", "XY", "Vxx3_XY");
-    rack.addChannel("SR830_4", "XTheta", "Vxx3_XTheta");
-    %rack.addChannel("SR830_4", "YTheta", "Vxx3_YTheta");
-    %rack.addChannel("SR830_4", "RTheta", "Vxx3_RTheta");
+    recipe.addInstrument("handle_SR830_4", "instrument_SR830", "SR830_4", gpibAddress(SR830_4_GPIB, adaptorIndex));
+    recipe.addStatement("handle_SR830_4.requireSetCheck = false;");
+    recipe.addChannel("SR830_4", "sensitivity", "Vxx3_Sens");
+    recipe.addChannel("SR830_4", "XTheta", "Vxx3_XTheta");
 end
 
 if MFLI_Use
-    handle_MFLI = instrument_MFLI(MFLI_Address);
-    rack.addInstrument(handle_MFLI, "MFLI");
-    % Add channels for MFLI (4 sine generators)
+    recipe.addInstrument("handle_MFLI", "instrument_MFLI", "MFLI", MFLI_Address);
     for i = 1:4
-        rack.addChannel("MFLI", sprintf("amplitude_%d", i), sprintf("A%d", i), [], [], -2, 2);
-        rack.addChannel("MFLI", sprintf("phase_%d", i), sprintf("Th%d", i)); % degrees
-        rack.addChannel("MFLI", sprintf("frequency_%d", i), sprintf("f%d", i));
-        rack.addChannel("MFLI", sprintf("harmonic_%d", i), sprintf("Harm%d", i));
-        rack.addChannel("MFLI", sprintf("on_%d", i), sprintf("On%d", i)); %on/off
+        recipe.addChannel("MFLI", "amplitude_" + string(i), "A" + string(i), [], [], -2, 2);
+        recipe.addChannel("MFLI", "phase_" + string(i), "Th" + string(i));
+        recipe.addChannel("MFLI", "frequency_" + string(i), "f" + string(i));
+        recipe.addChannel("MFLI", "harmonic_" + string(i), "Harm" + string(i));
+        recipe.addChannel("MFLI", "on_" + string(i), "On" + string(i));
     end
 end
 
 if SDG2042X_mixed_Use
-    % SDG2042X mixed multi-tone output using DDS (ARB FRQ) mode (uploads on every set)
-    handle_SDG2042X_mixed = instrument_SDG2042X_mixed(SDG2042X_mixed_Address, ...
+    recipe.addInstrument("handle_SDG2042X_mixed", "instrument_SDG2042X_mixed", "SDG2042X_mixed", SDG2042X_mixed_Address, ...
         waveformArraySize = 2^15, ...
         uploadFundamentalFrequencyHz = 1, ...
         internalTimebase = true);
-    handle_SDG2042X_mixed.requireSetCheck = true;
-
-    rack.addInstrument(handle_SDG2042X_mixed, "SDG2042X_mixed");
+    recipe.addStatement("handle_SDG2042X_mixed.requireSetCheck = true;");
     for i = 1:7
-        rack.addChannel("SDG2042X_mixed", string(sprintf("amplitude_%d", i)), string(sprintf("mix_A_%d", i)));
-        rack.addChannel("SDG2042X_mixed", string(sprintf("phase_%d", i)), string(sprintf("mix_Th_%d", i)));
-        rack.addChannel("SDG2042X_mixed", string(sprintf("frequency_%d", i)), string(sprintf("mix_f_%d", i)));
+        recipe.addChannel("SDG2042X_mixed", "amplitude_" + string(i), "mix_A_" + string(i));
+        recipe.addChannel("SDG2042X_mixed", "phase_" + string(i), "mix_Th_" + string(i));
+        recipe.addChannel("SDG2042X_mixed", "frequency_" + string(i), "mix_f_" + string(i));
     end
-    rack.addChannel("SDG2042X_mixed", "global_phase_offset", "mix_Th");
+    recipe.addChannel("SDG2042X_mixed", "global_phase_offset", "mix_Th");
 end
 
 if SDG2042X_pure_Use
-    % SDG2042X 2-channel pure sines using DDS (ARB FRQ) mode (uploads on every set)
-    handle_SDG2042X_pure = instrument_SDG2042X_pure(SDG2042X_pure_Address, ...
+    recipe.addInstrument("handle_SDG2042X_pure", "instrument_SDG2042X_pure", "SDG2042X_pure", SDG2042X_pure_Address, ...
         waveformArraySize = 2^15, ...
         internalTimebase = false);
-    handle_SDG2042X_pure.requireSetCheck = true;
-
-    rack.addInstrument(handle_SDG2042X_pure, "SDG2042X_pure");
+    recipe.addStatement("handle_SDG2042X_pure.requireSetCheck = true;");
     for i = 1:2
-        rack.addChannel("SDG2042X_pure", string(sprintf("amplitude_%d", i)), string(sprintf("pure_A_%d", i)));
-        rack.addChannel("SDG2042X_pure", string(sprintf("phase_%d", i)), string(sprintf("pure_Th_%d", i)));
-        rack.addChannel("SDG2042X_pure", string(sprintf("frequency_%d", i)), string(sprintf("pure_f_%d", i)));
+        recipe.addChannel("SDG2042X_pure", "amplitude_" + string(i), "pure_A_" + string(i));
+        recipe.addChannel("SDG2042X_pure", "phase_" + string(i), "pure_Th_" + string(i));
+        recipe.addChannel("SDG2042X_pure", "frequency_" + string(i), "pure_f_" + string(i));
     end
-    rack.addChannel("SDG2042X_pure", "global_phase_offset", "pure_Th");
+    recipe.addChannel("SDG2042X_pure", "global_phase_offset", "pure_Th");
 end
 
 % DDS CASCADE sync: after both DDS instruments are initialized, trigger a
 % master-side CASCADE re-handshake to apply any updated CASCADE settings.
 if SDG2042X_mixed_Use && SDG2042X_pure_Use
-    handle_SDG2042X_mixed.cascadeResyncOnMaster();
-    handle_SDG2042X_pure.cascadeResyncOnMaster();
+    recipe.addStatement("handle_SDG2042X_mixed.cascadeResyncOnMaster();" + newline + ...
+        "handle_SDG2042X_pure.cascadeResyncOnMaster();");
 end
 
 if SDG2042X_mixed_TARB_Use
-    % SDG2042X mixed multi-tone output using TrueArb (TARB) mode (uploads on every set)
-    handle_SDG2042X_mixed_TARB = instrument_SDG2042X_mixed_TARB(SDG2042X_mixed_TARB_Address, ...
+    recipe.addInstrument("handle_SDG2042X_mixed_TARB", "instrument_SDG2042X_mixed_TARB", "SDG2042X_mixed_TARB", SDG2042X_mixed_TARB_Address, ...
         waveformArraySize = 2^20, ...
         uploadFundamentalFrequencyHz = 1, ...
         internalTimebase = true);
-    handle_SDG2042X_mixed_TARB.requireSetCheck = true;
-
-    rack.addInstrument(handle_SDG2042X_mixed_TARB, "SDG2042X_mixed_TARB");
+    recipe.addStatement("handle_SDG2042X_mixed_TARB.requireSetCheck = true;");
     for i = 1:7
-        rack.addChannel("SDG2042X_mixed_TARB", string(sprintf("amplitude_%d", i)), string(sprintf("mixTARB_A_%d", i)));
-        rack.addChannel("SDG2042X_mixed_TARB", string(sprintf("phase_%d", i)), string(sprintf("mixTARB_Th_%d", i)));
-        rack.addChannel("SDG2042X_mixed_TARB", string(sprintf("frequency_%d", i)), string(sprintf("mixTARB_f_%d", i)));
+        recipe.addChannel("SDG2042X_mixed_TARB", "amplitude_" + string(i), "mixTARB_A_" + string(i));
+        recipe.addChannel("SDG2042X_mixed_TARB", "phase_" + string(i), "mixTARB_Th_" + string(i));
+        recipe.addChannel("SDG2042X_mixed_TARB", "frequency_" + string(i), "mixTARB_f_" + string(i));
     end
-    rack.addChannel("SDG2042X_mixed_TARB", "global_phase_offset", "mixTARB_Th");
+    recipe.addChannel("SDG2042X_mixed_TARB", "global_phase_offset", "mixTARB_Th");
 end
 
 if Montana2_Use
-    handle_Montana2 = instrument_Montana2(Montana2_IP);
-    rack.addInstrument(handle_Montana2, "Montana2");
-    rack.addChannel("Montana2", "T", "T");
+    recipe.addInstrument("handle_Montana2", "instrument_Montana2", "Montana2", Montana2_IP);
+    recipe.addChannel("Montana2", "T", "T");
 end
 
 if Montana1_Use
-    handle_Montana1 = instrument_Montana1(Montana1_IP);
-    rack.addInstrument(handle_Montana1, "Montana1");
-    rack.addChannel("Montana1", "T", "T");
+    recipe.addInstrument("handle_Montana1", "instrument_Montana1", "Montana1", Montana1_IP);
+    recipe.addChannel("Montana1", "T", "T");
 end
 
 if Opticool_Use
-    handle_Opticool = instrument_Opticool(Opticool_IP);
-    rack.addInstrument(handle_Opticool, "Opticool");
+    recipe.addInstrument("handle_Opticool", "instrument_Opticool", "Opticool", Opticool_IP);
     if ~strainController_Use
-        rack.addChannel("Opticool", "T", "T");
+        recipe.addChannel("Opticool", "T", "T");
     end
-    rack.addChannel("Opticool", "B", "B");
+    recipe.addChannel("Opticool", "B", "B");
 end
 
 if Attodry2100_Use
-    handle_attodry2100 = instrument_attodry2100(Attodry2100_Address);
-    rack.addInstrument(handle_attodry2100, "Attodry2100");
-    rack.addChannel("Attodry2100", "T", "T");
-    rack.addChannel("Attodry2100", "B", "B");
-    rack.addChannel("Attodry2100", "driven", "driven");
+    recipe.addInstrument("handle_attodry2100", "instrument_attodry2100", "Attodry2100", Attodry2100_Address);
+    recipe.addChannel("Attodry2100", "T", "T");
+    recipe.addChannel("Attodry2100", "B", "B");
+    recipe.addChannel("Attodry2100", "driven", "driven");
 end
 
 if BK889B_Use
-    handle_BK889B = instrument_BK889B(BK889B_Serial);
-    rack.addInstrument(handle_BK889B, "BK889B");
-    rack.addChannel("BK889B", "Cp", "BK_Cp");
-    rack.addChannel("BK889B", "Q", "BK_Q");
-    rack.addChannel("BK889B", "CpQ", "BK_CpQ");
+    recipe.addInstrument("handle_BK889B", "instrument_BK889B", "BK889B", BK889B_Serial);
+    recipe.addChannel("BK889B", "Cp", "BK_Cp");
+    recipe.addChannel("BK889B", "Q", "BK_Q");
+    recipe.addChannel("BK889B", "CpQ", "BK_CpQ");
 end
 
 if E4980AL_Use
-    % Note: E4980AL is typically used with the strain controller, but can be used independently.
-    handle_E4980AL = instrument_E4980AL(gpibAddress(E4980AL_GPIB, adaptorIndex_strain));
-    rack.addInstrument(handle_E4980AL, "E4980AL");
-    rack.addChannel("E4980AL", "Cp", "E4980_Cp");
-    rack.addChannel("E4980AL", "Q", "E4980_Q");
-    rack.addChannel("E4980AL", "CpQ", "E4980_CpQ");
+    recipe.addInstrument("handle_E4980AL", "instrument_E4980AL", "E4980AL", gpibAddress(E4980AL_GPIB, adaptorIndex_strain));
+    recipe.addChannel("E4980AL", "Cp", "E4980_Cp");
+    recipe.addChannel("E4980AL", "Q", "E4980_Q");
+    recipe.addChannel("E4980AL", "CpQ", "E4980_CpQ");
 end
 
 %% Virtual Instruments
 
 if virtual_del_V_Use
-
-    % Sets V_set according to V_set = V_get + del_V on the master instrument rack provided at construction time.
-    handle_virtual_del_V = virtualInstrument_del_V("virtual_delta", rack, ...
+    recipe.addVirtualInstrument("handle_virtual_del_V", "virtualInstrument_del_V", "virtual_delta", "virtual_delta", ...
         vGetChannelName = "V_WSe2", vSetChannelName = "V_tg");
-    rack.addInstrument(handle_virtual_del_V, "virtual_delta");
-    rack.addChannel("virtual_delta", "del_V", "del_V", [], [], -10, 10); % No ramp rate, no threshold, limits -10V to +10V
+    recipe.addChannel("virtual_delta", "del_V", "del_V", [], [], -10, 10);
 end
 
 if virtual_hysteresis_Use
-    handle_virtual_hysteresis = virtualInstrument_hysteresis("virtual_hysteresis1", rack, ...
-        setChannelName = "V_tg", ...
-        min = -5, ...
-        max = 5);
-    rack.addInstrument(handle_virtual_hysteresis, "virtual_hysteresis1");
-    rack.addChannel("virtual_hysteresis1", "hysteresis", "hys_V_tg", [], [], 0, 1);
+    recipe.addVirtualInstrument("handle_virtual_hysteresis", "virtualInstrument_hysteresis", "virtual_hysteresis1", "virtual_hysteresis1", ...
+        setChannelName = "V_tg", min = -5, max = 5);
+    recipe.addChannel("virtual_hysteresis1", "hysteresis", "hys_V_tg", [], [], 0, 1);
 end
 
 if virtual_nonlinear_T_Use
-    handle_virtual_nonlinear_T = virtualInstrument_nonlinear_T("virtual_nonlinear_T", rack, ...
-        tSetChannelName = virtual_nonlinear_T_TargetChannel, ...
-        tMin = 4, ...
-        tMax = 200);
-    rack.addInstrument(handle_virtual_nonlinear_T, "virtual_nonlinear_T");
-    rack.addChannel("virtual_nonlinear_T", "nonlinear_T", "T_normalized", [], [], 0, 1);
+    recipe.addVirtualInstrument("handle_virtual_nonlinear_T", "virtualInstrument_nonlinear_T", "virtual_nonlinear_T", "virtual_nonlinear_T", ...
+        tSetChannelName = virtual_nonlinear_T_TargetChannel, tMin = 4, tMax = 200);
+    recipe.addChannel("virtual_nonlinear_T", "nonlinear_T", "T_normalized", [], [], 0, 1);
 end
 
 if virtual_nE_Use
-    handle_virtual_nE = virtualInstrument_nE("virtual_nE", rack, ...
+    recipe.addVirtualInstrument("handle_virtual_nE", "virtualInstrument_nE", "virtual_nE", "virtual_nE", ...
         vBgChannelName = "V_bg", ...
         vTgChannelName = "V_tg", ...
         vBgLimits = [-6, 6], ...
@@ -811,13 +496,13 @@ if virtual_nE_Use
         vTg_n0E0 = -1, ...
         vBg_n0ENot0 = 2, ...
         vTg_n0ENot0 = -2);
-    rack.addInstrument(handle_virtual_nE, "virtual_nE");
-    rack.addChannel("virtual_nE", "n", "n_normalized", [], [], 0, 1);
-    rack.addChannel("virtual_nE", "E", "E_normalized", [], [], 0, 1);
-    rack.addChannel("virtual_nE", "nE_within_bounds", "nE_within_bounds");
+    recipe.addChannel("virtual_nE", "n", "n_normalized", [], [], 0, 1);
+    recipe.addChannel("virtual_nE", "E", "E_normalized", [], [], 0, 1);
+    recipe.addChannel("virtual_nE", "nE_within_bounds", "nE_within_bounds");
+    recipe.addChannel("virtual_nE", "skipOutOfBounds", "skipOutOfBounds", [], [], 0, 1);
 end
 
 
-
 %% wrap up setup
-smready(rack);
+% smready(recipe, singleThreaded = true); % Debug: run recipe on client instead of engine worker.
+smready(recipe);

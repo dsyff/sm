@@ -1,5 +1,5 @@
 function payload = smload(folderOrSource, fileNum, nThMatch, varargin)
-% SMLOAD Loads smrun_new save data and returns a struct of named variables.
+% SMLOAD Loads saved scan data and returns a struct of named variables.
 %
 % Usage patterns:
 %   payload = smload(saveStruct);
@@ -202,7 +202,7 @@ end
         folderStr = string(folderInput);
         if strlength(folderStr) == 0
             listing = dir('*.mat');
-            basePath = string('');
+            basePath = "";
         else
             listing = dir(fullfile(folderStr, '*.mat'));
             basePath = folderStr;

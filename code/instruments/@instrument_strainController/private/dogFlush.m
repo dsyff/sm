@@ -12,7 +12,7 @@ while dog2Man.QueueLength > 0
     elseif isa(reply, "MException")
         rethrow(reply);
     else
-        disp(reply);
+        experimentContext.print(reply);
     end
 end
 

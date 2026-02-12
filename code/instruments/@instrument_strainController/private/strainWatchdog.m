@@ -7,7 +7,8 @@ arguments
     options.address_Montana2 (1, 1) string;
     options.address_Opticool (1, 1) string;
     options.cryostat (1, 1) string {mustBeMember(options.cryostat, ["Montana2", "Opticool"])};
-    options.strainCellNumber (2, 2) uint8 {mustBeInteger, mustBePositive};
+    options.strainCellNumber (1, 1) uint8 {mustBeInteger, mustBePositive};
+    options.experimentRootPath {mustBeTextScalar} = ""
 end
 %% settings
 % If last sampling is older than staleTime ago, and if activeControl is on,
@@ -27,7 +28,7 @@ V_tolerance = 5E-3; %V tolerance for determining if voltage target is reached
 
 %% pass back man2dog message channel
 % man2dog commands will only be executed after initilizations are done.
-man2Dog = parallel.pool.DataQueue;
+man2Dog = parallel.pool.PollableDataQueue;
 send(dog2Man, man2Dog);
 
 %% initialize variables all in SI units
@@ -70,7 +71,6 @@ tareData = [];
 del_d_target = nan; %stores old target so loop knows when new target is set
 T_target = nan; %stores old target so loop knows when new target is set
 currentData = [];
-oldData = [];
 unfilledDataRow = [];
 V_str_o_max = nan;
 V_str_o_min = nan;
@@ -156,11 +156,25 @@ rack_strain.addChannel("K2450_B", "VI", "VI_str_i");
 %% create cleanup object that tries to ramp down voltages if strainWatchdog was not closed gracefully
 cleanupObj = onCleanup(@() rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [0, 0]));
 %%
-logFolder = "doglog";
+rootPath = string(options.experimentRootPath);
+if strlength(rootPath) == 0
+    rootPath = experimentContext.getExperimentRootPath();
+end
+if strlength(rootPath) == 0
+    rootPath = string(pwd);
+end
+
+baseLogDir = fullfile(rootPath, "logs", "strainController");
+if ~isfolder(baseLogDir)
+    mkdir(baseLogDir);
+end
+
+logFolder = fullfile(baseLogDir, "doglog");
 if ~isfolder(logFolder)
     mkdir(logFolder);
 end
-dataTimetableFolder = "dogTimetable";
+
+dataTimetableFolder = fullfile(baseLogDir, "dogTimetable");
 if ~isfolder(dataTimetableFolder)
     mkdir(dataTimetableFolder);
 end
@@ -171,13 +185,17 @@ alwaysControlVariableSetValues.T = handle_cryostat.getCurrentTargetTemperature()
 %% set del_d target
 activeControlVariableSetValues.del_d = 0;
 
-%% start listening to commands
-afterEach(man2Dog, @dogGetsCommand);
 %% start infinite loop
 % without try/catch, matlab sometimtes fails to handle error here correctly
 % and instead restarts the worker with no warning
 try
     while keepAlive
+        % Process pending manager commands (PollableDataQueue).
+        while man2Dog.QueueLength > 0
+            command = poll(man2Dog);
+            dogGetsCommand(command);
+        end
+
         %the dog works on controlling strain here
         if activeControl
             % react to target changes and temperature changes
@@ -333,7 +351,7 @@ try
             %["Cp", "Q", "V_str_o", "I_str_o", "V_str_i", "I_str_i", "T",
             %"C", "del_d", "del_d_target", "branchNum"];
             currentData(unfilledDataRow, :) = num2cell([getValues.', ...
-                readOnlyVariables.C, activeControlVariables.del_d, del_d_target, branchNum]); %#ok<AGROW>
+                readOnlyVariables.C, activeControlVariables.del_d, del_d_target, branchNum]);
             currentData.Time(unfilledDataRow) = lastUpdate;
 
             if unfilledDataRow == dataChunkLength
@@ -708,7 +726,6 @@ end
         if throwAll
             % turning off activeControl
             saveDataTimetable(currentData);
-            oldData = [];
             currentData = newTimetable;
         elseif isempty(currentData)
             % when turning on activeControl for the first time
@@ -716,7 +733,6 @@ end
         else
             % currentData is full
             saveDataTimetable(currentData);
-            oldData = currentData;
             currentData = newTimetable;
         end
         unfilledDataRow = 1;

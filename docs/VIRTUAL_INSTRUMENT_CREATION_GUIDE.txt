@@ -1,125 +1,100 @@
 ================================================================================
-      VIRTUAL INSTRUMENT CREATION GUIDE - Best Practices
+      VIRTUAL INSTRUMENT CREATION GUIDE (SM 1.5 / sm2)
 ================================================================================
 
 OVERVIEW
 --------
-virtualInstrumentInterface is the abstract base for software-defined instruments
-that map user requests onto existing rack channels. Use virtual instruments to
-prototype composite controls without dedicating extra hardware slots.
+Virtual instruments are software-only instruments that:
+  - Inherit from `virtualInstrumentInterface` (which inherits `instrumentInterface`)
+  - Are constructed with a reference to the master `instrumentRack`
+  - Register channels via `addChannel(...)`
+  - Implement `getReadChannelHelper` (required) and optionally `setWriteChannelHelper`
 
-CAPABILITIES
-------------
-- Register any number of virtual channels and expose each one to instrumentRack
-  just like a physical instrument channel.
-- Supply MATLAB functions to translate a virtual set request into one or more
-  physical channel updates. Functions receive the requested virtual value plus
-  live readings from auxiliary channels.
-- Optionally provide synchronous reads by overriding virtualGetChannelRead.
-  Virtual channels are excluded from the physical batch scheduler and are
-  evaluated after hardware-backed channels finish.
-- Built-in dispatchers for smset and direct instrumentRack.rackSet (with a hook
-  to supply a custom dispatch function when needed).
-- Opt-in verification: provide a setCheckFunction or let the class compare the
-  most recent physical outputs against expected values with per-slot tolerances.
+Use virtual instruments for derived channels (e.g. n/E from gate voltages) or
+for composite controls that map a user “set” onto multiple physical channels.
+
 
 ================================================================================
-1. BASIC SETUP
+1. MINIMAL TEMPLATE
 ================================================================================
 
-CREATE AND REGISTER A VIRTUAL CHANNEL
--------------------------------------
+classdef virtualInstrument_example < virtualInstrumentInterface
+    methods
+        function obj = virtualInstrument_example(address, masterRack)
+            arguments
+                address (1, 1) string
+                masterRack (1, 1) instrumentRack
+            end
 
-  virt = instrument_virtual();
+            obj@virtualInstrumentInterface(address, masterRack);
+            obj.addChannel("derived_value");
+        end
+    end
 
-  virt.registerVirtualChannel("virtual", struct( ...
-      "setFunction", @(target, V_bg) 2*target + V_bg, ... % compute V_tg
-      "setInputs", "V_bg", ...                            % read once before set
-      "outputs", "V_tg", ...                              % physical channel(s)
-      "description", "2*target + V_bg feed-forward" ...
-  ));
+    methods (Access = ?instrumentInterface)
+        function getValues = getReadChannelHelper(obj, channelIndex)
+            switch channelIndex
+                case 1
+                    rack = obj.getMasterRack();
+                    v = rack.rackGet("some_physical_channel");
+                    getValues = v(1);
+            end
+        end
+    end
+end
 
-  % Add to the rack like any other instrument
-  rack.addInstrument(virt, "virtual");
-  rack.addChannel("virtual", "virtual", "virtual");
+Key points:
+  - The constructor MUST call `virtualInstrumentInterface(address, masterRack)`.
+  - Return numeric data with the correct length for the declared channel size.
+  - Virtual instruments do not participate in the physical getWrite/getRead
+    scheduler; reads are synchronous.
 
-HOW IT DISPATCHES
------------------
-Calling smset("virtual", 0.1) will:
-  1) Read smget("V_bg") to capture the current bias gate voltage.
-  2) Evaluate setFunction (2 * 0.1 + V_bg) to produce the top-gate target.
-  3) Forward the result to smset("V_tg", value) inside the instrument.
-
-The implementation reuses instrumentRack for nested calls, so it remains
-compatible with the existing batch rackSet machinery. Because the virtual
-instrument dispatches only non-virtual physical channels, the nested smset call
-never loops back onto itself.
-
-================================================================================
-2. PROVIDING READBACKS
-================================================================================
-
-Override virtualGetChannelRead(obj, channelIndex) to expose a read channel.
-This method runs once per virtual channel after the physical batch is done, so
-it is safe to call back into the master rack for fresh readings.
-
-  methods (Access = protected)
-      function values = virtualGetChannelRead(obj, channelIndex)
-          switch obj.channelTable.channels(channelIndex)
-              case "virtual_counts"
-                  rack = obj.getMasterRack();
-                  raw = rack.rackGet(["spectrometer.counts", "spectrometer.dark"]);
-                  values = raw(1) - raw(2);
-              otherwise
-                  values = virtualGetChannelRead@virtualInstrumentInterface(obj, channelIndex);
-          end
-      end
-  end
-
-Rules:
-  - Return values must match the channel size declared during addChannel.
-  - If you do not override the method, the base class raises a descriptive error.
 
 ================================================================================
-3. ADVANCED SETTINGS
+2. SETTABLE VIRTUAL CHANNELS
 ================================================================================
 
-registerVirtualChannel accepts additional fields inside the configuration struct:
+To make a virtual channel settable, override `setWriteChannelHelper` and map the
+requested value onto one or more physical channels using the master rack.
 
-  Field               Description
-  ------------------  ----------------------------------------------------------
-  setCallStyle         "list" (default) passes inputs positionally, "map" passes
-                       a containers.Map.
-  dispatchMode         "smset" (default), "rackset", or "function".
-  dispatchFunction     Custom handler invoked when dispatchMode is "function".
-  enableSetCheck       Enable verification of derived outputs.
-  setCheckFunction     Custom verification function.
-  outputTolerances     Per-output tolerance used by the default checker.
-  context              Arbitrary data passed to callbacks for shared parameters.
-  preSetHook           Hook run immediately before dispatch.
-  postSetHook          Hook run immediately after dispatch.
+Pattern:
+  - Keep a small amount of internal state (the last requested virtual value)
+  - Compute physical targets
+  - Write the physical targets via `rack.rackSetWrite(...)` (or `rack.rackSet(...)`)
 
-If you need to describe the configured channels at runtime:
+See `code/instruments/virtualInstrument_nE.m` for a concrete example.
 
-  summary = virt.describeVirtualChannels();
-  disp(summary);
+Current `virtualInstrument_nE` channel names:
+  - `n`
+  - `E`
+  - `nE_within_bounds`
+  - `skipOutOfBounds` (settable 0/1; when 1, out-of-bounds n/E requests are skipped)
 
-This returns a table with the channel name, physical targets, and the
-configured description string.
+Note: older scripts may still reference `skipSettingOutOfBoundsValues`; use
+`skipOutOfBounds` instead.
+
 
 ================================================================================
-4. COMPATIBILITY NOTES
+3. RECIPE MODE (WORKER ENGINE)
 ================================================================================
 
-- The class requires instrumentRackGlobal to resolve channel sizes unless you
-  provide outputSizes manually in the configuration struct.
-- Nested smset/rackSet calls are supported. Each virtual channel dispatches only
-  physical channels, so the batch scheduler never recirculates the virtual
-  channel during a nested call.
-- Avoid adding a virtual channel as an input/output dependency of itself. The
-  registration logic throws an error to prevent recursion.
-- Virtual channels are registered with readDelays = NaN. They are never included
-  in the physical batch order and always execute after hardware channels finish.
+When using `instrumentRackRecipe` (engine-worker rack construction):
+  - Virtual instruments are constructed on the engine worker.
+  - The engine passes the worker’s master rack into the constructor.
+
+To add a virtual instrument to a recipe:
+  - Use `recipe.addVirtualInstrument(handleVar, className, friendlyName, ...)`
+  - Ensure your constructor signature is `(address, masterRack, NameValueArgs...)`.
+
+
+================================================================================
+4. COMMON PITFALLS
+================================================================================
+
+  - Do not rely on globals: always use `obj.getMasterRack()`.
+  - Avoid recursion: do not read/write your own virtual channel(s) via the rack.
+  - Keep reads fast: virtual reads run inline with the measurement loop.
+
 
 ================================================================================
 END OF GUIDE
