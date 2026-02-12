@@ -443,6 +443,10 @@ classdef (Sealed) instrumentRack < handle
 
             tempChannelTable = obj.channelTable(:, 2:end);
             tempChannelTable.Properties.VariableNames(1) = "instruments";
+            hiddenVars = intersect(["channelIndices", "virtual"], string(tempChannelTable.Properties.VariableNames));
+            if ~isempty(hiddenVars)
+                tempChannelTable = removevars(tempChannelTable, hiddenVars);
+            end
             tempChannelTable.rampRates = cellfun(@(x) x.', tempChannelTable.rampRates, UniformOutput = false);
             tempChannelTable.rampThresholds = cellfun(@(x) x.', tempChannelTable.rampThresholds, UniformOutput = false);
             tempChannelTable.softwareMins = cellfun(@(x) x.', tempChannelTable.softwareMins, UniformOutput = false);
@@ -475,6 +479,10 @@ classdef (Sealed) instrumentRack < handle
             experimentContext.print("<strong> Channels Sorted by Read Delay: </strong>");
             sortedChannelTable = obj.channelTable(:, 2:end);
             sortedChannelTable.Properties.VariableNames(1) = "instruments";
+            hiddenVars = intersect(["channelIndices", "virtual"], string(sortedChannelTable.Properties.VariableNames));
+            if ~isempty(hiddenVars)
+                sortedChannelTable = removevars(sortedChannelTable, hiddenVars);
+            end
             sortedChannelTable.rampRates = cellfun(@(x) x.', sortedChannelTable.rampRates, UniformOutput = false);
             sortedChannelTable.rampThresholds = cellfun(@(x) x.', sortedChannelTable.rampThresholds, UniformOutput = false);
             sortedChannelTable.softwareMins = cellfun(@(x) x.', sortedChannelTable.softwareMins, UniformOutput = false);
