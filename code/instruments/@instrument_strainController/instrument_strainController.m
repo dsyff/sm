@@ -6,6 +6,7 @@ classdef instrument_strainController < instrumentInterface
         dogGetTimeout duration = seconds(15);
         dogCheckTimeout duration = seconds(60);
         rack_strainController string = "";
+        logDir (1, 1) string = "";
     end
 
     properties (Access = protected)
@@ -23,9 +24,20 @@ classdef instrument_strainController < instrumentInterface
                 options.address_Opticool (1, 1) string = "127.0.0.1"
                 options.cryostat (1, 1) string {mustBeMember(options.cryostat, ["Montana2", "Opticool"])}
                 options.strainCellNumber (1, 1) uint8 {mustBeInteger, mustBePositive}
+                options.spawnFcn = []
             end
 
             obj@instrumentInterface();
+            obj.numWorkersRequired = 1;
+
+            rootPath = experimentContext.getExperimentRootPath();
+            if strlength(rootPath) == 0
+                rootPath = string(pwd);
+            end
+            obj.logDir = fullfile(rootPath, "logs", "strainController");
+            if ~isfolder(obj.logDir)
+                mkdir(obj.logDir);
+            end
 
             handle = strainWatchdogConstructor( ...
                 address_E4980AL = options.address_E4980AL, ...
@@ -34,7 +46,9 @@ classdef instrument_strainController < instrumentInterface
                 address_Montana2 = options.address_Montana2, ...
                 address_Opticool = options.address_Opticool, ...
                 cryostat = options.cryostat, ...
-                strainCellNumber = options.strainCellNumber ...
+                strainCellNumber = options.strainCellNumber, ...
+                experimentRootPath = rootPath, ...
+                spawnFcn = options.spawnFcn ...
             );
             obj.handle_strainWatchdog = handle;
 
@@ -63,6 +77,23 @@ classdef instrument_strainController < instrumentInterface
                 dogSet(obj.handle_strainWatchdog, "Z_short_theta", deg2rad(41.89));
                 dogSet(obj.handle_strainWatchdog, "Z_open_r", 20E9);
                 dogSet(obj.handle_strainWatchdog, "Z_open_theta", deg2rad(65));
+            end
+
+            tareFiles = dir(fullfile(obj.logDir, "tareData_*.mat"));
+            if ~isempty(tareFiles)
+                [~, idx] = max([tareFiles.datenum]);
+                tareFile = fullfile(string(tareFiles(idx).folder), string(tareFiles(idx).name));
+                S = load(tareFile, "tareData");
+                if ~isfield(S, "tareData") || ~isstruct(S.tareData) || ~isfield(S.tareData, "d_0")
+                    error("instrument_strainController:InvalidTareDataLog", "Invalid tareData log file: %s", tareFile);
+                end
+                d0 = S.tareData.d_0;
+                if ~(isnumeric(d0) && isscalar(d0) && isfinite(d0))
+                    error("instrument_strainController:InvalidTareDataLog", "Invalid tareData.d_0 in log file: %s", tareFile);
+                end
+                obj.tare(double(d0));
+            else
+                obj.tare();
             end
 
             obj.address = address;
@@ -109,6 +140,21 @@ classdef instrument_strainController < instrumentInterface
             if isempty(d_0)
                 dogSet(obj.handle_strainWatchdog, "tare", 20);
                 tareData = dogGet(obj.handle_strainWatchdog, "tare");
+
+                localLogDir = obj.logDir;
+                if strlength(localLogDir) == 0
+                    rootPath = experimentContext.getExperimentRootPath();
+                    if strlength(rootPath) == 0
+                        rootPath = string(pwd);
+                    end
+                    localLogDir = fullfile(rootPath, "logs", "strainController");
+                    obj.logDir = localLogDir;
+                end
+                if ~isfolder(localLogDir)
+                    mkdir(localLogDir);
+                end
+                ts = string(datetime("now", Format = "yyyyMMdd_HHmmss_SSS"));
+                save(fullfile(localLogDir, "tareData_" + ts + ".mat"), "tareData");
             else
                 dogSet(obj.handle_strainWatchdog, "d_0", d_0);
                 tareData = [];
@@ -129,6 +175,18 @@ classdef instrument_strainController < instrumentInterface
             dataFolder = options.dataFolder;
             plotBranchNum = options.plotBranchNum;
 
+            if dataFolder == "dogTimetable"
+                if strlength(obj.logDir) > 0
+                    dataFolder = fullfile(obj.logDir, "dogTimetable");
+                else
+                    rootPath = experimentContext.getExperimentRootPath();
+                    if strlength(rootPath) == 0
+                        rootPath = string(pwd);
+                    end
+                    dataFolder = fullfile(rootPath, "logs", "strainController", "dogTimetable");
+                end
+            end
+
             fileTable = struct2table(dir(dataFolder + filesep + "*.mat"));
             fileTable = sortrows(fileTable, "name", "descend");
 
@@ -140,18 +198,18 @@ classdef instrument_strainController < instrumentInterface
                 else
                     firstFilename = fileTable.name(1);
                 end
-                load(dataFolder + filesep + firstFilename);
+                load(dataFolder + filesep + firstFilename, "dataTimetable");
                 sessionTimetable = rmmissing(dataTimetable);
                 for fileIndex = 2:height(fileTable)
-                    load(dataFolder + filesep + fileTable.name(fileIndex));
+                    load(dataFolder + filesep + fileTable.name(fileIndex), "dataTimetable");
                     if sessionTimetable.Time(1) - dataTimetable.Time(end) < minutes(5)
-                        sessionTimetable = [dataTimetable; sessionTimetable]; %#ok<AGROW>
+                        sessionTimetable = [dataTimetable; sessionTimetable];
                         fileCount = fileCount + 1;
                     else
                         break;
                     end
                 end
-                disp("Loaded " + fileCount + " file(s).")
+                experimentContext.print("Loaded " + fileCount + " file(s).")
                 %%
                 if ~isempty(sessionTimetable)
 

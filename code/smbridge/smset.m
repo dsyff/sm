@@ -1,26 +1,43 @@
-function smset(varargin)
-% SMSET - Simplified wrapper for smset_new
+function smset(channelNames, values, ~)
+% Wrapper around instrumentRack.rackSet.
 %
-% This function provides a shorter syntax for accessing smset_new functionality.
-% All arguments are passed directly to smset_new for processing.
+% This function intentionally does NOT translate or expand channel names.
+% It expects the raw channelFriendlyNames already used by the rack.
 %
-% USAGE:
-%   smset(channelName, value)
-%   smset(["channel1", "channel2", ...], [value1; value2; ...])
+% Usage:
+%   smset("chan", value)
+%   smset(["ch1","ch2"], [v1; v2])
 %
-% EXAMPLES:
-%   smset("sr830.frequency", 1000);                    % Single channel
-%   smset(["k2400.V_source", "sr830.sensitivity"], [5; 1e-6]);  % Multiple channels
-%
-% NOTES:
-%   - Uses same setWrite/setCheck optimization as smset_new
-%   - Automatically verifies values within defined tolerances
-%   - Supports all channel types (scalar and vector)
-%
-% SEE ALSO: smset_new, smget, smrun_new
-%
-% Thomas 2025-07-17 - Convenience wrapper for faster typing
+% Notes:
+% - channelNames must be a 1-D list; it will be converted to a column vector.
+% - values must be a numeric vector; it will be converted to a column vector.
+% - Any rampRate third argument is accepted but ignored (rack controls ramping).
 
-smset_new(varargin{:});
+global engine %#ok<GVMIS>
 
+if isempty(channelNames)
+    return
 end
+
+hasEngine = exist("engine", "var") && ~isempty(engine) && isa(engine, "measurementEngine");
+if ~hasEngine
+    error("smset:no_backend", "No measurementEngine is available. Please run smready(...) first.")
+end
+
+if ~isstring(channelNames)
+    error("smset:invalidChannels", "channelNames must be a string array.")
+end
+
+if ~isvector(channelNames)
+    error("smset:invalidChannelsShape", "channelNames must be a 1-D string array.")
+end
+
+if ~isnumeric(values) || ~isvector(values)
+    error("smset:invalidValues", "values must be a numeric vector.")
+end
+
+channelNames = channelNames(:);
+values = values(:);
+engine.rackSet(channelNames, values);
+end
+

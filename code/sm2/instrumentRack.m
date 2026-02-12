@@ -10,12 +10,16 @@ classdef (Sealed) instrumentRack < handle
         instrumentTable = table(Size = [0, 4], ...
             VariableTypes = ["instrumentInterface", "string", "string", "logical"], ...
             VariableNames = ["instruments", "instrumentFriendlyNames", "addresses", "virtual"]);
-        channelTable = table(Size = [0, 11], ...
-            VariableTypes = ["instrumentInterface", "string", "string", "string", "uint64", "double", "cell", "cell", "cell", "cell", "logical"], ...
-            VariableNames = ["instruments", "instrumentFriendlyNames", "channels", "channelFriendlyNames", "channelSizes", "readDelays", "rampRates", "rampThresholds", "softwareMins", "softwareMaxs", "virtual"]);
+        channelTable = table(Size = [0, 12], ...
+            VariableTypes = ["instrumentInterface", "string", "string", "string", "uint32", "uint64", "double", "cell", "cell", "cell", "cell", "logical"], ...
+            VariableNames = ["instruments", "instrumentFriendlyNames", "channels", "channelFriendlyNames", "channelIndices", "channelSizes", "readDelays", "rampRates", "rampThresholds", "softwareMins", "softwareMaxs", "virtual"]);
     end
     properties (Access = private)
         isBatchGetActive logical = false;
+        channelFriendlyNameToRowIndex = dictionary(string.empty(0, 1), uint32.empty(0, 1));
+        rackGetPlanCache = dictionary(string.empty(0, 1), cell.empty(0, 1));
+        channelReadDelaySortOrder (:, 1) uint32 = uint32.empty(0, 1);
+        channelReadDelayRanks (:, 1) uint32 = uint32.empty(0, 1);
     end
     methods
         function obj = instrumentRack(skipDialog)
@@ -23,6 +27,7 @@ classdef (Sealed) instrumentRack < handle
                 skipDialog logical = false;
             end
             assert(~isMATLABReleaseOlderThan("R2022a"), "Matlab version is too old");
+            assert(exist("dictionary", "class") == 8, "instrumentRack requires dictionary support.");
             if ~skipDialog
                 selection = questdlg( ...
                     "Has Windows Update been postponed, and is the sample safe?", ...
@@ -44,13 +49,17 @@ classdef (Sealed) instrumentRack < handle
                         try
                             delete(instrument);
                         catch ME
-                            fprintf("instrumentRack delete warning: failed to delete instrument %s: %s\n", friendlyName, ME.message);
+                            experimentContext.print("instrumentRack delete warning: failed to delete instrument %s: %s", friendlyName, ME.message);
                         end
                     end
                 end
             end
             obj.instrumentTable = obj.instrumentTable([], :);
             obj.channelTable = obj.channelTable([], :);
+            obj.channelFriendlyNameToRowIndex = dictionary(string.empty(0, 1), uint32.empty(0, 1));
+            obj.rackGetPlanCache = dictionary(string.empty(0, 1), cell.empty(0, 1));
+            obj.channelReadDelaySortOrder = uint32.empty(0, 1);
+            obj.channelReadDelayRanks = uint32.empty(0, 1);
         end
         
         function addInstrument(obj, instrumentObj, instrumentFriendlyName)
@@ -98,8 +107,9 @@ classdef (Sealed) instrumentRack < handle
             instrument = obj.instrumentTable.instruments(instrumentTableIndex);
             instrumentVirtualFlag = obj.instrumentTable.virtual(instrumentTableIndex);
             
-            % find channel size
-            channelSize = instrument.findChannelSize(channel);
+            % resolve and cache instrument-local channel index once
+            channelIndex = instrument.findChannelIndexForRack(channel);
+            channelSize = instrument.findChannelSizeByIndexForRack(channelIndex);
             
             % validate rampRates size
             if isempty(rampRates)
@@ -155,22 +165,22 @@ classdef (Sealed) instrumentRack < handle
                 try
                     % test run to make sure channel is initialized before timing
                     % response time
-                    instrument.getChannel(channel);
+                    instrument.getChannelByIndex(channelIndex);
                     
                     % obtain response time of getRead over a few trials
                     readDelayArray = nan(5, 1);
                     trials = 5;
                     for tryIndex = 1:trials
-                        instrument.getWriteChannel(channel);
+                        instrument.getWriteChannelByIndex(channelIndex);
                         startTime = tic;
-                        instrument.getReadChannel(channel);
+                        instrument.getReadChannelByIndex(channelIndex);
                         readDelayArray(tryIndex) = toc(startTime);
                     end
                     readDelay = median(readDelayArray);
                 catch ME
                     obj.dispLine()
                     obj.dispTime()
-                    fprintf("Failed to read %s/%s.\n", instrumentFriendlyName, channel);
+                    experimentContext.print("Failed to read %s/%s.", instrumentFriendlyName, channel);
                     obj.dispPartialStackTrace(ME);
                     obj.dispTime()
                     obj.dispLine()
@@ -178,15 +188,22 @@ classdef (Sealed) instrumentRack < handle
                 end
             end
             
-            newTable = [obj.channelTable; {instrument, instrumentFriendlyName, channel, channelFriendlyName, channelSize, readDelay, {rampRates}, {rampThresholds}, {softwareMins}, {softwareMaxs}, instrumentVirtualFlag}];
+            newTable = [obj.channelTable; {instrument, instrumentFriendlyName, channel, channelFriendlyName, uint32(channelIndex), channelSize, readDelay, {rampRates}, {rampThresholds}, {softwareMins}, {softwareMaxs}, instrumentVirtualFlag}];
             
             % check for repetitions
             if ~isempty(obj.channelTable)
                 assert(~matches(channelFriendlyName, obj.channelTable.channelFriendlyNames), "Channel friendly name must not repeat.");
-                subTable = newTable(:, [1, 3]);
-                assert(height(subTable) == height(unique(subTable)), "Channels must not repeat.");
+                duplicateMask = obj.channelTable.instrumentFriendlyNames == instrumentFriendlyName ...
+                    & obj.channelTable.channels == channel;
+                assert(~any(duplicateMask), "Channels must not repeat.");
             end
             obj.channelTable = newTable;
+            obj.channelFriendlyNameToRowIndex(channelFriendlyName) = uint32(height(obj.channelTable));
+            [~, sortOrder] = sort(obj.channelTable.readDelays, "descend");
+            obj.channelReadDelaySortOrder = uint32(sortOrder);
+            obj.channelReadDelayRanks = zeros(height(obj.channelTable), 1, "uint32");
+            obj.channelReadDelayRanks(sortOrder) = uint32(1:height(obj.channelTable));
+            obj.rackGetPlanCache = dictionary(string.empty(0, 1), cell.empty(0, 1));
         end
         
         function values = rackGet(obj, channelFriendlyNames)
@@ -195,80 +212,104 @@ classdef (Sealed) instrumentRack < handle
                 channelFriendlyNames string {mustBeNonzeroLengthText, mustBeVector};
             end
             
-            getTableFull = obj.subTableFromChannelFriendlyNames(channelFriendlyNames);
-            
-            % Add originalIndex column to track original positions
-            getTableFull.originalIndex = (1:height(getTableFull)).';
+            channelFriendlyNames = channelFriendlyNames(:);
+            cacheKey = strjoin(channelFriendlyNames, string(char(31)));
+            if isKey(obj.rackGetPlanCache, cacheKey)
+                planCell = obj.rackGetPlanCache(cacheKey);
+                plan = planCell{1};
+            else
+                channelRowIndices = obj.findChannelIndices(channelFriendlyNames);
+                instruments = obj.channelTable.instruments(channelRowIndices);
+                channelIndices = obj.channelTable.channelIndices(channelRowIndices);
+                instrumentFriendlyNames = obj.channelTable.instrumentFriendlyNames(channelRowIndices);
+                virtualMask = obj.channelTable.virtual(channelRowIndices);
+                virtualPositions = find(virtualMask);
+                physicalPositions = find(~virtualMask);
+
+                physicalBatches = cell(0, 1);
+                if ~isempty(physicalPositions)
+                    [~, physicalOrder] = sort(obj.channelReadDelayRanks(channelRowIndices(physicalPositions)), "ascend");
+                    remaining = physicalPositions(physicalOrder);
+                    while ~isempty(remaining)
+                        seenInstrumentNames = dictionary(string.empty(0, 1), logical.empty(0, 1));
+                        takeMask = false(size(remaining));
+                        for remainingIndex = 1:numel(remaining)
+                            requestIndex = remaining(remainingIndex);
+                            instrumentName = instrumentFriendlyNames(requestIndex);
+                            if ~isKey(seenInstrumentNames, instrumentName)
+                                seenInstrumentNames(instrumentName) = true;
+                                takeMask(remainingIndex) = true;
+                            end
+                        end
+                        physicalBatches{end + 1, 1} = uint32(remaining(takeMask)); %#ok<AGROW>
+                        remaining = remaining(~takeMask);
+                    end
+                end
+
+                plan = struct( ...
+                    "instruments", instruments, ...
+                    "channelIndices", channelIndices, ...
+                    "virtualPositions", uint32(virtualPositions), ...
+                    "physicalBatches", {physicalBatches}, ...
+                    "numChannels", uint32(numel(channelRowIndices)));
+                obj.rackGetPlanCache(cacheKey) = {plan};
+            end
             
             assert(~obj.isBatchGetActive, "instrumentRack:ActiveBatchGet", ...
                 "Cannot call rackGet while a batch get is already in progress.");
-            
-            % sort descending based on response time
-            getTableFull = sortrows(getTableFull, "readDelays", "descend");
-            
-            physicalMask = ~getTableFull.virtual;
-            virtualMask = getTableFull.virtual;
 
             tries = 0;
             while tries < obj.tryTimes
                 try
-                    getTableFull.getValues = cell(height(getTableFull), 1);
+                    getValues = cell(double(plan.numChannels), 1);
 
-                    if any(physicalMask)
+                    if ~isempty(plan.physicalBatches)
                         lockGuard = obj.activateBatchGetLock(); %#ok<NASGU>
-                        getTableRemaining = getTableFull(physicalMask, :);
-                        startTime = datetime("now");
-                        while ~isempty(getTableRemaining)
-                            assert(datetime("now") - startTime < obj.batchGetTimeout, "Timed out while performing batch get.");
-                            
-                            % get a batch of channels with different instruments
-                            [~, uniqueIndices, ~] = unique(getTableRemaining.instruments, "stable");
-                            batchTable = getTableRemaining(uniqueIndices, :);
-                            getTableRemaining(uniqueIndices, :) = [];
-
-                            % first to write is last to read
-                            % If an error occurs mid-batch, some instruments may have
-                            % pending unread responses; flush them before retrying.
-                            pendingInstruments = instrumentInterface.empty(0, 1);
+                        timeoutSeconds = seconds(obj.batchGetTimeout);
+                        startTimer = tic;
+                        for batchListIndex = 1:numel(plan.physicalBatches)
+                            assert(toc(startTimer) < timeoutSeconds, "Timed out while performing batch get.");
+                            batchRequestIndices = double(plan.physicalBatches{batchListIndex});
+                            pendingInstruments = plan.instruments(batchRequestIndices);
+                            pendingCount = 0;
                             try
-                                for batchIndex = 1:height(batchTable)
-                                    instrument = batchTable.instruments(batchIndex);
-                                    channel = batchTable.channels(batchIndex);
-                                    instrument.getWriteChannel(channel);
-                                    pendingInstruments(end+1, 1) = instrument; %#ok<AGROW>
+                                for batchIndex = 1:numel(batchRequestIndices)
+                                    requestIndex = batchRequestIndices(batchIndex);
+                                    instrument = plan.instruments(requestIndex);
+                                    channelIndex = plan.channelIndices(requestIndex);
+                                    instrument.getWriteChannelByIndex(channelIndex);
+                                    pendingCount = batchIndex;
                                 end
-                                for batchIndex = height(batchTable):-1:1
-                                    instrument = batchTable.instruments(batchIndex);
-                                    channel = batchTable.channels(batchIndex);
-                                    getValuesPartial = instrument.getReadChannel(channel);
-                                    originalIndex = batchTable.originalIndex(batchIndex);
-                                    getTableFull.getValues{originalIndex} = getValuesPartial;
-
+                                for batchIndex = numel(batchRequestIndices):-1:1
+                                    requestIndex = batchRequestIndices(batchIndex);
+                                    instrument = plan.instruments(requestIndex);
+                                    channelIndex = plan.channelIndices(requestIndex);
+                                    getValues{requestIndex} = instrument.getReadChannelByIndex(channelIndex);
                                     % Reads occur in reverse order of writes, so pending is a stack.
-                                    if ~isempty(pendingInstruments)
-                                        pendingInstruments(end) = [];
+                                    if pendingCount > 0
+                                        pendingCount = pendingCount - 1;
                                     end
                                 end
                             catch MEBatch
-                                obj.flushInstrumentsSafe(pendingInstruments, "rackGet batch cleanup before retry");
+                                if pendingCount > 0
+                                    obj.flushInstrumentsSafe(pendingInstruments(1:pendingCount), "rackGet batch cleanup before retry");
+                                end
                                 rethrow(MEBatch);
                             end
                         end
                         clear lockGuard;
                     end
 
-                    if any(virtualMask)
-                        for virtualIndex = find(virtualMask).'
-                            instrument = getTableFull.instruments(virtualIndex);
-                            channel = getTableFull.channels(virtualIndex);
-                            virtualValues = instrument.getChannel(channel);
-                            originalIndex = getTableFull.originalIndex(virtualIndex);
-                            getTableFull.getValues{originalIndex} = virtualValues;
+                    if ~isempty(plan.virtualPositions)
+                        for virtualIndex = double(plan.virtualPositions(:)).'
+                            instrument = plan.instruments(virtualIndex);
+                            channelIndex = plan.channelIndices(virtualIndex);
+                            getValues{virtualIndex} = instrument.getChannelByIndex(channelIndex);
                         end
                     end
 
                     % Concatenate all values in order
-                    values = vertcat(getTableFull.getValues{:});
+                    values = vertcat(getValues{:});
                     break;
                 catch ME
                     if exist('lockGuard', 'var')
@@ -294,27 +335,13 @@ classdef (Sealed) instrumentRack < handle
                 values = values.';
             end
             
-            batchTable = obj.subTableFromChannelFriendlyNames(channelFriendlyNames);
-            
-            % check length of values
-            assert(sum(batchTable.channelSizes) == length(values), "Expected length %d, got length %d in the set values instead.", sum(batchTable.channelSizes), length(values));
-            
-            % Attach values column: slice values for each channel
-            batchTable.setValues = cell(height(batchTable), 1);
-            startIndex = 1;
-            for i = 1:height(batchTable)
-                channelSize = batchTable.channelSizes(i);
-                rawValues = values(startIndex : (startIndex + channelSize - 1));
-                minLimits = batchTable.softwareMins{i};
-                maxLimits = batchTable.softwareMaxs{i};
-                batchTable.setValues{i} = obj.enforceSoftwareLimits(rawValues, minLimits, maxLimits);
-                startIndex = startIndex + channelSize;
-            end
+            channelRowIndices = obj.findChannelIndices(channelFriendlyNames);
+            setValues = obj.buildSetValuesForRows(channelRowIndices, values);
             
             tries = 0;
             while tries < obj.tryTimes
                 try
-                    obj.rackSetWriteHelper(batchTable);
+                    obj.rackSetWriteHelper(channelRowIndices, setValues);
                     break;
                 catch ME
                     tries = tries + 1;
@@ -338,35 +365,22 @@ classdef (Sealed) instrumentRack < handle
                 values = values.';
             end
             
-            batchTableCopy = obj.subTableFromChannelFriendlyNames(channelFriendlyNames);
-            
-            % check length of values
-            assert(sum(batchTableCopy.channelSizes) == length(values), "Expected length %d, got length %d in the set values instead.", sum(batchTableCopy.channelSizes), length(values));
-            
-            % Attach values column: slice values for each channel
-            batchTableCopy.setValues = cell(height(batchTableCopy), 1);
-            startIndex = 1;
-            for i = 1:height(batchTableCopy)
-                channelSize = batchTableCopy.channelSizes(i);
-                rawValues = values(startIndex : (startIndex + channelSize - 1));
-                minLimits = batchTableCopy.softwareMins{i};
-                maxLimits = batchTableCopy.softwareMaxs{i};
-                batchTableCopy.setValues{i} = obj.enforceSoftwareLimits(rawValues, minLimits, maxLimits);
-                startIndex = startIndex + channelSize;
-            end
+            channelRowIndices = obj.findChannelIndices(channelFriendlyNames);
+            setValues = obj.buildSetValuesForRows(channelRowIndices, values);
             
             tries = 0;
             while tries < obj.tryTimes
                 try
-                    batchTable = batchTableCopy;
-                    obj.rackSetWriteHelper(batchTable);
+                    obj.rackSetWriteHelper(channelRowIndices, setValues);
                     
-                    startTime = datetime("now");
-                    TFs = obj.rackVectorSetCheckHelper(batchTable);
+                    timeoutSeconds = seconds(obj.batchSetTimeout);
+                    startTimer = tic;
+                    pendingRowIndices = channelRowIndices;
+                    TFs = obj.rackVectorSetCheckHelper(pendingRowIndices);
                     while ~all(TFs)
-                        assert(datetime("now") - startTime < obj.batchSetTimeout, "Timed out while performing batch set.");
-                        batchTable = batchTable(~TFs, :);
-                        TFs = obj.rackVectorSetCheckHelper(batchTable);
+                        assert(toc(startTimer) < timeoutSeconds, "Timed out while performing batch set.");
+                        pendingRowIndices = pendingRowIndices(~TFs);
+                        TFs = obj.rackVectorSetCheckHelper(pendingRowIndices);
                     end
                     break;
                 catch ME
@@ -386,12 +400,12 @@ classdef (Sealed) instrumentRack < handle
                 channelFriendlyNames string {mustBeNonzeroLengthText, mustBeVector};
             end
             
-            batchTable = obj.subTableFromChannelFriendlyNames(channelFriendlyNames);
+            channelRowIndices = obj.findChannelIndices(channelFriendlyNames);
             
             tries = 0;
             while tries < obj.tryTimes
                 try
-                    TF = obj.rackSetCheckHelper(batchTable);
+                    TF = obj.rackSetCheckHelper(channelRowIndices);
                     break;
                 catch ME
                     tries = tries + 1;
@@ -407,17 +421,17 @@ classdef (Sealed) instrumentRack < handle
             obj.dispLine();
             obj.dispTime();
             obj.dispLine();
-            fprintf("<strong> Settings: </strong>\n")
+            experimentContext.print("<strong> Settings: </strong>");
             propertyNames = string({metaclass(obj).PropertyList.Name});
             setAccess = string({metaclass(obj).PropertyList.SetAccess});
             propertyNames = propertyNames(setAccess == "public");
             for propertyName = propertyNames
-                fprintf("%s = %s\n", propertyName, string(obj.(propertyName)));
+                experimentContext.print("%s = %s", propertyName, string(obj.(propertyName)));
             end
             obj.dispLine();
             tempInstrumentTable = obj.instrumentTable(:, 2:end);
             tempInstrumentTable.Properties.VariableNames(1) = "instruments";
-            disp(tempInstrumentTable);
+            experimentContext.print(tempInstrumentTable);
             obj.dispLine();
             tempChannelTable = obj.channelTable(:, 2:end);
             tempChannelTable.Properties.VariableNames(1) = "instruments";
@@ -425,7 +439,7 @@ classdef (Sealed) instrumentRack < handle
             tempChannelTable.rampThresholds = cellfun(@(x) x.', tempChannelTable.rampThresholds, UniformOutput = false);
             tempChannelTable.softwareMins = cellfun(@(x) x.', tempChannelTable.softwareMins, UniformOutput = false);
             tempChannelTable.softwareMaxs = cellfun(@(x) x.', tempChannelTable.softwareMaxs, UniformOutput = false);
-            disp(tempChannelTable);
+            experimentContext.print(tempChannelTable);
             obj.dispLine();
             obj.dispTime();
             obj.dispLine();
@@ -435,7 +449,7 @@ classdef (Sealed) instrumentRack < handle
             obj.dispLine();
             obj.dispTime();
             obj.dispLine();
-            fprintf("<strong> Channels Sorted by Read Delay: </strong>\n")
+            experimentContext.print("<strong> Channels Sorted by Read Delay: </strong>");
             sortedChannelTable = obj.channelTable(:, 2:end);
             sortedChannelTable.Properties.VariableNames(1) = "instruments";
             sortedChannelTable.rampRates = cellfun(@(x) x.', sortedChannelTable.rampRates, UniformOutput = false);
@@ -443,9 +457,9 @@ classdef (Sealed) instrumentRack < handle
             sortedChannelTable.softwareMins = cellfun(@(x) x.', sortedChannelTable.softwareMins, UniformOutput = false);
             sortedChannelTable.softwareMaxs = cellfun(@(x) x.', sortedChannelTable.softwareMaxs, UniformOutput = false);
             if ~isempty(sortedChannelTable)
-                sortedChannelTable = sortrows(sortedChannelTable, "readDelays", "descend");
+                sortedChannelTable = sortedChannelTable(double(obj.channelReadDelaySortOrder), :);
             end
-            disp(sortedChannelTable);
+            experimentContext.print(sortedChannelTable);
             obj.dispLine();
             obj.dispTime();
             obj.dispLine();
@@ -481,9 +495,9 @@ classdef (Sealed) instrumentRack < handle
             obj.isBatchGetActive = false;
         end
 
-        function flushInstrumentsSafe(obj, instruments, context)
+        function flushInstrumentsSafe(~, instruments, context)
             arguments
-                obj %#ok<INUSA>
+                ~
                 instruments (:, 1) instrumentInterface
                 context (1, 1) string {mustBeNonzeroLengthText} = ""
             end
@@ -502,157 +516,165 @@ classdef (Sealed) instrumentRack < handle
         end
         
         function channelIndices = findChannelIndices(obj, channelFriendlyNames)
-            
-            numFriendlyNames = length(channelFriendlyNames);
-            channelIndices = nan(numFriendlyNames, 1);
-            for friendlyNameIndex = 1:numFriendlyNames
-                channelFriendlyName = channelFriendlyNames(friendlyNameIndex);
-                channelIndex = find(channelFriendlyName == obj.channelTable.channelFriendlyNames);
-                assert(~isempty(channelIndex), "%s is not found in the rack.", channelFriendlyName);
-                channelIndices(friendlyNameIndex) = channelIndex;
+            channelFriendlyNames = channelFriendlyNames(:);
+            foundMask = isKey(obj.channelFriendlyNameToRowIndex, channelFriendlyNames);
+            if ~all(foundMask)
+                missingNames = strjoin(channelFriendlyNames(~foundMask), ", ");
+                error("%s is not found in the rack.", missingNames);
             end
-            
+            channelIndices = double(obj.channelFriendlyNameToRowIndex(channelFriendlyNames));
         end
         
-        function rackSetWriteHelperNoRamp(~, batchTable)
-            for batchIndex = 1:height(batchTable)
-                instrument = batchTable.instruments(batchIndex);
-                channel = batchTable.channels(batchIndex);
-                setValues = batchTable.setValues{batchIndex};
-                instrument.setWriteChannel(channel, setValues);
+        function rackSetWriteHelperNoRamp(obj, channelRowIndices, setValues)
+            instruments = obj.channelTable.instruments(channelRowIndices);
+            channelIndices = obj.channelTable.channelIndices(channelRowIndices);
+            for batchIndex = 1:numel(channelRowIndices)
+                instrument = instruments(batchIndex);
+                channelIndex = channelIndices(batchIndex);
+                setValuesLocal = setValues{batchIndex};
+                instrument.setWriteChannelByIndex(channelIndex, setValuesLocal);
             end
         end
-        
-        function rackSetWriteHelper(obj, batchTable)
-            % Parallel ramping for all channels in batchTable, table-style
-            setTable = batchTable;
-            numRows = height(setTable);
-            % Identify rows with inf rampRate (instant set)
+
+        function setValues = buildSetValuesForRows(obj, channelRowIndices, values)
+            channelSizes = obj.channelTable.channelSizes(channelRowIndices);
+            expectedLength = sum(channelSizes);
+            assert(expectedLength == length(values), "Expected length %d, got length %d in the set values instead.", expectedLength, length(values));
+            setValues = cell(numel(channelRowIndices), 1);
+            softwareMins = obj.channelTable.softwareMins(channelRowIndices);
+            softwareMaxs = obj.channelTable.softwareMaxs(channelRowIndices);
+            startIndex = 1;
+            for i = 1:numel(channelRowIndices)
+                channelSize = channelSizes(i);
+                rawValues = values(startIndex : (startIndex + channelSize - 1));
+                setValues{i} = obj.enforceSoftwareLimits(rawValues, softwareMins{i}, softwareMaxs{i});
+                startIndex = startIndex + channelSize;
+            end
+        end
+
+        function rackSetWriteHelper(obj, channelRowIndices, setValues)
+            numRows = numel(channelRowIndices);
+            rampRates = obj.channelTable.rampRates(channelRowIndices);
+            rampThresholds = obj.channelTable.rampThresholds(channelRowIndices);
+
             isInstant = false(numRows, 1);
             for i = 1:numRows
-                if all(isinf(setTable.rampRates{i}))
+                if all(isinf(rampRates{i}))
                     isInstant(i) = true;
                 end
             end
-            % Instantly set those channels
             if any(isInstant)
-                instantTable = setTable(isInstant, :);
-                obj.rackSetWriteHelperNoRamp(instantTable);
-                setTable(isInstant, :) = [];
+                obj.rackSetWriteHelperNoRamp(channelRowIndices(isInstant), setValues(isInstant));
             end
-            if isempty(setTable)
+
+            activeMask = ~isInstant;
+            if ~any(activeMask)
                 return;
             end
-            % Attach startValues and reachedTargets columns
-            setTable.startValues = cell(height(setTable), 1);
-            setTable.reachedTargets = cell(height(setTable), 1);
-            
-            % Initialize startValues and reachedTargets
-            isInstant = false(height(setTable), 1);
-            for i = 1:height(setTable)
-                setTable.startValues{i} = setTable.instruments(i).getChannel(setTable.channels(i));
-                setValues = setTable.setValues{i};
-                startValues = setTable.startValues{i};
-                rampThresholds = setTable.rampThresholds{i};
-                deltas = abs(setValues - startValues);
-                setTable.reachedTargets{i} = false(size(startValues));
-                if all(deltas < rampThresholds)
-                    isInstant(i) = true;
+
+            activeRowIndices = channelRowIndices(activeMask);
+            activeSetValues = setValues(activeMask);
+            activeRampRates = rampRates(activeMask);
+            activeRampThresholds = rampThresholds(activeMask);
+            activeInstruments = obj.channelTable.instruments(activeRowIndices);
+            activeChannelIndices = obj.channelTable.channelIndices(activeRowIndices);
+
+            startValues = cell(numel(activeRowIndices), 1);
+            reachedTargets = cell(numel(activeRowIndices), 1);
+            isBelowThreshold = false(numel(activeRowIndices), 1);
+            for i = 1:numel(activeRowIndices)
+                startValues{i} = activeInstruments(i).getChannelByIndex(activeChannelIndices(i));
+                deltas = abs(activeSetValues{i} - startValues{i});
+                reachedTargets{i} = false(size(startValues{i}));
+                if all(deltas < activeRampThresholds{i})
+                    isBelowThreshold(i) = true;
                 end
             end
-            % Immediately set those channels and remove from setTable
-            if any(isInstant)
-                immediateTable = setTable(isInstant, :);
-                obj.rackSetWriteHelperNoRamp(immediateTable);
-                setTable(isInstant, :) = [];
+            if any(isBelowThreshold)
+                obj.rackSetWriteHelperNoRamp(activeRowIndices(isBelowThreshold), activeSetValues(isBelowThreshold));
             end
-            if isempty(setTable)
+
+            activeKeepMask = ~isBelowThreshold;
+            if ~any(activeKeepMask)
                 return;
             end
-            % Record start time
-            startTime = datetime("now");
-            % Main ramping loop
-            while ~isempty(setTable)
-                rampStepSetValues = cell(height(setTable), 1);
-                allReached = false(height(setTable), 1); % Track which rows are done this step
-                % Calculate total elapsed time
-                nowTime = datetime("now");
-                totalElapsed = seconds(nowTime - startTime);
-                for i = 1:height(setTable)
-                    startValues = setTable.startValues{i};
-                    setValues = setTable.setValues{i};
-                    rampRates = setTable.rampRates{i};
-                    rampThresholds = setTable.rampThresholds{i};
-                    reachedTargets = setTable.reachedTargets{i};
-                    deltas = setValues - startValues;
+
+            activeRowIndices = activeRowIndices(activeKeepMask);
+            activeSetValues = activeSetValues(activeKeepMask);
+            activeRampRates = activeRampRates(activeKeepMask);
+            activeRampThresholds = activeRampThresholds(activeKeepMask);
+            startValues = startValues(activeKeepMask);
+            reachedTargets = reachedTargets(activeKeepMask);
+
+            startTimer = tic;
+            while ~isempty(activeRowIndices)
+                totalElapsed = toc(startTimer);
+                rampStepSetValues = activeSetValues;
+                allReached = false(numel(activeRowIndices), 1);
+                for i = 1:numel(activeRowIndices)
+                    startValuesLocal = startValues{i};
+                    setValuesLocal = activeSetValues{i};
+                    rampRatesLocal = activeRampRates{i};
+                    rampThresholdsLocal = activeRampThresholds{i};
+                    reachedTargetsLocal = reachedTargets{i};
+                    deltas = setValuesLocal - startValuesLocal;
                     signs = sign(deltas);
-                    needRamp = ~reachedTargets;
-                    % Calculate position based on total elapsed time
+                    needRamp = ~reachedTargetsLocal;
                     if totalElapsed == 0
-                        % Initial step: use rampThresholds as step size
-                        rampDistance = rampThresholds;
+                        rampDistance = rampThresholdsLocal;
                     else
-                        rampDistance = rampRates * totalElapsed;
+                        rampDistance = rampRatesLocal * totalElapsed;
                     end
-                    % Calculate new step values
-                    rampStepSetValues{i} = setValues;
+                    rampStepSetValues{i} = setValuesLocal;
                     if any(needRamp)
-                        rampStepSetValues{i}(needRamp) = startValues(needRamp) + signs(needRamp) .* rampDistance(needRamp);
+                        rampStepSetValues{i}(needRamp) = startValuesLocal(needRamp) + signs(needRamp) .* rampDistance(needRamp);
                     end
-                    % Check if step would reach or overshoot target
                     overshoot = needRamp & (rampDistance >= abs(deltas));
                     if any(overshoot)
-                        rampStepSetValues{i}(overshoot) = setValues(overshoot);
+                        rampStepSetValues{i}(overshoot) = setValuesLocal(overshoot);
                     end
-                    % Update reachedTargets flags
-                    setTable.reachedTargets{i}(overshoot) = true;
-                    if all(setTable.reachedTargets{i})
+                    reachedTargetsLocal(overshoot) = true;
+                    reachedTargets{i} = reachedTargetsLocal;
+                    if all(reachedTargetsLocal)
                         allReached(i) = true;
                     end
                 end
-                setTableStep = setTable;
-                setTableStep.setValues = rampStepSetValues;
-                % execute the set
-                obj.rackSetWriteHelperNoRamp(setTableStep);
-                % Remove rows where all elements have reached target from setTable
-                setTable(allReached, :) = [];
-                % avoid sending too many commands too quickly
-                %if ~isempty(setTable)
-                    pause(0.75); % avoid busy-waiting
-                %end
+
+                obj.rackSetWriteHelperNoRamp(activeRowIndices, rampStepSetValues);
+                keepMask = ~allReached;
+                activeRowIndices = activeRowIndices(keepMask);
+                activeSetValues = activeSetValues(keepMask);
+                activeRampRates = activeRampRates(keepMask);
+                activeRampThresholds = activeRampThresholds(keepMask);
+                startValues = startValues(keepMask);
+                reachedTargets = reachedTargets(keepMask);
             end
         end
-        
-        function TFs = rackVectorSetCheckHelper(~, batchTable)
-            % returns logical column vector of the same height as batchTable
-            TFs = false(height(batchTable), 1);
-            for batchIndex = 1:height(batchTable)
-                instrument = batchTable.instruments(batchIndex);
-                channel = batchTable.channels(batchIndex);
-                TF = instrument.setCheckChannel(channel);
+
+        function TFs = rackVectorSetCheckHelper(obj, channelRowIndices)
+            % returns logical column vector of the same length as channelRowIndices
+            instruments = obj.channelTable.instruments(channelRowIndices);
+            channelIndices = obj.channelTable.channelIndices(channelRowIndices);
+            TFs = false(numel(channelRowIndices), 1);
+            for batchIndex = 1:numel(channelRowIndices)
+                TF = instruments(batchIndex).setCheckChannelByIndex(channelIndices(batchIndex));
                 assert(isscalar(TF), "setCheckChannel should return a scalar logical, received length %d instead", length(TF));
                 TFs(batchIndex) = TF;
             end
         end
-        
-        function TF = rackSetCheckHelper(~, batchTable)
+
+        function TF = rackSetCheckHelper(obj, channelRowIndices)
             % returns a scalar logical indicating if all channels have reached their target
-            for batchIndex = 1:height(batchTable)
-                instrument = batchTable.instruments(batchIndex);
-                channel = batchTable.channels(batchIndex);
-                TF = instrument.setCheckChannel(channel);
+            instruments = obj.channelTable.instruments(channelRowIndices);
+            channelIndices = obj.channelTable.channelIndices(channelRowIndices);
+            for batchIndex = 1:numel(channelRowIndices)
+                TF = instruments(batchIndex).setCheckChannelByIndex(channelIndices(batchIndex));
                 assert(isscalar(TF), "setCheckChannel should return a scalar logical, received length %d instead", length(TF));
                 if ~TF
                     return;
                 end
             end
             TF = true;
-        end
-        
-        function subTable = subTableFromChannelFriendlyNames(obj, channelFriendlyNames)
-            channelIndices = obj.findChannelIndices(channelFriendlyNames);
-            subTable = obj.channelTable(channelIndices, :);
-            % values column will be attached by caller (get/set) as needed
         end
         
         function limitedValues = enforceSoftwareLimits(~, values, minLimits, maxLimits)
@@ -678,12 +700,12 @@ classdef (Sealed) instrumentRack < handle
             if tries >= obj.tryTimes
                 obj.dispLine()
                 obj.dispTime()
-                fprintf("An error occured during %s\n", locationName);
+                experimentContext.print("An error occured during %s", locationName);
                 rethrow(ME);
             else
                 obj.dispLine()
                 obj.dispTime()
-                fprintf("An error occured during %s\n", locationName);
+                experimentContext.print("An error occured during %s", locationName);
                 
                 obj.dispPartialStackTrace(ME);
                 
@@ -717,15 +739,15 @@ classdef (Sealed) instrumentRack < handle
             end
             
             % Display
-            disp(join(reportLines, newline));
+            experimentContext.print(join(reportLines, newline));
         end
         
         function dispLine()
-            disp(join(repelem("=", 120), ""));
+            experimentContext.print(join(repelem("=", 120), ""));
         end
         
         function dispTime()
-            fprintf(string(datetime("now")) + "\n");
+            experimentContext.print(datetime("now"));
         end
         
     end

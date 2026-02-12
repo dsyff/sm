@@ -8,23 +8,46 @@ classdef smguiBridge < handle
     end
     
     properties (Access = private)
-        rack  % The instrumentRack instance
+        rack = instrumentRack.empty(0, 1)
+        engine = measurementEngine.empty(0, 1)
+        channelFriendlyNames (:, 1) string = string.empty(0, 1)
+        channelSizes (:, 1) double = double.empty(0, 1)
     end
     
     methods
-        function obj = smguiBridge(instrumentRack)
+        function obj = smguiBridge(source)
             % Constructor
-            % Input: instrumentRack instance
-            if nargin > 0 && isa(instrumentRack, 'instrumentRack')
-                obj.rack = instrumentRack;
-            else
-                error('smguiBridge requires an instrumentRack instance');
+            % Input: measurementEngine or instrumentRack instance
+            if nargin == 0
+                return;
             end
+
+            if isa(source, "measurementEngine")
+                obj.engine = source;
+                if source.constructionMode == "rack" && ~isempty(source.rackLocal)
+                    obj.rack = source.rackLocal;
+                end
+                [names, sizes] = source.getChannelMetadata();
+                obj.channelFriendlyNames = string(names(:));
+                obj.channelSizes = double(sizes(:));
+                return;
+            end
+
+            if isa(source, "instrumentRack")
+                obj.rack = source;
+                if ~isempty(source.channelTable)
+                    obj.channelFriendlyNames = string(source.channelTable.channelFriendlyNames(:));
+                    obj.channelSizes = double(source.channelTable.channelSizes(:));
+                end
+                return;
+            end
+
+            error("smguiBridge:InvalidSource", "smguiBridge requires a measurementEngine or instrumentRack instance.");
         end
         
         function initializeSmdata(obj)
             % Initialize the global smdata structure for GUI compatibility
-            global smdata;
+            global smdata %#ok<GVMIS>
             
             % Create instruments structure from instrumentRack
             smdata.inst = obj.createInstStruct();
@@ -41,7 +64,7 @@ classdef smguiBridge < handle
             % Create smdata.inst structure from instrumentRack
             instStruct = struct("name", {}, "cntrlfn", {}, "channels", {}, "datadim", {});
             
-            if isempty(obj.rack.instrumentTable)
+            if isempty(obj.rack) || isempty(obj.rack.instrumentTable)
                 return;
             end
             
@@ -88,37 +111,27 @@ classdef smguiBridge < handle
         end
         
         function channelsStruct = createChannelsStruct(obj)
-            % Create smdata.channels structure from instrumentRack channelTable
-            % Expands vector channels into individual scalar channels for plotting compatibility
             channelsStruct = struct("name", {}, "instchan", {}, "rangeramp", {});
-            
-            if isempty(obj.rack.channelTable)
+
+            if isempty(obj.channelFriendlyNames)
                 return;
             end
-            
-            numChannels = height(obj.rack.channelTable);
+
             scalarChannelIdx = 1;
-            
-            for i = 1:numChannels
-                channelFriendlyName = obj.rack.channelTable.channelFriendlyNames(i);
-                instrument = obj.rack.channelTable.instruments(i);
-                channelSize = obj.rack.channelTable.channelSizes(i);
-                
-                % Find instrument index in instrumentTable
-                instIdx = obj.findInstrumentIndex(instrument);
-                
+            for i = 1:numel(obj.channelFriendlyNames)
+                channelFriendlyName = obj.channelFriendlyNames(i);
+                channelSize = obj.channelSizes(i);
+
                 if channelSize == 1
-                    % Scalar channel - add directly
                     channelsStruct(scalarChannelIdx).name = char(channelFriendlyName);
-                    channelsStruct(scalarChannelIdx).instchan = [instIdx, 1];
+                    channelsStruct(scalarChannelIdx).instchan = [1, 1];
                     channelsStruct(scalarChannelIdx).rangeramp = [0, 0, 0, 1];
                     scalarChannelIdx = scalarChannelIdx + 1;
                 else
-                    % Vector channel - expand into scalar elements
                     for vecIdx = 1:channelSize
-                        scalarName = sprintf("%s_%d", channelFriendlyName, vecIdx);
+                        scalarName = channelFriendlyName + "_" + vecIdx;
                         channelsStruct(scalarChannelIdx).name = char(scalarName);
-                        channelsStruct(scalarChannelIdx).instchan = [instIdx, vecIdx];
+                        channelsStruct(scalarChannelIdx).instchan = [1, vecIdx];
                         channelsStruct(scalarChannelIdx).rangeramp = [0, 0, 0, 1];
                         scalarChannelIdx = scalarChannelIdx + 1;
                     end
@@ -130,7 +143,7 @@ classdef smguiBridge < handle
             % Find the index of an instrument in the instrumentTable
             idx = 1;  % Default to first instrument
             
-            if isempty(obj.rack.instrumentTable)
+            if isempty(obj.rack) || isempty(obj.rack.instrumentTable)
                 return;
             end
             
@@ -142,7 +155,7 @@ classdef smguiBridge < handle
             end
         end
         
-        function result = instrumentWrapper(obj, instrument, command)
+        function result = instrumentWrapper(~, instrument, command)
             % Wrapper function to adapt new instrument interface to old cntrlfn format
             % command format: [instIdx, channelNum, action, value]
             % action: 0 = get, 1 = set
@@ -173,41 +186,21 @@ classdef smguiBridge < handle
         function vectorChannelNames = getVectorChannelNames(obj)
             % Get vector channel names for efficient data acquisition
             % Returns only the original vector channel names (e.g., "XY", not "XY_1", "XY_2")
-            vectorChannelNames = {};
-            
-            if isempty(obj.rack.channelTable)
-                return;
-            end
-            
-            numChannels = height(obj.rack.channelTable);
-            for i = 1:numChannels
-                channelFriendlyName = obj.rack.channelTable.channelFriendlyNames(i);
-                vectorChannelNames{end+1} = char(channelFriendlyName);
-            end
+            vectorChannelNames = cellstr(obj.channelFriendlyNames);
         end
         
         function scalarChannelNames = getScalarChannelNames(obj)
             % Get scalar channel names for plotting and data saving
             % Returns expanded channel names (e.g., "XY_1", "XY_2" for vector channels)
             scalarChannelNames = {};
-            
-            if isempty(obj.rack.channelTable)
-                return;
-            end
-            
-            numChannels = height(obj.rack.channelTable);
-            for i = 1:numChannels
-                channelFriendlyName = obj.rack.channelTable.channelFriendlyNames(i);
-                channelSize = obj.rack.channelTable.channelSizes(i);
-                
+            for i = 1:numel(obj.channelFriendlyNames)
+                channelFriendlyName = obj.channelFriendlyNames(i);
+                channelSize = obj.channelSizes(i);
                 if channelSize == 1
-                    % Scalar channel
                     scalarChannelNames{end+1} = char(channelFriendlyName);
                 else
-                    % Vector channel - expand
                     for vecIdx = 1:channelSize
-                        scalarName = sprintf("%s_%d", channelFriendlyName, vecIdx);
-                        scalarChannelNames{end+1} = char(scalarName);
+                        scalarChannelNames{end+1} = char(channelFriendlyName + "_" + vecIdx);
                     end
                 end
             end
@@ -217,19 +210,9 @@ classdef smguiBridge < handle
             % Get only inherently scalar channel names (channelSize == 1)
             % Used for set channel dropdowns - excludes expanded vector components
             pureScalarChannelNames = {};
-            
-            if isempty(obj.rack.channelTable)
-                return;
-            end
-            
-            numChannels = height(obj.rack.channelTable);
-            for i = 1:numChannels
-                channelFriendlyName = obj.rack.channelTable.channelFriendlyNames(i);
-                channelSize = obj.rack.channelTable.channelSizes(i);
-                
-                if channelSize == 1
-                    % Only scalar channels (not expanded vector components)
-                    pureScalarChannelNames{end+1} = char(channelFriendlyName);
+            for i = 1:numel(obj.channelFriendlyNames)
+                if obj.channelSizes(i) == 1
+                    pureScalarChannelNames{end+1} = char(obj.channelFriendlyNames(i));
                 end
             end
         end
@@ -237,16 +220,12 @@ classdef smguiBridge < handle
         function channelSize = getChannelSize(obj, channelFriendlyName)
             % Get the size of a channel by its friendly name
             % Returns 1 for scalar channels, >1 for vector channels
-            if isempty(obj.rack.channelTable)
-                error('Channel table is empty');
-            end
-            
-            channelIdx = find(strcmp(obj.rack.channelTable.channelFriendlyNames, channelFriendlyName), 1);
+            channelFriendlyName = string(channelFriendlyName);
+            channelIdx = find(obj.channelFriendlyNames == channelFriendlyName, 1);
             if isempty(channelIdx)
                 error('Channel "%s" not found', channelFriendlyName);
             end
-            
-            channelSize = obj.rack.channelTable.channelSizes(channelIdx);
+            channelSize = obj.channelSizes(channelIdx);
         end
     end
 end

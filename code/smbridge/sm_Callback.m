@@ -1,4 +1,6 @@
-function sm_new_Callback(what,arg)
+function sm_Callback(what, varargin)
+%#ok<*GVMIS>
+%#ok<*NUSED>
 % Copyright 2011 Hendrik Bluhm, Vivek Venkatachalam
 % Updated 2025 for SM 1.5 Bridge System
 % This file is part of Special Measure.
@@ -16,11 +18,10 @@ function sm_new_Callback(what,arg)
 %     You should have received a copy of the GNU General Public License
 %     along with Special Measure.  If not, see
 %     <http://www.gnu.org/licenses/>.
-    switch nargin
-        case 1
-            eval([what ';']);
-        case 2
-            eval([what '(arg);']);
+    if nargin < 2
+        feval(what);
+    else
+        feval(what, varargin{1});
     end
 end
 
@@ -153,7 +154,7 @@ function OpenScans
                 continue;
             end
 
-            smaux.scans{end+1} = scanCandidate; %#ok<AGROW>
+            smaux.scans{end+1} = scanCandidate;
         end
     end
     UpdateToGUI;
@@ -193,31 +194,12 @@ function SaveScans
             suffix = suffix + 1;
             filename = baseName + " (" + suffix + ")";
         end
-        smscan = scanCandidate; %#ok<NASGU>
+        smscan = scanCandidate;
         save(fullfile(targetFolder, filename + ".mat"), "smscan");
     end
 end
 
-function OpenRack
-    global smaux
-    [file,path] = uigetfile('*.mat','Select Rack File');
-    if file
-        load(fullfile(path,file));
-    end
-    UpdateToGUI;
-end
 
-function SaveRack
-    global smaux
-    [file,path] = uiputfile('*.mat','Save Rack File');
-    if file
-        save(fullfile(path,file),'smdata');
-    end
-end
-
-function EditRack
-    smdataman;
-end
 
 function SMusers
     global smaux
@@ -265,7 +247,7 @@ function EditScan
             smaux.smq(queue_index)=[];
         else
             smscan = smaux.smq{queue_index};
-            smgui_small_new;  % Updated to use new version
+            smgui_small;
         end
         UpdateToGUI;
     catch ME
@@ -291,7 +273,7 @@ function EditScan2
             return;
         end
         smscan = smaux.scans{scan_index};
-        smgui_small_new;  % Updated to use new version
+        smgui_small;
     catch ME
         % Create detailed error message
         errorMsg = sprintf('Error in EditScan2:\n\n%s\n\nFile: %s\nLine: %d\n\nStack trace:\n', ...
@@ -345,7 +327,7 @@ end
 
 function PPTFile
     global smaux bridge
-    [pptFile, pptPath] = uiputfile('*.ppt', 'Append to Presentation');
+    [pptFile, ~] = uiputfile('*.ppt', 'Append to Presentation');
     if isequal(pptFile, 0)
         return;
     end
@@ -381,7 +363,7 @@ end
 
 function PPTSaveFig
     global smaux
-    if ~ishandle(str2num(get(smaux.sm.pptsave_eth,'String')))
+    if ~ishandle(str2double(get(smaux.sm.pptsave_eth,'String')))
         errordlg('Invalid Figure Handle');
         set(smaux.sm.pptsave_eth,'String',1000);
     end
@@ -389,7 +371,7 @@ end
 
 function PPTSaveNow
     global smaux
-    % PowerPoint save functionality moved to smrun_new
+    % PowerPoint save functionality is handled by measurementEngine
 end 
 
 function PPTPriority
@@ -465,18 +447,18 @@ function RunIncrement
 end
 
 function Run
-    global smaux
+    global smaux engine
     try
-        while ~isempty(smaux.smq);
+        while ~isempty(smaux.smq)
             %grab the next scan in the queue
             scan = smaux.smq{1};
             smaux.smq(1)=[];
             UpdateToGUI;
             
             if ~isfield(scan,'loops') && isfield(scan,'eval') %to evaluate commands
-                string=scan.eval;
-                for i=1:size(string,1)
-                    evalin('base',string(i,:));
+                evalLines = scan.eval;
+                for i = 1:size(evalLines, 1)
+                    evalin("base", evalLines(i, :));
                 end
             else
                 %filename for this run - final safety net: sanitize for Windows invalid chars
@@ -488,52 +470,13 @@ function Run
                     mkdir(smaux.datadir);
                 end
                 smdatapathUpdateGlobalState('main', smaux.datadir);
-                runCandidate = smrunGetState();
-                useRunPrefix = ~isnan(runCandidate);
-                if useRunPrefix
-                    runToUse = smrunNextAvailableRunNumber(smaux.datadir, runCandidate);
-                    runstring = sprintf('%03u', runToUse);
-                    datasaveFile = fullfile(smaux.datadir,[runstring  '_' scan_file_name '.mat']);
-                else
-                    runstring = '';
-                    datasaveFile = fullfile(smaux.datadir,[scan_file_name '.mat']);
-                end
                 
-                scan = UpdateConstants(scan);
                 scan = ensureScanPpt(scan);
-                smrun_new(scan,datasaveFile);  % Updated to use new version
-                
-                %save to powerpoint
-                [pptEnabled, ~] = smpptGetState();
-                if pptEnabled
-                    try
-                        if useRunPrefix && ~isempty(runstring)
-                            slide.title = [runstring  '_' scan_file_name '.mat'];
-                        else
-                            slide.title = [scan_file_name '.mat'];
-                        end
-                        % Safely handle comments
-                        if ~isfield(scan,'comments')
-                            scan.comments = '';
-                        end
-                        if ischar(smaux.comments) && ischar(scan.comments)
-                            slide.body = strvcat(smaux.comments,scan.comments);
-                        elseif ischar(smaux.comments)
-                            slide.body = smaux.comments;
-                        elseif ischar(scan.comments)
-                            slide.body = scan.comments;
-                        else
-                            slide.body = '';
-                        end
-                        % PowerPoint save functionality moved to smrun_new
-                    catch ME_ppt
-                        % PowerPoint save functionality moved to smrun_new
-                    end
+                scan.name = char(string(scan_file_name));
+                if ~exist("engine", "var") || isempty(engine) || ~isa(engine, "measurementEngine")
+                    error("sm:MissingEngine", "measurementEngine not found. Please run smready(...) first.");
                 end
-                if useRunPrefix
-                    smrunUpdateGlobalState('main', smrunIncrement(runToUse));
-                end
-                smrunApplyStateToGui('main');
+                engine.run(scan, "", "turbo");
                 UpdateToGUI;
                 drawnow;
                 pause(3);
@@ -593,51 +536,51 @@ end
 
 function Eval
     global smaux
-    string=get(smaux.sm.console_eth,'String');
-    set(smaux.sm.console_eth,'String','');
-    for i=1:size(string,1)
-        evalin('base',string(i,:));
+    cmdLines = get(smaux.sm.console_eth, 'String');
+    set(smaux.sm.console_eth, 'String', '');
+    for i = 1:size(cmdLines, 1)
+        evalin("base", cmdLines(i, :));
     end
 end
 
 function scan = UpdateConstants(scan)
-    global smaux smscan instrumentRackGlobal;
+    global smaux smscan engine;
     
     try
         if nargin==0
             scan = smscan;
         end
 
-        % Use direct instrumentRack calls (smget_new/smset_new require string arrays).
-        if ~exist("instrumentRackGlobal", "var") || isempty(instrumentRackGlobal)
-            error("instrumentRackGlobal not found. Please run setupSmguiWithNewInstruments() first.");
+        if ~exist("engine", "var") || isempty(engine) || ~isa(engine, "measurementEngine")
+            error("sm:MissingEngine", "measurementEngine not found. Please run smready(...) first.");
         end
 
-        allchans = string.empty(1, 0);
-        if isfield(scan.consts, "setchan")
-            allchans = string({scan.consts.setchan});
-        end
-
-        setchans = string.empty(1, 0);
-        setvals = double.empty(1, 0);
-        for i = 1:length(scan.consts)
-            if scan.consts(i).set
-                setchans(end+1) = string(scan.consts(i).setchan); %#ok<AGROW>
-                setvals(end+1) = double(scan.consts(i).val); %#ok<AGROW>
-            end
-        end
-
-        if ~isempty(setchans)
-            instrumentRackGlobal.rackSet(setchans, setvals(:));
-        end
-
-        if isempty(allchans)
+        if ~isfield(scan, "consts") || isempty(scan.consts)
             return;
         end
-        newvals = instrumentRackGlobal.rackGet(allchans);
 
-        for i = 1:length(scan.consts)
-            scan.consts(i).val = newvals(i);
+        consts = scan.consts;
+        if ~isfield(consts, "set")
+            [consts.set] = deal(1);
+        end
+
+        setMask = [consts.set] == 1;
+        if any(setMask)
+            setchans = string({consts(setMask).setchan});
+            setvals = double([consts(setMask).val]).';
+            engine.rackSet(setchans(:), setvals);
+        end
+
+        getMask = ~setMask;
+        if ~any(getMask)
+            return;
+        end
+
+        getchans = string({consts(getMask).setchan});
+        newvals = engine.rackGet(getchans(:));
+        getIdx = find(getMask);
+        for k = 1:numel(getIdx)
+            scan.consts(getIdx(k)).val = newvals(k);
         end
     catch ME
         % Create detailed error message
@@ -668,6 +611,7 @@ function UpdateToGUI
             scan_index = 0;
         end
         if isfield(smaux,'scans') && iscell(smaux.scans)
+            scannames = cell(1, length(smaux.scans));
             for i=1:length(smaux.scans)
                 if ~isfield(smaux.scans{i},'name')
                     smaux.scans{i}.name=['Scan ' num2str(i)];
@@ -696,6 +640,7 @@ function UpdateToGUI
         end
         
         if isfield(smaux,'smq') && iscell(smaux.smq)
+            qnames = cell(1, length(smaux.smq));
             for i=1:length(smaux.smq)
                 if isfield(smaux.smq{i},'name')
                     qnames{i}=smaux.smq{i}.name;
@@ -763,7 +708,7 @@ function UpdateToGUI
         
         %populate powerpoint priority file sth
         if isfield(smaux,'pptsavefile2') && exist(smaux.pptsavefile2,'file')
-            [pathstr, name, ext] = fileparts(smaux.pptsavefile2);
+            [~, name, ext] = fileparts(smaux.pptsavefile2);
             set(smaux.sm.pptfile2_sth,'String',[name ext]);
             set(smaux.sm.pptfile2_sth,'TooltipString',smaux.pptsavefile2);
         end
@@ -810,7 +755,7 @@ end
 
 
 function smpptAttachMainGui()
-    global smaux
+    global smaux bridge
     smpptEnsureGlobals();
     if ~isstruct(smaux) || ~isfield(smaux, 'sm') || ~isstruct(smaux.sm)
         return;

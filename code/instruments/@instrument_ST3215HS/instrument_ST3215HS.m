@@ -307,12 +307,12 @@ classdef instrument_ST3215HS < instrumentInterface
             end
 
             if NameValueArgs.verbose
-                fprintf("setPositionConsistent: servoNumber=%d targetDeg=%.3f targetTick=%d\n", servoNumber, targetDeg, targetTick);
+                experimentContext.print("setPositionConsistent: servoNumber=%d targetDeg=%.3f targetTick=%d", servoNumber, targetDeg, targetTick);
             end
 
             [d0, a0] = setTargetAndMeasure_();
             if NameValueArgs.verbose
-                fprintf("  init: actualTick=%d dTick=%+d\n", a0, d0);
+                experimentContext.print("  init: actualTick=%d dTick=%+d", a0, d0);
             end
 
             actualTick = a0;
@@ -350,7 +350,7 @@ classdef instrument_ST3215HS < instrumentInterface
                 [dNew, aNew] = setTargetAndMeasure_();
 
                 if NameValueArgs.verbose
-                    fprintf("  iter=%2d dPrev=%+4d excRel=%+4d excTick=%4d -> actualTick=%4d dNew=%+4d\n", ...
+                    experimentContext.print("  iter=%2d dPrev=%+4d excRel=%+4d excTick=%4d -> actualTick=%4d dNew=%+4d", ...
                         k, dPrev, excRel, excTick, aNew, dNew);
                 end
 
@@ -824,7 +824,7 @@ classdef instrument_ST3215HS < instrumentInterface
             startTick = mod(round(startDeg * obj.ticksPerDegree), ticksPerRev);
             startDeg = startTick / obj.ticksPerDegree; % quantized to a tick
 
-            fprintf("calibrateSoftLimits: %s startTick=%d startDeg=%.3f loadCh=%s threshold=%g %%\n", ...
+            experimentContext.print("calibrateSoftLimits: %s startTick=%d startDeg=%.3f loadCh=%s threshold=%g %%", ...
                 positionChannel, startTick, startDeg, loadChannel, loadThreshold_percent);
 
             % Defaults: unbounded unless threshold is hit.
@@ -837,7 +837,7 @@ classdef instrument_ST3215HS < instrumentInterface
                 obj.setChannel(positionChannel, nextTick / obj.ticksPerDegree);
                 loadVal = obj.getChannel(loadChannel);
                 if verbose
-                    fprintf("  min-scan: tick=%4d load=%g %%\n", nextTick, loadVal);
+                    experimentContext.print("  min-scan: tick=%4d load=%g %%", nextTick, loadVal);
                 end
                 if abs(loadVal) >= loadThreshold_percent
                     % Set limit to the last safe point BEFORE overload.
@@ -856,7 +856,7 @@ classdef instrument_ST3215HS < instrumentInterface
                 obj.setChannel(positionChannel, nextTick / obj.ticksPerDegree);
                 loadVal = obj.getChannel(loadChannel);
                 if verbose
-                    fprintf("  max-scan: tick=%4d load=%g %%\n", nextTick, loadVal);
+                    experimentContext.print("  max-scan: tick=%4d load=%g %%", nextTick, loadVal);
                 end
                 if abs(loadVal) >= loadThreshold_percent
                     % Set limit to the last safe point BEFORE overload.
@@ -879,7 +879,7 @@ classdef instrument_ST3215HS < instrumentInterface
             else
                 softMaxTick = NaN;
             end
-            fprintf("calibrateSoftLimits: %s result: soft limits=[%.3f, %.3f] deg ticks=[%g, %g]\n", ...
+            experimentContext.print("calibrateSoftLimits: %s result: soft limits=[%.3f, %.3f] deg ticks=[%g, %g]", ...
                 positionChannel, softMinDeg, softMaxDeg, softMinTick, softMaxTick);
         end
 

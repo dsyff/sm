@@ -17,6 +17,9 @@ classdef instrument_K2400 < instrumentInterface
             % assign object properties
             obj.address = address;
             obj.communicationHandle = handle;
+            if startsWith(upper(string(address)), "GPIB")
+                obj.writeCommandInterval = seconds(0.2);
+            end
 
             obj.addChannel("V_source", setTolerances = 1E-5);
             obj.addChannel("I_measure");

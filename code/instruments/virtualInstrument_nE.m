@@ -15,6 +15,10 @@ classdef virtualInstrument_nE < virtualInstrumentInterface
 
         nStored (1, 1) double {mustBeFinite} = 0
         EStored (1, 1) double {mustBeFinite} = 0
+
+        % When true: if the n/E target maps outside gate limits, skip setting.
+        % When false (default): clamp gate voltages to limits and set anyway.
+        skipOutOfBounds (1, 1) logical = false
     end
 
     properties (Access = private)
@@ -61,6 +65,7 @@ classdef virtualInstrument_nE < virtualInstrumentInterface
             obj.addChannel("n");
             obj.addChannel("E");
             obj.addChannel("nE_within_bounds");
+            obj.addChannel("skipOutOfBounds");
 
             obj.initializeStoredStateFromHardware();
         end
@@ -73,6 +78,12 @@ classdef virtualInstrument_nE < virtualInstrumentInterface
                     obj.nStored = setValues(1);
                 case 2 % E
                     obj.EStored = setValues(1);
+                case 4 % skipOutOfBounds
+                    v = setValues(1);
+                    if ~(v == 0 || v == 1)
+                        error("virtualInstrument_nE:InvalidSkipSetting", "skipOutOfBounds must be 0 or 1.");
+                    end
+                    obj.skipOutOfBounds = logical(v);
                 otherwise
                     setWriteChannelHelper@virtualInstrumentInterface(obj, channelIndex, setValues);
             end
@@ -93,11 +104,21 @@ classdef virtualInstrument_nE < virtualInstrumentInterface
                 case 3
                     [~, ~, withinBounds] = obj.computeGateVoltages(obj.nStored, obj.EStored);
                     getValues = double(withinBounds);
+                case 4
+                    getValues = double(obj.skipOutOfBounds);
             end
         end
 
         function TF = setCheckChannelHelper(obj, channelIndex, ~)
-            [vtg, vbg] = obj.computeGateVoltages(obj.nStored, obj.EStored);
+            if channelIndex == 4
+                TF = true;
+                return;
+            end
+            [vtg, vbg, withinBounds] = obj.computeGateVoltages(obj.nStored, obj.EStored);
+            if ~withinBounds && obj.skipOutOfBounds
+                TF = true;
+                return;
+            end
             [nEff, EEff] = obj.computeNormalizedStateFromVoltages(vtg, vbg);
             expected = [nEff, EEff];
             channel = obj.channelTable.channels(channelIndex);
@@ -179,7 +200,7 @@ classdef virtualInstrument_nE < virtualInstrumentInterface
         
         function setHardwareFromState(obj)
             [vtg, vbg, withinBounds] = obj.computeGateVoltages(obj.nStored, obj.EStored);
-            if ~withinBounds
+            if ~withinBounds && obj.skipOutOfBounds
                 return;
             end
             rack = obj.getMasterRack();

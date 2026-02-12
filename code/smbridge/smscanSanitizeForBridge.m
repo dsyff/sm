@@ -56,7 +56,7 @@ if ~isfield(scanOut, "disp") || isempty(scanOut.disp)
     return;
 end
 
-plotNames = string.empty(1, 0);
+totalPlotNames = 0;
 for loopIdx = 1:numel(scanOut.loops)
     loopDef = scanOut.loops(loopIdx);
     if ~isfield(loopDef, "getchan") || isempty(loopDef.getchan)
@@ -66,18 +66,31 @@ for loopIdx = 1:numel(scanOut.loops)
     loopGetNames = loopGetNames(:).';
     for nameIdx = 1:numel(loopGetNames)
         chanName = loopGetNames(nameIdx);
-        chanSize = 1;
-        try
-            chanSize = bridge.getChannelSize(chanName);
-        catch
-            chanSize = 1;
-        end
+        chanSize = bridge.getChannelSize(chanName);
+        totalPlotNames = totalPlotNames + max(1, chanSize);
+    end
+end
+
+plotNames = strings(1, totalPlotNames);
+plotNameIdx = 1;
+for loopIdx = 1:numel(scanOut.loops)
+    loopDef = scanOut.loops(loopIdx);
+    if ~isfield(loopDef, "getchan") || isempty(loopDef.getchan)
+        continue;
+    end
+    loopGetNames = string(loopDef.getchan);
+    loopGetNames = loopGetNames(:).';
+    for nameIdx = 1:numel(loopGetNames)
+        chanName = loopGetNames(nameIdx);
+        chanSize = bridge.getChannelSize(chanName);
         if chanSize > 1
             for vecIdx = 1:chanSize
-                plotNames(end+1) = chanName + "_" + vecIdx; %#ok<AGROW>
+                plotNames(plotNameIdx) = chanName + "_" + vecIdx;
+                plotNameIdx = plotNameIdx + 1;
             end
         else
-            plotNames(end+1) = chanName; %#ok<AGROW>
+            plotNames(plotNameIdx) = chanName;
+            plotNameIdx = plotNameIdx + 1;
         end
     end
 end

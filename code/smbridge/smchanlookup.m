@@ -1,13 +1,13 @@
-function channelIndices = smchanlookup_new(channelNames, vector_name)
+function channelIndices = smchanlookup(channelNames, vector_name)
 % Modern version of smchanlookup for new system with vector channel support
 % Returns 1-based indices for given channel names
 %
 % Usage:
-%   idx = smchanlookup_new('ChannelName', true)      % Vector name lookup (GUI display names)
-%   idx = smchanlookup_new('ChannelName', false)     % Scalar name lookup (smdata.channels names)
-%   idx = smchanlookup_new({'Ch1', 'Ch2'}, true)     % Multiple vector names
-%   idx = smchanlookup_new(["Ch1", "Ch2"], false)    % Multiple scalar names
-%   idx = smchanlookup_new([], true/false)           % Empty array - returns []
+%   idx = smchanlookup("ChannelName", true)      % Vector name lookup (GUI display names)
+%   idx = smchanlookup("ChannelName", false)     % Scalar name lookup (smdata.channels names)
+%   idx = smchanlookup({"Ch1", "Ch2"}, true)     % Multiple vector names
+%   idx = smchanlookup(["Ch1", "Ch2"], false)    % Multiple scalar names
+%   idx = smchanlookup([], true/false)           % Empty array - returns []
 %
 % Parameters:
 %   channelNames - Channel name(s) to look up (char, string, cell array, or string array)
@@ -19,7 +19,7 @@ global smdata bridge;
 
 % Validate required parameter
 if nargin < 2
-    error('smchanlookup_new requires two arguments: channelNames and vector_name flag');
+    error("smchanlookup requires two arguments: channelNames and vector_name flag");
 end
 
 % Handle empty input

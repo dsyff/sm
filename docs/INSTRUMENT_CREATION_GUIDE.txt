@@ -11,13 +11,15 @@ The instrument system uses a layered architecture:
 
 CANONICAL USER SETUP SCRIPT
 ---------------------------
-`demos/demo.m` is the main end-to-end example setup script. It is a practical
-starting point that initializes the broader SM environment (including the
-sm-bridge/legacy-GUI plumbing) and shows how to build an `instrumentRack`.
-Users typically copy `demos/demo.m`, remove unneeded instruments, and make small
-experiment-specific modifications. If you create/edit an instrument class or
-change channel names/sizes, update `demos/demo.m` accordingly (and keep
-`demos/INSTRUMENT_SETUP_GUIDE.txt` consistent).
+There are two canonical setup styles:
+  - `demos/demo.m` (RECOMMENDED): recipe-based workflow. The rack is built on a
+    worker “engine” process via `instrumentRackRecipe`.
+  - `tests/demo_nE.m` (DEBUG/LEGACY, git-ignored): explicit rack-on-client
+    workflow. Useful for hardware bring-up and single-threaded debugging.
+
+If you create/edit an instrument class or change channel names/sizes, update the
+relevant demo(s) accordingly (and keep `demos/INSTRUMENT_SETUP_GUIDE.txt`
+consistent).
 
 
 ================================================================================
@@ -110,6 +112,9 @@ Sends the query command to the instrument WITHOUT reading the response.
 
 WHY SEPARATED? The instrumentRack sends all getWrite commands first, then
 reads responses. This minimizes wait time since instruments settle in parallel.
+Also, both get-write and set-write calls pass through a shared write pacing
+gate in `instrumentInterface` (`writeCommandInterval`), so bus pacing can be
+configured per instrument without adding ad-hoc pauses in helpers.
 
 
 getReadChannelHelper(obj, channelIndex)
@@ -191,7 +196,7 @@ Recommendation:
     behaves poorly and this is absolutely necessary. Unexplained buffer content
     is usually from interrupted reads/scans, and frequent flushing wastes time.
   - The rack/main scripts already flush all instruments on init and before each
-    scan (see smready and smrun_new). instrumentRack.addInstrument also flushes
+    scan (see smready and measurementEngine). instrumentRack.addInstrument also flushes
     once per instrument during registration.
 
 
@@ -246,15 +251,58 @@ Inherited properties you can modify:
   setTimeout        1 minute      Max wait time for set operations
   setInterval       2 seconds     Polling interval during set verification
   requireSetCheck   true          Whether to verify set values reached target
+  writeCommandInterval 0 seconds  Min spacing between write commands (getWrite/setWrite)
+  numWorkersRequired 0            Additional pool workers this instrument needs
 
 Example:
   obj.setTimeout = minutes(5);      % For slow-settling instruments
   obj.setInterval = seconds(0.5);   % For fast instruments
   obj.requireSetCheck = false;      % Skip verification (use with caution)
+  obj.writeCommandInterval = seconds(0.2); % For slow command buses (example: some GPIB setups)
+
+Notes on write pacing:
+  - `writeCommandInterval` is enforced before each instrument write command
+    issued by framework paths (`getWriteChannel...` / `setWriteChannel...`).
+  - Default is `seconds(0)`.
+  - For instruments that lose/ignore commands when written too quickly,
+    set this in the constructor.
+  - Current convention in this repo: if an instrument is created with a
+    GPIB resource address, set `writeCommandInterval = seconds(0.2)`.
 
 
 ================================================================================
-6. ADDING INSTRUMENTS TO THE RACK
+6. WORKER ENGINE + INSTRUMENT WORKERS (RECIPE MODE)
+================================================================================
+
+In recipe mode, instrument constructors run on the engine worker. Workers cannot
+spawn workers directly, so any background instrument worker(s) must be started
+on the client.
+
+For status/diagnostic output in worker-capable code, use:
+  experimentContext.print(...)
+instead of direct fprintf/disp. experimentContext.print routes worker messages
+to the client terminal via the shared DataQueue, while local calls print
+directly.
+
+Two pieces are required:
+  1) Pool sizing (EXPLICIT in the recipe):
+     - When adding an instrument to an `instrumentRackRecipe`, pass the reserved
+       name-value `numeWorkersRequested = N` so the engine can allocate
+       (1 engine worker + sum(numeWorkersRequested)) processes.
+
+     Example:
+       recipe.addInstrument("h", "instrument_myInst", "myInst", ..., numeWorkersRequested = 2);
+
+  2) Spawning the worker(s) from engine-worker code:
+     - Call `requestWorkerSpawn(...)` from the worker to request the client to start a
+       `parfeval` task on the shared pool.
+
+     Example (from worker-side code):
+       requestWorkerSpawn("myInst", @myWorkerMain, 0, arg1, arg2);
+
+
+================================================================================
+7. ADDING INSTRUMENTS TO THE RACK
 ================================================================================
 
 NAMING CONVENTIONS (from demo.m)
@@ -320,7 +368,7 @@ VIRTUAL INSTRUMENT SETUP
 
 
 ================================================================================
-7. COMMON PATTERNS & TIPS
+8. COMMON PATTERNS & TIPS
 ================================================================================
 
 USE SWITCH-CASE FOR CHANNEL DISPATCH
@@ -394,7 +442,7 @@ AVOID COMMON MISTAKES
 
 
 ================================================================================
-8. FILE NAMING CONVENTION
+9. FILE NAMING CONVENTION
 ================================================================================
 
   instrument_<InstrumentName>.m          % Physical instruments
