@@ -24,9 +24,6 @@ classdef instrument_SR830 < instrumentInterface
             % Assign object properties
             obj.address = address;
             obj.communicationHandle = handle;
-            if startsWith(upper(string(address)), "GPIB")
-                obj.writeCommandInterval = seconds(0.2);
-            end
 
             % Add channels - based on legacy channel mapping
             obj.addChannel("X");                    % Channel 1: X output

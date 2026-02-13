@@ -47,9 +47,11 @@
 % Notes:
 % - This can be done before or after rack.addInstrument(...) (demo.m does both).
 % - Prefer instrument class methods when available; use direct commands for gaps.
+% - Safety default: keep `reset()` calls commented out unless you have
+%   explicitly ramped outputs to a known-safe state.
 % - Framework write pacing is controlled by `handle.writeCommandInterval`
-%   (default `seconds(0)`). Current convention for GPIB-backed drivers is
-%   `seconds(0.2)` to avoid overdriving slower command paths.
+%   (default `seconds(0)`). No automatic GPIB delay is applied by default;
+%   set this manually per instrument only when needed.
 %
 % STEP 4: add instrument to rack
 % Syntax: rack.addInstrument(handle, "instName")
@@ -82,7 +84,13 @@
 %   recipe = instrumentRackRecipe();
 %   recipe.addInstrument("h", "instrument_ClassName", "friendlyName", ...);
 %   recipe.addChannel("friendlyName", "instChanName", "userChanName");
+%   recipe.addStatement("h = handle_myInst.communicationHandle;");
+%   recipe.addStatement("writeline(h, ""SCPI_COMMAND"");");
 %   smready(recipe);
+%
+% Statement style guideline:
+% - Prefer one executable line per `recipe.addStatement(...)` call.
+% - This makes it easy to comment out individual setup lines in demos/scripts.
 %
 % Optional local-debug path with the same recipe (no engine worker):
 %   smready(recipe, singleThreaded = true);
@@ -99,9 +107,13 @@
 % 2) Convert each physical-instrument block:
 %      handle_K2450 = instrument_K2450(gpibAddress(18, 0));
 %      handle_K2450.requireSetCheck = false;
+%      h = handle_K2450.communicationHandle;
+%      writeline(h, ":OUTP ON");
 %      rack.addInstrument(handle_K2450, "K2450_A");
 %   -> recipe.addInstrument("handle_K2450", "instrument_K2450", "K2450_A", gpibAddress(18, 0));
 %      recipe.addStatement("handle_K2450.requireSetCheck = false;");
+%      recipe.addStatement("h = handle_K2450.communicationHandle;");
+%      recipe.addStatement("writeline(h, ':OUTP ON');");
 %
 % 3) Convert channels 1:1:
 %      rack.addChannel(...) -> recipe.addChannel(...)

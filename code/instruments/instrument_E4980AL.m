@@ -20,9 +20,6 @@ classdef instrument_E4980AL < instrumentInterface
             % assign object properties
             obj.address = address;
             obj.communicationHandle = handle;
-            if startsWith(upper(string(address)), "GPIB")
-                obj.writeCommandInterval = seconds(0.2);
-            end
 
             obj.addChannel("Cp");
             obj.addChannel("Q");
