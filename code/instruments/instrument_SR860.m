@@ -76,7 +76,9 @@ classdef instrument_SR860 < instrumentInterface
             % This allows instrumentRack to minimize reading time by sending all
             % getWrite commands first, then reading all results in sequence
             handle = obj.communicationHandle;
-            %flush(handle); SR860 flushes extremely slowly
+            if visastatus(handle)
+                flush(handle);
+            end
             switch channelIndex
                 case 1  % X
                     writeline(handle, 'OUTP? 0');

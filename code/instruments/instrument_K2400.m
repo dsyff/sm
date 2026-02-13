@@ -18,7 +18,7 @@ classdef instrument_K2400 < instrumentInterface
             obj.address = address;
             obj.communicationHandle = handle;
 
-            obj.addChannel("V_source", setTolerances = 1E-5);
+            obj.addChannel("V_source", setTolerances = 5E-4);
             obj.addChannel("I_measure");
             obj.addChannel("VI", 2);
         end
@@ -43,6 +43,9 @@ classdef instrument_K2400 < instrumentInterface
         % starting from 1
         function getWriteChannelHelper(obj, ~)
             handle = obj.communicationHandle;
+            if visastatus(handle)
+                flush(handle);
+            end
             writeline(handle, ":READ?");
         end
 

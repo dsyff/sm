@@ -18,7 +18,7 @@ classdef instrument_K2450 < instrumentInterface
             obj.address = address;
             obj.communicationHandle = handle;
 
-            obj.addChannel("V_source", setTolerances = 1E-5);
+            obj.addChannel("V_source", setTolerances = 5E-4);
             obj.addChannel("I_measure");
             obj.addChannel("VI", 2);
         end
@@ -41,6 +41,9 @@ classdef instrument_K2450 < instrumentInterface
 
         function getWriteChannelHelper(obj, channelIndex)
             handle = obj.communicationHandle;
+            if visastatus(handle)
+                flush(handle);
+            end
             switch channelIndex
                 case 1
                     writeline(handle, ":READ? ""defbuffer1"", SOUR");
