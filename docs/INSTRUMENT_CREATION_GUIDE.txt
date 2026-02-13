@@ -325,11 +325,14 @@ TYPICAL SETUP PATTERN
 
   % 2. Configure instrument via direct commands
   h = handle_K2450_A.communicationHandle;
-  writeline(h, ":sense:current:range 1e-7");
-  writeline(h, "source:voltage:Ilimit 1e-7");
-  writeline(h, ":source:voltage:range 20");
-  writeline(h, "NPLcycles 0.2");
-  writeline(h, ":OUTP ON");
+  writeline(h, ":SOURce:VOLTage:READ:BACK OFF");
+  writeline(h, ":SENSe:CURRent:AZERo:STATe OFF");
+  writeline(h, ":SOURce:DELay 0");
+  writeline(h, ":SENSe:CURRent:RANGe 1e-7");
+  writeline(h, ":SOURce:VOLTage:ILIMit 1e-7");
+  writeline(h, ":SOURce:VOLTage:RANGe 20");
+  writeline(h, ":SENSe:CURRent:NPLCycles 0.2");
+  writeline(h, ":OUTPut ON");
   pause(2);
 
   % 3. Add to rack

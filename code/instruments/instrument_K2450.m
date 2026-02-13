@@ -14,7 +14,7 @@ classdef instrument_K2450 < instrumentInterface
             handle.Timeout = 1;
             configureTerminator(handle, "LF");
             obj.writeCommandInterval = seconds(0.4);
-            
+
             % assign object properties
             obj.address = address;
             obj.communicationHandle = handle;
@@ -28,11 +28,12 @@ classdef instrument_K2450 < instrumentInterface
         function reset(obj)
             handle = obj.communicationHandle;
             writeline(handle,"*RST");
-            writeline(handle,":OUTP ON");
+            writeline(handle, ":OUTPut ON");
         end
 
         function flush(obj)
-            % Flush communication buffer
+            % Trigger one-time auto-zero and flush communication buffer.
+            writeline(obj.communicationHandle, ":SENSe:AZERo:ONCE");
             flush(obj.communicationHandle);
         end
 
@@ -64,7 +65,7 @@ classdef instrument_K2450 < instrumentInterface
             handle = obj.communicationHandle;
             switch channelIndex
                 case 1
-                    writeline(handle, sprintf(":SOUR:VOLT %g", setValues));
+                    writeline(handle, sprintf(":SOURce:VOLTage %g", setValues));
                 otherwise
                     setWriteChannelHelper@instrumentInterface(obj, channelIndex, setValues);
             end

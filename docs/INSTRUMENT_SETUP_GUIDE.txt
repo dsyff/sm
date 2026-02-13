@@ -108,12 +108,12 @@
 %      handle_K2450 = instrument_K2450(gpibAddress(18, 0));
 %      handle_K2450.requireSetCheck = false;
 %      h = handle_K2450.communicationHandle;
-%      writeline(h, ":OUTP ON");
+%      writeline(h, ":OUTPut ON");
 %      rack.addInstrument(handle_K2450, "K2450_A");
 %   -> recipe.addInstrument("handle_K2450", "instrument_K2450", "K2450_A", gpibAddress(18, 0));
 %      recipe.addStatement("handle_K2450.requireSetCheck = false;");
 %      recipe.addStatement("h = handle_K2450.communicationHandle;");
-%      recipe.addStatement("writeline(h, ':OUTP ON');");
+%      recipe.addStatement("writeline(h, ':OUTPut ON');");
 %
 % 3) Convert channels 1:1:
 %      rack.addChannel(...) -> recipe.addChannel(...)
