@@ -115,6 +115,9 @@ reads responses. This minimizes wait time since instruments settle in parallel.
 Also, both get-write and set-write calls pass through a shared write pacing
 gate in `instrumentInterface` (`writeCommandInterval`), so bus pacing can be
 configured per instrument without adding ad-hoc pauses in helpers.
+For Keithley setups, note that consecutive get/set commands can be fast while
+the read phase after a get query is often much slower (around 0.5 s depending
+on NPLC/averaging/auto-zero/readback settings).
 
 
 getReadChannelHelper(obj, channelIndex)
@@ -331,7 +334,7 @@ TYPICAL SETUP PATTERN
   writeline(h, ":SENSe:CURRent:RANGe 1e-7");
   writeline(h, ":SOURce:VOLTage:ILIMit 1e-7");
   writeline(h, ":SOURce:VOLTage:RANGe 20");
-  writeline(h, ":SENSe:CURRent:NPLCycles 0.2");
+  writeline(h, ":SENSe:CURRent:NPLCycles 0.5");
   writeline(h, ":OUTPut ON");
   pause(2);
 

@@ -124,7 +124,7 @@ writeline(h, ":SOURce:VOLTage:ILIMit 1.6e-7"); %sets a current limit protector
 writeline(h, ":SOURce:VOLTage:RANGe 200"); %sets the source voltage range
 %writeline(h, ":SOURce:VOLTage:RANGe:AUTO ON"); %use auto range for voltage
 %writeline(h, ":ROUTe:TERMinals REAR"); %use rear terminal
-%writeline(h, ":SENSe:CURRent:NPLCycles 2"); %number of power line cycles per measurement
+%writeline(h, ":SENSe:CURRent:NPLCycles 0.5"); %number of power line cycles per measurement
 writeline(h, ":OUTPut ON");
 pause(2);
 handle_K2450_A.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
@@ -152,7 +152,7 @@ writeline(h, ":SOURce:VOLTage:ILIMit 1e-7"); %sets a current limit protector
 writeline(h, ":SOURce:VOLTage:RANGe 200"); %sets the source voltage range
 %writeline(h, ":SOURce:VOLTage:RANGe:AUTO ON"); %use auto range for voltage
 %writeline(h, ":ROUTe:TERMinals REAR"); %use rear terminal
-%writeline(h, ":SENSe:CURRent:NPLCycles 2"); %number of power line cycles per measurement
+%writeline(h, ":SENSe:CURRent:NPLCycles 0.5"); %number of power line cycles per measurement
 writeline(h, ":OUTPut ON");
 pause(2);
 handle_K2450_B.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load

@@ -196,7 +196,7 @@ if K2450_A_Use
     recipe.addStatement("writeline(h, ':SENSe:CURRent:RANGe 1e-7');");
     recipe.addStatement("writeline(h, ':SOURce:VOLTage:ILIMit 1e-7');");
     recipe.addStatement("writeline(h, ':SOURce:VOLTage:RANGe 20');");
-    recipe.addStatement("writeline(h, ':SENSe:CURRent:NPLCycles 0.2');");
+    recipe.addStatement("writeline(h, ':SENSe:CURRent:NPLCycles 0.5');");
     recipe.addStatement("writeline(h, ':OUTPut ON');");
     recipe.addStatement("pause(2);");
     recipe.addChannel("K2450_A", "V_source", "V_bg", 1, 0.5, -10, 10);
@@ -215,7 +215,7 @@ if K2450_B_Use
     recipe.addStatement("writeline(h, ':SENSe:CURRent:RANGe 1e-7');");
     recipe.addStatement("writeline(h, ':SOURce:VOLTage:ILIMit 1e-7');");
     recipe.addStatement("writeline(h, ':SOURce:VOLTage:RANGe 20');");
-    recipe.addStatement("writeline(h, ':SENSe:CURRent:NPLCycles 0.2');");
+    recipe.addStatement("writeline(h, ':SENSe:CURRent:NPLCycles 0.5');");
     recipe.addStatement("writeline(h, ':OUTPut ON');");
     recipe.addStatement("pause(2);");
     recipe.addChannel("K2450_B", "V_source", "V_tg", 1, 0.5, -10, 10);
@@ -234,7 +234,7 @@ if K2450_C_Use
     recipe.addStatement("writeline(h, ':SENSe:CURRent:RANGe 1e-7');");
     recipe.addStatement("writeline(h, ':SOURce:VOLTage:ILIMit 1e-7');");
     recipe.addStatement("writeline(h, ':SOURce:VOLTage:RANGe 20');");
-    recipe.addStatement("writeline(h, ':SENSe:CURRent:NPLCycles 0.2');");
+    recipe.addStatement("writeline(h, ':SENSe:CURRent:NPLCycles 0.5');");
     recipe.addStatement("writeline(h, ':OUTPut ON');");
     recipe.addStatement("pause(2);");
     recipe.addChannel("K2450_C", "V_source", "V_tg", 1, 0.5, -10, 10);
@@ -252,7 +252,7 @@ if K2400_A_Use
     recipe.addStatement("writeline(h, ':SENSe:CURRent:RANGe 1e-7');");
     recipe.addStatement("writeline(h, ':SENSe:CURRent:PROTection 1e-7');");
     recipe.addStatement("writeline(h, ':SOURce:VOLTage:RANGe 20');");
-    recipe.addStatement("writeline(h, ':CURRent:NPLCycles 0.2');");
+    recipe.addStatement("writeline(h, ':CURRent:NPLCycles 0.5');");
     recipe.addStatement("writeline(h, ':OUTPut ON');");
     recipe.addStatement("pause(2);");
     recipe.addChannel("K2400_A", "V_source", "V_bg", 1, 0.5, -10, 10);
@@ -270,7 +270,7 @@ if K2400_B_Use
     recipe.addStatement("writeline(h, ':SENSe:CURRent:RANGe 1e-7');");
     recipe.addStatement("writeline(h, ':SENSe:CURRent:PROTection 1e-7');");
     recipe.addStatement("writeline(h, ':SOURce:VOLTage:RANGe 20');");
-    recipe.addStatement("writeline(h, ':CURRent:NPLCycles 0.2');");
+    recipe.addStatement("writeline(h, ':CURRent:NPLCycles 0.5');");
     recipe.addStatement("writeline(h, ':OUTPut ON');");
     recipe.addStatement("pause(2);");
     recipe.addChannel("K2400_B", "V_source", "V_tg", 1, 0.5, -10, 10);
@@ -288,7 +288,7 @@ if K2400_C_Use
     recipe.addStatement("writeline(h, ':SENSe:CURRent:RANGe 1e-7');");
     recipe.addStatement("writeline(h, ':SENSe:CURRent:PROTection 1e-7');");
     recipe.addStatement("writeline(h, ':SOURce:VOLTage:RANGe 20');");
-    recipe.addStatement("writeline(h, ':CURRent:NPLCycles 0.2');");
+    recipe.addStatement("writeline(h, ':CURRent:NPLCycles 0.5');");
     recipe.addStatement("writeline(h, ':OUTPut ON');");
     recipe.addStatement("pause(2);");
     recipe.addChannel("K2400_C", "V_source", "V_tg", 1, 0.5, -10, 10);
