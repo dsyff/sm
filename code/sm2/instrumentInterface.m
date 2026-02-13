@@ -108,17 +108,9 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
         end
     end
     
-    methods (Access = ?instrumentRack, Sealed)
+    methods (Access = {?instrumentRack, ?instrumentInterface}, Sealed)
 
-        function channelIndex = findChannelIndexForRack(obj, channel)
-            arguments
-                obj;
-                channel (1, 1) string {mustBeNonzeroLengthText};
-            end
-            channelIndex = obj.findChannelIndex(channel);
-        end
-
-        function channelSize = findChannelSizeByIndexForRack(obj, channelIndex)
+        function channelSize = findChannelSizeByIndex(obj, channelIndex)
             arguments
                 obj;
                 channelIndex (1, 1) {mustBePositive, mustBeInteger};
@@ -182,8 +174,7 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 channel (1, 1) string {mustBeNonzeroLengthText};
             end
             channelIndex = obj.findChannelIndex(channel);
-            obj.performGetWriteByIndex(channelIndex);
-            getValues = obj.performGetReadByIndex(channelIndex);
+            getValues = obj.getChannelByIndex(channelIndex);
         end
 
         function setChannel(obj, channel, setValues)
@@ -192,10 +183,11 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 channel (1, 1) string {mustBeNonzeroLengthText};
                 setValues double {mustBeVector};
             end
-            obj.setWriteChannel(channel, setValues);
-            if ~obj.setCheckChannel(channel)
+            channelIndex = obj.findChannelIndex(channel);
+            obj.setWriteChannelByIndex(channelIndex, setValues);
+            if ~obj.setCheckChannelByIndex(channelIndex)
                 startTime = datetime("now");
-                while ~obj.setCheckChannel(channel) && (datetime("now") - startTime) < obj.setTimeout
+                while ~obj.setCheckChannelByIndex(channelIndex) && (datetime("now") - startTime) < obj.setTimeout
                     if obj.setInterval > 0
                         pause(seconds(obj.setInterval));
                     end
@@ -210,7 +202,7 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 setValues double {mustBeVector};
             end
             channelIndex = obj.findChannelIndex(channel);
-            obj.setWriteChannelByIndexCore(channelIndex, setValues);
+            obj.setWriteChannelByIndex(channelIndex, setValues);
         end
 
         function TF = setCheckChannel(obj, channel)
@@ -220,7 +212,7 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 channel (1, 1) string {mustBeNonzeroLengthText};
             end
             channelIndex = obj.findChannelIndex(channel);
-            TF = obj.setCheckChannelByIndexCore(channelIndex);
+            TF = obj.setCheckChannelByIndex(channelIndex);
         end
 
         function channelIndex = findChannelIndex(obj, channel)
@@ -237,7 +229,8 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 obj;
                 channel (1, 1) string {mustBeNonzeroLengthText};
             end
-            channelSize = obj.channelTable.channelSizes(obj.findChannelIndex(channel));
+            channelIndex = obj.findChannelIndex(channel);
+            channelSize = obj.findChannelSizeByIndex(channelIndex);
         end
 
         function setSetTolerances(obj, channel, newSetTolerances)

@@ -108,8 +108,8 @@ classdef (Sealed) instrumentRack < handle
             instrumentVirtualFlag = obj.instrumentTable.virtual(instrumentTableIndex);
             
             % resolve and cache instrument-local channel index once
-            channelIndex = instrument.findChannelIndexForRack(channel);
-            channelSize = instrument.findChannelSizeByIndexForRack(channelIndex);
+            channelIndex = instrument.findChannelIndex(channel);
+            channelSize = instrument.findChannelSizeByIndex(channelIndex);
             
             % validate rampRates size
             if isempty(rampRates)
