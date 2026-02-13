@@ -13,7 +13,8 @@ classdef instrument_K2400 < instrumentInterface
             handle = visadev(address);
             handle.Timeout = 1;
             configureTerminator(handle, "LF")
-
+            obj.writeCommandInterval = seconds(0.4);
+            
             % assign object properties
             obj.address = address;
             obj.communicationHandle = handle;
