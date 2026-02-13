@@ -194,6 +194,7 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 TF = true;
                 return;
             end
+            obj.enforceWriteCommandInterval();
             channel = obj.channelTable.channels(channelIndex);
             channelLastSetValues = obj.lastSetValues{channelIndex};
             assert(~isempty(channelLastSetValues), "setWriteChannel for channel %s has not been called succesfully yet.", channel);
