@@ -21,6 +21,7 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
         setInterval (1, 1) duration = seconds(2);
         requireSetCheck (1, 1) logical = true;
         writeCommandInterval (1, 1) duration = seconds(0);
+        writeCommandIntervalMinWrites (1, 1) double {mustBeNonnegative, mustBeInteger} = 5;
     end
 
     properties (SetAccess = protected)
@@ -34,6 +35,7 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
         lastSetValues = {};
         channelNameToIndex = dictionary(string.empty(0, 1), uint32.empty(0, 1));
         lastWriteCommandTic = [];
+        writesSinceLastRead (1, 1) double {mustBeNonnegative, mustBeInteger} = 0;
     end
 
     methods (Abstract, Access = ?instrumentInterface)
@@ -352,6 +354,8 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 warning("Channel %s returned a row vector while getting. A column vector is preferred.", channel);
                 getValues = getValues.';
             end
+            obj.lastWriteCommandTic = [];
+            obj.writesSinceLastRead = 0;
         end
 
         function channelIndex = normalizeChannelIndex(obj, channelIndex)
@@ -368,13 +372,15 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
         function enforceWriteCommandInterval(obj)
             intervalSeconds = seconds(obj.writeCommandInterval);
             assert(intervalSeconds >= 0, "writeCommandInterval must be nonnegative.");
-            if intervalSeconds > 0 && ~isempty(obj.lastWriteCommandTic)
+            minWrites = obj.writeCommandIntervalMinWrites;
+            if intervalSeconds > 0 && obj.writesSinceLastRead >= minWrites && ~isempty(obj.lastWriteCommandTic)
                 remaining = intervalSeconds - toc(obj.lastWriteCommandTic);
                 if remaining > 0
                     pause(remaining);
                 end
             end
             obj.lastWriteCommandTic = tic;
+            obj.writesSinceLastRead = obj.writesSinceLastRead + 1;
         end
 
     end
