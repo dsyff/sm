@@ -52,6 +52,9 @@
 % - Framework write pacing is controlled by `handle.writeCommandInterval`
 %   (default `seconds(0)`). No automatic GPIB delay is applied by default;
 %   set this manually per instrument only when needed.
+% - Keithley timing note: consecutive gets/sets can be fast, but the read
+%   phase after a get query can be much slower (often around 0.5 s,
+%   depending on NPLC/averaging/auto-zero/readback settings).
 %
 % STEP 4: add instrument to rack
 % Syntax: rack.addInstrument(handle, "instName")
