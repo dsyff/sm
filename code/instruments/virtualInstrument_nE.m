@@ -62,8 +62,8 @@ classdef virtualInstrument_nE < virtualInstrumentInterface
             obj.validateCalibrationPoints();
             obj.computeTransformationMatrix();
 
-            obj.addChannel("n", setTolerances = 1E-5);
-            obj.addChannel("E", setTolerances = 1E-5);
+            obj.addChannel("n", setTolerances = 1E-3);
+            obj.addChannel("E", setTolerances = 1E-3);
             obj.addChannel("nE_within_bounds");
             obj.addChannel("skipOutOfBounds");
 
