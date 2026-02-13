@@ -61,6 +61,6 @@ recipe.addChannel("virtual_nE", "nE_within_bounds", "nE_within_bounds");
 recipe.addChannel("virtual_nE", "skipOutOfBounds", "skipOutOfBounds", [], [], 0, 1);
 
 %% wrap up setup
-% smready(recipe, singleThreaded = true); % Debug: run recipe on client instead of engine worker.
-% In the Queue GUI, Run executes turbo mode (engine worker measurement loop).
-smready(recipe, verboseClient=false, verboseWorker=false);
+%smready(recipe, singleThreaded = true); % Debug: run recipe on client instead of engine worker.
+%smready(recipe, verboseClient=true, verboseWorker=true); % Debug: allow logging to files.
+smready(recipe);

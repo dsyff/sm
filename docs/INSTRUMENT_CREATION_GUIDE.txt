@@ -266,8 +266,8 @@ Notes on write pacing:
   - Default is `seconds(0)`.
   - For instruments that lose/ignore commands when written too quickly,
     set this in the constructor.
-  - Current convention in this repo: if an instrument is created with a
-    GPIB resource address, set `writeCommandInterval = seconds(0.2)`.
+  - Automatic bus-type-based delays are not applied by default.
+  - If needed, set pacing manually for that specific instrument.
 
 
 ================================================================================

@@ -187,14 +187,14 @@ end
 
 if K2450_A_Use
     recipe.addInstrument("handle_K2450_A", "instrument_K2450", "K2450_A", gpibAddress(K2450_A_GPIB, adaptorIndex));
-    recipe.addStatement("handle_K2450_A.requireSetCheck = false;" + newline + ...
-        "h = handle_K2450_A.communicationHandle;" + newline + ...
-        "writeline(h, ':sense:current:range 1e-7');" + newline + ...
-        "writeline(h, 'source:voltage:Ilimit 1e-7');" + newline + ...
-        "writeline(h, ':source:voltage:range 20');" + newline + ...
-        "writeline(h, 'NPLcycles 0.2');" + newline + ...
-        "writeline(h, ':OUTP ON');" + newline + ...
-        "pause(2);");
+    recipe.addStatement("handle_K2450_A.requireSetCheck = false;");
+    recipe.addStatement("h = handle_K2450_A.communicationHandle;");
+    recipe.addStatement("writeline(h, ':sense:current:range 1e-7');");
+    recipe.addStatement("writeline(h, 'source:voltage:Ilimit 1e-7');");
+    recipe.addStatement("writeline(h, ':source:voltage:range 20');");
+    recipe.addStatement("writeline(h, 'NPLcycles 0.2');");
+    recipe.addStatement("writeline(h, ':OUTP ON');");
+    recipe.addStatement("pause(2);");
     recipe.addChannel("K2450_A", "V_source", "V_bg", 1, 0.5, -10, 10);
     recipe.addChannel("K2450_A", "I_measure", "I_bg");
     recipe.addChannel("K2450_A", "VI", "VI_bg");
@@ -202,14 +202,14 @@ end
 
 if K2450_B_Use
     recipe.addInstrument("handle_K2450_B", "instrument_K2450", "K2450_B", gpibAddress(K2450_B_GPIB, adaptorIndex));
-    recipe.addStatement("handle_K2450_B.requireSetCheck = false;" + newline + ...
-        "h = handle_K2450_B.communicationHandle;" + newline + ...
-        "writeline(h, ':sense:current:range 1e-7');" + newline + ...
-        "writeline(h, 'source:voltage:Ilimit 1e-7');" + newline + ...
-        "writeline(h, ':source:voltage:range 20');" + newline + ...
-        "writeline(h, 'NPLcycles 0.2');" + newline + ...
-        "writeline(h, ':OUTP ON');" + newline + ...
-        "pause(2);");
+    recipe.addStatement("handle_K2450_B.requireSetCheck = false;");
+    recipe.addStatement("h = handle_K2450_B.communicationHandle;");
+    recipe.addStatement("writeline(h, ':sense:current:range 1e-7');");
+    recipe.addStatement("writeline(h, 'source:voltage:Ilimit 1e-7');");
+    recipe.addStatement("writeline(h, ':source:voltage:range 20');");
+    recipe.addStatement("writeline(h, 'NPLcycles 0.2');");
+    recipe.addStatement("writeline(h, ':OUTP ON');");
+    recipe.addStatement("pause(2);");
     recipe.addChannel("K2450_B", "V_source", "V_tg", 1, 0.5, -10, 10);
     recipe.addChannel("K2450_B", "I_measure", "I_tg");
     recipe.addChannel("K2450_B", "VI", "VI_tg");
@@ -217,14 +217,14 @@ end
 
 if K2450_C_Use
     recipe.addInstrument("handle_K2450_C", "instrument_K2450", "K2450_C", gpibAddress(K2450_C_GPIB, adaptorIndex));
-    recipe.addStatement("handle_K2450_C.requireSetCheck = false;" + newline + ...
-        "h = handle_K2450_C.communicationHandle;" + newline + ...
-        "writeline(h, ':sense:current:range 1e-7');" + newline + ...
-        "writeline(h, 'source:voltage:Ilimit 1e-7');" + newline + ...
-        "writeline(h, ':source:voltage:range 20');" + newline + ...
-        "writeline(h, 'NPLcycles 0.2');" + newline + ...
-        "writeline(h, ':OUTP ON');" + newline + ...
-        "pause(2);");
+    recipe.addStatement("handle_K2450_C.requireSetCheck = false;");
+    recipe.addStatement("h = handle_K2450_C.communicationHandle;");
+    recipe.addStatement("writeline(h, ':sense:current:range 1e-7');");
+    recipe.addStatement("writeline(h, 'source:voltage:Ilimit 1e-7');");
+    recipe.addStatement("writeline(h, ':source:voltage:range 20');");
+    recipe.addStatement("writeline(h, 'NPLcycles 0.2');");
+    recipe.addStatement("writeline(h, ':OUTP ON');");
+    recipe.addStatement("pause(2);");
     recipe.addChannel("K2450_C", "V_source", "V_tg", 1, 0.5, -10, 10);
     recipe.addChannel("K2450_C", "I_measure", "I_tg");
     recipe.addChannel("K2450_C", "VI", "VI_tg");
@@ -232,14 +232,14 @@ end
 
 if K2400_A_Use
     recipe.addInstrument("handle_K2400_A", "instrument_K2400", "K2400_A", gpibAddress(K2400_A_GPIB, adaptorIndex));
-    recipe.addStatement("handle_K2400_A.requireSetCheck = false;" + newline + ...
-        "h = handle_K2400_A.communicationHandle;" + newline + ...
-        "writeline(h, ':sense:current:range 1e-7');" + newline + ...
-        "writeline(h, 'sense:current:protection 1e-7');" + newline + ...
-        "writeline(h, ':source:voltage:range 20');" + newline + ...
-        "writeline(h, ':CURRent:NPLCycles 0.2');" + newline + ...
-        "writeline(h, ':output on');" + newline + ...
-        "pause(2);");
+    recipe.addStatement("handle_K2400_A.requireSetCheck = false;");
+    recipe.addStatement("h = handle_K2400_A.communicationHandle;");
+    recipe.addStatement("writeline(h, ':sense:current:range 1e-7');");
+    recipe.addStatement("writeline(h, 'sense:current:protection 1e-7');");
+    recipe.addStatement("writeline(h, ':source:voltage:range 20');");
+    recipe.addStatement("writeline(h, ':CURRent:NPLCycles 0.2');");
+    recipe.addStatement("writeline(h, ':output on');");
+    recipe.addStatement("pause(2);");
     recipe.addChannel("K2400_A", "V_source", "V_bg", 1, 0.5, -10, 10);
     recipe.addChannel("K2400_A", "I_measure", "I_bg");
     recipe.addChannel("K2400_A", "VI", "VI_bg");
@@ -247,14 +247,14 @@ end
 
 if K2400_B_Use
     recipe.addInstrument("handle_K2400_B", "instrument_K2400", "K2400_B", gpibAddress(K2400_B_GPIB, adaptorIndex));
-    recipe.addStatement("handle_K2400_B.requireSetCheck = false;" + newline + ...
-        "h = handle_K2400_B.communicationHandle;" + newline + ...
-        "writeline(h, ':sense:current:range 1e-7');" + newline + ...
-        "writeline(h, 'sense:current:protection 1e-7');" + newline + ...
-        "writeline(h, ':source:voltage:range 20');" + newline + ...
-        "writeline(h, ':CURRent:NPLCycles 0.2');" + newline + ...
-        "writeline(h, ':output on');" + newline + ...
-        "pause(2);");
+    recipe.addStatement("handle_K2400_B.requireSetCheck = false;");
+    recipe.addStatement("h = handle_K2400_B.communicationHandle;");
+    recipe.addStatement("writeline(h, ':sense:current:range 1e-7');");
+    recipe.addStatement("writeline(h, 'sense:current:protection 1e-7');");
+    recipe.addStatement("writeline(h, ':source:voltage:range 20');");
+    recipe.addStatement("writeline(h, ':CURRent:NPLCycles 0.2');");
+    recipe.addStatement("writeline(h, ':output on');");
+    recipe.addStatement("pause(2);");
     recipe.addChannel("K2400_B", "V_source", "V_tg", 1, 0.5, -10, 10);
     recipe.addChannel("K2400_B", "I_measure", "I_tg");
     recipe.addChannel("K2400_B", "VI", "VI_tg");
@@ -262,14 +262,14 @@ end
 
 if K2400_C_Use
     recipe.addInstrument("handle_K2400_C", "instrument_K2400", "K2400_C", gpibAddress(K2400_C_GPIB, adaptorIndex));
-    recipe.addStatement("handle_K2400_C.requireSetCheck = false;" + newline + ...
-        "h = handle_K2400_C.communicationHandle;" + newline + ...
-        "writeline(h, ':sense:current:range 1e-7');" + newline + ...
-        "writeline(h, 'sense:current:protection 1e-7');" + newline + ...
-        "writeline(h, ':source:voltage:range 20');" + newline + ...
-        "writeline(h, ':CURRent:NPLCycles 0.2');" + newline + ...
-        "writeline(h, ':output on');" + newline + ...
-        "pause(2);");
+    recipe.addStatement("handle_K2400_C.requireSetCheck = false;");
+    recipe.addStatement("h = handle_K2400_C.communicationHandle;");
+    recipe.addStatement("writeline(h, ':sense:current:range 1e-7');");
+    recipe.addStatement("writeline(h, 'sense:current:protection 1e-7');");
+    recipe.addStatement("writeline(h, ':source:voltage:range 20');");
+    recipe.addStatement("writeline(h, ':CURRent:NPLCycles 0.2');");
+    recipe.addStatement("writeline(h, ':output on');");
+    recipe.addStatement("pause(2);");
     recipe.addChannel("K2400_C", "V_source", "V_tg", 1, 0.5, -10, 10);
     recipe.addChannel("K2400_C", "I_measure", "I_tg");
     recipe.addChannel("K2400_C", "VI", "VI_tg");
@@ -297,10 +297,10 @@ if ST3215HS_Use
     recipe.addInstrument("handle_ST3215HS", "instrument_ST3215HS", "ST3215HS", ST3215HS_Serial, servoId_1 = 12, servoId_2 = 13);
     recipe.addChannel("ST3215HS", "position_1_deg", "ST3215HS_pos1_deg");
     recipe.addChannel("ST3215HS", "load_1_percent", "ST3215HS_load1_percent");
-    recipe.addStatement("handle_ST3215HS.calibrateSoftLimits(1);" + newline + ...
-        "if handle_ST3215HS.hasServo2" + newline + ...
-        "  handle_ST3215HS.calibrateSoftLimits(2);" + newline + ...
-        "end");
+    recipe.addStatement("handle_ST3215HS.calibrateSoftLimits(1);");
+    recipe.addStatement("if handle_ST3215HS.hasServo2");
+    recipe.addStatement("  handle_ST3215HS.calibrateSoftLimits(2);");
+    recipe.addStatement("end");
     recipe.addChannel("ST3215HS", "position_2_deg", "ST3215HS_pos2_deg");
     recipe.addChannel("ST3215HS", "load_2_percent", "ST3215HS_load2_percent");
 end
@@ -315,8 +315,8 @@ end
 
 if Andor_Use
     recipe.addInstrument("handle_AndorSpectrometer", "instrument_AndorSpectrometer", "AndorSpectrometer", "AndorSpectrometer");
-    recipe.addStatement("handle_AndorSpectrometer.minTimeBetweenAcquisitions_s = 300;" + newline + ...
-        "rack.batchGetTimeout = minutes(10);");
+    recipe.addStatement("handle_AndorSpectrometer.minTimeBetweenAcquisitions_s = 300;");
+    recipe.addStatement("rack.batchGetTimeout = minutes(10);");
     recipe.addChannel("AndorSpectrometer", "temperature_C", "CCD_T_C");
     recipe.addChannel("AndorSpectrometer", "exposure_time", "exposure");
     recipe.addChannel("AndorSpectrometer", "center_wavelength_nm", "center_wavelength_nm");
@@ -409,8 +409,8 @@ end
 % DDS CASCADE sync: after both DDS instruments are initialized, trigger a
 % master-side CASCADE re-handshake to apply any updated CASCADE settings.
 if SDG2042X_mixed_Use && SDG2042X_pure_Use
-    recipe.addStatement("handle_SDG2042X_mixed.cascadeResyncOnMaster();" + newline + ...
-        "handle_SDG2042X_pure.cascadeResyncOnMaster();");
+    recipe.addStatement("handle_SDG2042X_mixed.cascadeResyncOnMaster();");
+    recipe.addStatement("handle_SDG2042X_pure.cascadeResyncOnMaster();");
 end
 
 if SDG2042X_mixed_TARB_Use
@@ -504,6 +504,6 @@ end
 
 
 %% wrap up setup
-% smready(recipe, singleThreaded = true); % Debug: run recipe on client instead of engine worker.
+%smready(recipe, singleThreaded = true); % Debug: run recipe on client instead of engine worker.
 %smready(recipe, verboseClient=true, verboseWorker=true); % Debug: allow logging to files.
 smready(recipe);

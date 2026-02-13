@@ -27,9 +27,6 @@ classdef instrument_SR860 < instrumentInterface
             % Assign object properties
             obj.address = address;
             obj.communicationHandle = handle;
-            if startsWith(upper(string(address)), "GPIB")
-                obj.writeCommandInterval = seconds(0.2);
-            end
 
             % Add channels - based on legacy channel mapping
             % Note: SR860 uses 0-based indexing for AUX channels
