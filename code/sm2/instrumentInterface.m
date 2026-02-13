@@ -21,7 +21,7 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
         setInterval (1, 1) duration = seconds(2);
         requireSetCheck (1, 1) logical = true;
         writeCommandInterval (1, 1) duration = seconds(0);
-        writeCommandIntervalMinWrites (1, 1) double {mustBeNonnegative, mustBeInteger} = 5;
+        writeCommandIntervalMinWrites (1, 1) double {mustBeNonnegative, mustBeInteger} = 3;
     end
 
     properties (SetAccess = protected)

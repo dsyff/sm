@@ -109,19 +109,23 @@ end
 handle_K2450_A = instrument_K2450(options.address_K2450_A);
 %handle_K2450_A.reset();
 h = handle_K2450_A.communicationHandle;
-%writeline(h,"source:voltage:read:back off"); %do not measure voltage
+%writeline(h, ":SOURce:VOLTage:READ:BACK OFF"); %do not measure voltage
 
-%writeline(h,":sense:current:range 1e-7"); %sets the sense current range
-%writeline(h,"source:voltage:Ilimit 8e-8"); %sets a current limit protector
+%writeline(h, ":SENSe:CURRent:RANGe 1e-7"); %sets the sense current range
+%writeline(h, ":SOURce:VOLTage:ILIMit 8e-8"); %sets a current limit protector
 
-writeline(h,":sense:current:range 1e-6"); %sets the sense current range
-writeline(h,"source:voltage:Ilimit 1.6e-7"); %sets a current limit protector
+writeline(h, ":SOURce:VOLTage:READ:BACK ON");
+writeline(h, ":SENSe:CURRent:AZERo:STATe OFF");
+writeline(h, ":SENSe:CURRent:AVERage:STATe OFF");
+writeline(h, ":SOURce:DELay 0");
+writeline(h, ":SENSe:CURRent:RANGe 1e-6"); %sets the sense current range
+writeline(h, ":SOURce:VOLTage:ILIMit 1.6e-7"); %sets a current limit protector
 
-writeline(h,":source:voltage:range 200"); %sets the source voltage range
-%writeline(h,":source:voltage:range:auto ON"); %use auto range for voltage
-%writeline(h,":route:terminals rear"); %use rear terminal
-%writeline(h,":sense:current:NPLcycles 2"); %number of power line cycles per measurement
-writeline(h,":OUTP ON");
+writeline(h, ":SOURce:VOLTage:RANGe 200"); %sets the source voltage range
+%writeline(h, ":SOURce:VOLTage:RANGe:AUTO ON"); %use auto range for voltage
+%writeline(h, ":ROUTe:TERMinals REAR"); %use rear terminal
+%writeline(h, ":SENSe:CURRent:NPLCycles 2"); %number of power line cycles per measurement
+writeline(h, ":OUTPut ON");
 pause(2);
 handle_K2450_A.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
 handle_K2450_A.setSetTolerances("V_source", V_tolerance); %used to determine if voltage has been reached
@@ -133,19 +137,23 @@ rack_strain.addChannel("K2450_A", "VI", "VI_str_o");
 handle_K2450_B = instrument_K2450(options.address_K2450_B);
 %handle_K2450_B.reset();
 h = handle_K2450_B.communicationHandle;
-%writeline(h,"source:voltage:read:back off"); %do not measure voltage
+%writeline(h, ":SOURce:VOLTage:READ:BACK OFF"); %do not measure voltage
 
-%writeline(h,":sense:current:range 1e-7"); %sets the sense current range
-%writeline(h,"source:voltage:Ilimit 5e-8"); %sets a current limit protector
+%writeline(h, ":SENSe:CURRent:RANGe 1e-7"); %sets the sense current range
+%writeline(h, ":SOURce:VOLTage:ILIMit 5e-8"); %sets a current limit protector
 
-writeline(h,":sense:current:range 1e-6"); %sets the sense current range
-writeline(h,"source:voltage:Ilimit 1e-7"); %sets a current limit protector
+writeline(h, ":SOURce:VOLTage:READ:BACK ON");
+writeline(h, ":SENSe:CURRent:AZERo:STATe OFF");
+writeline(h, ":SENSe:CURRent:AVERage:STATe OFF");
+writeline(h, ":SOURce:DELay 0");
+writeline(h, ":SENSe:CURRent:RANGe 1e-6"); %sets the sense current range
+writeline(h, ":SOURce:VOLTage:ILIMit 1e-7"); %sets a current limit protector
 
-writeline(h,":source:voltage:range 200"); %sets the source voltage range
-%writeline(h,":source:voltage:range:auto ON"); %use auto range for voltage
-%writeline(h,":route:terminals rear"); %use rear terminal
-%writeline(h,":sense:current:NPLcycles 2"); %number of power line cycles per measurement
-writeline(h,":OUTP ON");
+writeline(h, ":SOURce:VOLTage:RANGe 200"); %sets the source voltage range
+%writeline(h, ":SOURce:VOLTage:RANGe:AUTO ON"); %use auto range for voltage
+%writeline(h, ":ROUTe:TERMinals REAR"); %use rear terminal
+%writeline(h, ":SENSe:CURRent:NPLCycles 2"); %number of power line cycles per measurement
+writeline(h, ":OUTPut ON");
 pause(2);
 handle_K2450_B.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
 handle_K2450_B.setSetTolerances("V_source", V_tolerance); %used to determine if voltage has been reached
