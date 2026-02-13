@@ -689,7 +689,7 @@ classdef (Sealed) instrumentRack < handle
             TFs = false(numel(channelRowIndices), 1);
             for batchIndex = 1:numel(channelRowIndices)
                 TF = instruments(batchIndex).setCheckChannelByIndex(channelIndices(batchIndex));
-                assert(isscalar(TF), "setCheckChannel should return a scalar logical, received length %d instead", length(TF));
+                assert(isscalar(TF), "setCheckChannelByIndex should return a scalar logical, received length %d instead", length(TF));
                 TFs(batchIndex) = TF;
             end
         end
@@ -700,7 +700,7 @@ classdef (Sealed) instrumentRack < handle
             channelIndices = obj.channelTable.channelIndices(channelRowIndices);
             for batchIndex = 1:numel(channelRowIndices)
                 TF = instruments(batchIndex).setCheckChannelByIndex(channelIndices(batchIndex));
-                assert(isscalar(TF), "setCheckChannel should return a scalar logical, received length %d instead", length(TF));
+                assert(isscalar(TF), "setCheckChannelByIndex should return a scalar logical, received length %d instead", length(TF));
                 if ~TF
                     return;
                 end
