@@ -219,13 +219,6 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 obj;
                 channel (1, 1) string {mustBeNonzeroLengthText};
             end
-            
-            % If requireSetCheck is false, always return true
-            if ~obj.requireSetCheck
-                TF = true;
-                return;
-            end
-            
             channelIndex = obj.findChannelIndex(channel);
             TF = obj.setCheckChannelByIndexCore(channelIndex);
         end
@@ -369,6 +362,10 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
 
         function TF = setCheckChannelByIndexCore(obj, channelIndex)
             channelIndex = obj.normalizeChannelIndex(channelIndex);
+            if ~obj.requireSetCheck
+                TF = true;
+                return;
+            end
             channel = obj.channelTable.channels(channelIndex);
             channelLastSetValues = obj.lastSetValues{channelIndex};
             assert(~isempty(channelLastSetValues), "setWriteChannel for channel %s has not been called succesfully yet.", channel);
