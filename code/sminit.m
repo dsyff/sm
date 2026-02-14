@@ -1,5 +1,8 @@
 global engine smscan smaux smdata bridge; %#ok<GVMIS,NUSED>
 
+% Close existing figures from previous sessions (non-forced).
+close all;
+
 % Ensure sm-dev code folders on path (avoid instruments/private)
 st = dbstack("-completenames");
 if isempty(st) || ~isfield(st, "file") || strlength(string(st(1).file)) == 0
@@ -34,7 +37,6 @@ if isMATLABReleaseOlderThan("R2024a")
     error("sminit: MATLAB version is too old. SM1.5 requires MATLAB R2024a or newer. Current version: " + version("-release"));
 end
 
-close all;
 % Clean up existing engine to release resources
 if exist("engine", "var") && ~isempty(engine) && isa(engine, "measurementEngine")
     try

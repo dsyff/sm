@@ -1199,7 +1199,8 @@ classdef measurementEngine < handle
                 xLoop = meta.dataloop(dc);
                 plotState.xLoop(k) = xLoop;
 
-                if dim == 2 && xLoop < meta.nloops
+                isTwoDPlot = dim == 2 && xLoop < meta.nloops;
+                if isTwoDPlot
                     yLoop = xLoop + 1;
                     plotState.yLoop(k) = yLoop;
 
@@ -1224,7 +1225,9 @@ classdef measurementEngine < handle
                 if dc >= 1 && dc <= numel(scanObj.flatScalarGetNames)
                     chName = scanObj.flatScalarGetNames(dc);
                     title(strrep(chName, "_", "\_"));
-                    ylabel(strrep(chName, "_", "\_"));
+                    if ~isTwoDPlot
+                        ylabel(strrep(chName, "_", "\_"));
+                    end
                 end
             end
 
@@ -1424,7 +1427,10 @@ classdef measurementEngine < handle
                         Units = "pixels", Width = exportWidthPx, Height = exportHeightPx, ...
                         Padding = "tight", PreserveAspectRatio = "on");
                 elseif isMATLABReleaseOlderThan("R2025a")
-                    exportgraphics(exportFig, pngFile, Resolution = 300);
+                    exportFig.Visible = "on";
+                    exportFig.WindowState = "maximized";
+                    drawnow;
+                    exportgraphics(exportFig, pngFile);
                 else
                     exportgraphics(exportFig, pngFile, Resolution = 300, Padding = "tight");
                 end
@@ -1914,8 +1920,8 @@ classdef measurementEngine < handle
             lastTempSaveTic = [];
             if enableTemp
                 saveLoopIdx = double(scanObj.saveloop);
-                if ~(isfinite(saveLoopIdx) && saveLoopIdx >= 1 && saveLoopIdx <= nloops && mod(saveLoopIdx, 1) == 0)
-                    error("measurementEngine:InvalidSaveLoop", "saveloop must be an integer in [1, %d].", nloops);
+                if ~(isfinite(saveLoopIdx) && saveLoopIdx >= 1 && mod(saveLoopIdx, 1) == 0)
+                    error("measurementEngine:InvalidSaveLoop", "saveloop must be a positive integer loop index.");
                 end
                 saveMinInterval_s = seconds(scanObj.saveMinInterval);
                 if ~(isfinite(saveMinInterval_s) && saveMinInterval_s > 0)
@@ -1959,6 +1965,8 @@ classdef measurementEngine < handle
                     loopsToSet = 1:loops_end_idx;
                 end
 
+                batchSetChans = string.empty(0, 1);
+                batchSetVals = double.empty(0, 1);
                 for loopIdx = fliplr(loopsToSet)
                     if ~stopped
                         try
@@ -1973,7 +1981,19 @@ classdef measurementEngine < handle
                         catch
                         end
                     end
-                    if stopped, break; end
+                    if stopped
+                        if ~isempty(batchSetChans)
+                            if enableLog && ~didLogFirstSet
+                                didLogFirstSet = true;
+                                pairs = compose("%s=%g", batchSetChans(:), batchSetVals(:));
+                                logFcn("runScanCore_ first rackSet n=" + numel(batchSetChans) + " " + strjoin(pairs, ", "));
+                            end
+                            rack.rackSet(batchSetChans, batchSetVals);
+                            batchSetChans = string.empty(0, 1);
+                            batchSetVals = double.empty(0, 1);
+                        end
+                        break;
+                    end
 
                     loopDef = scanObj.loops(loopIdx);
                     setchans = setchansByLoop{loopIdx};
@@ -2007,18 +2027,44 @@ classdef measurementEngine < handle
                         vals(:) = count(loopIdx);
                     end
 
+                    if isempty(batchSetChans)
+                        batchSetChans = setchans;
+                        batchSetVals = vals;
+                    else
+                        [isDup, dupIdx] = ismember(setchans, batchSetChans);
+                        if any(isDup)
+                            batchSetVals(dupIdx(isDup)) = vals(isDup);
+                        end
+                        if any(~isDup)
+                            batchSetChans = [batchSetChans; setchans(~isDup)];
+                            batchSetVals = [batchSetVals; vals(~isDup)];
+                        end
+                    end
+
+                    startwaitSecs = seconds(startwaitByLoop(loopIdx));
+                    waittimeSecs = seconds(waittimeByLoop(loopIdx));
+                    if (count(loopIdx) == 1 && startwaitSecs > 0) || waittimeSecs > 0
+                        if enableLog && ~didLogFirstSet
+                            didLogFirstSet = true;
+                            pairs = compose("%s=%g", batchSetChans(:), batchSetVals(:));
+                            logFcn("runScanCore_ first rackSet n=" + numel(batchSetChans) + " " + strjoin(pairs, ", "));
+                        end
+                        rack.rackSet(batchSetChans, batchSetVals);
+                        batchSetChans = string.empty(0, 1);
+                        batchSetVals = double.empty(0, 1);
+                        if count(loopIdx) == 1
+                            measurementEngine.waitWithStop_(startwaitByLoop(loopIdx), figHandle);
+                        end
+                        measurementEngine.waitWithStop_(waittimeByLoop(loopIdx), figHandle);
+                    end
+                end
+                if ~isempty(batchSetChans)
                     if enableLog && ~didLogFirstSet
                         didLogFirstSet = true;
-                        pairs = compose("%s=%g", setchans(:), vals(:));
-                        logFcn("runScanCore_ first rackSet loop=" + loopIdx + " " + strjoin(pairs, ", "));
+                        pairs = compose("%s=%g", batchSetChans(:), batchSetVals(:));
+                        logFcn("runScanCore_ first rackSet n=" + numel(batchSetChans) + " " + strjoin(pairs, ", "));
                     end
-                    rack.rackSet(setchans, vals);
-
-                    if count(loopIdx) == 1
-                        measurementEngine.waitWithStop_(startwaitByLoop(loopIdx), figHandle);
-                    end
-
-                    measurementEngine.waitWithStop_(waittimeByLoop(loopIdx), figHandle);
+                    rack.rackSet(batchSetChans, batchSetVals);
                 end
 
                 if ~stopped
@@ -2250,8 +2296,8 @@ classdef measurementEngine < handle
             % Temp save config.
             enableTemp = true;
             saveLI = double(scanObj.saveloop);
-            if ~(isfinite(saveLI) && saveLI >= 1 && saveLI <= nloops && mod(saveLI, 1) == 0)
-                error("measurementEngine:InvalidSaveLoop", "saveloop must be an integer in [1, %d].", nloops);
+            if ~(isfinite(saveLI) && saveLI >= 1 && mod(saveLI, 1) == 0)
+                error("measurementEngine:InvalidSaveLoop", "saveloop must be a positive integer loop index.");
             end
             saveMinInterval_s = seconds(scanObj.saveMinInterval);
             if ~(isfinite(saveMinInterval_s) && saveMinInterval_s > 0)
@@ -2319,6 +2365,8 @@ classdef measurementEngine < handle
                     loopsToSet = 1:idx;
                 end
 
+                batchSetChans = string.empty(0, 1);
+                batchSetVals = double.empty(0, 1);
                 for li = fliplr(loopsToSet)
                     if ~stopped && clientToEngine.QueueLength > 0
                         ctl = poll(clientToEngine);
@@ -2326,7 +2374,20 @@ classdef measurementEngine < handle
                             stopped = true;
                         end
                     end
-                    if stopped, break; end
+                    if stopped
+                        if ~isempty(batchSetChans)
+                            if enableLog && ~didLogSet
+                                didLogSet = true;
+                                msg = "runTurboScanCore_ first rackSet n=" + numel(batchSetChans);
+                                experimentContext.print(msg);
+                                logFcn(msg);
+                            end
+                            rack.rackSet(batchSetChans, batchSetVals);
+                            batchSetChans = string.empty(0, 1);
+                            batchSetVals = double.empty(0, 1);
+                        end
+                        break;
+                    end
 
                     setchans = setchansByLoop{li};
                     if isempty(setchans), continue; end
@@ -2356,42 +2417,69 @@ classdef measurementEngine < handle
                         vals(:) = count(li);
                     end
 
+                    if isempty(batchSetChans)
+                        batchSetChans = setchans;
+                        batchSetVals = vals;
+                    else
+                        [isDup, dupIdx] = ismember(setchans, batchSetChans);
+                        if any(isDup)
+                            batchSetVals(dupIdx(isDup)) = vals(isDup);
+                        end
+                        if any(~isDup)
+                            batchSetChans = [batchSetChans; setchans(~isDup)];
+                            batchSetVals = [batchSetVals; vals(~isDup)];
+                        end
+                    end
+
+                    if (count(li) == 1 && startwait_s(li) > 0) || waittime_s(li) > 0
+                        if enableLog && ~didLogSet
+                            didLogSet = true;
+                            msg = "runTurboScanCore_ first rackSet n=" + numel(batchSetChans);
+                            experimentContext.print(msg);
+                            logFcn(msg);
+                        end
+                        rack.rackSet(batchSetChans, batchSetVals);
+                        batchSetChans = string.empty(0, 1);
+                        batchSetVals = double.empty(0, 1);
+
+                        % Interruptible startwait
+                        if count(li) == 1 && startwait_s(li) > 0
+                            rem_ = startwait_s(li);
+                            while rem_ > 0 && ~stopped
+                                if clientToEngine.QueueLength > 0
+                                    ctl = poll(clientToEngine);
+                                    if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
+                                        stopped = true; break;
+                                    end
+                                end
+                                s_ = min(0.05, rem_); pause(s_); rem_ = rem_ - s_;
+                            end
+                        end
+                        if stopped, break; end
+
+                        % Interruptible waittime
+                        if waittime_s(li) > 0
+                            rem_ = waittime_s(li);
+                            while rem_ > 0 && ~stopped
+                                if clientToEngine.QueueLength > 0
+                                    ctl = poll(clientToEngine);
+                                    if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
+                                        stopped = true; break;
+                                    end
+                                end
+                                s_ = min(0.05, rem_); pause(s_); rem_ = rem_ - s_;
+                            end
+                        end
+                    end
+                end
+                if ~isempty(batchSetChans)
                     if enableLog && ~didLogSet
                         didLogSet = true;
-                        msg = "runTurboScanCore_ first rackSet loop=" + li;
+                        msg = "runTurboScanCore_ first rackSet n=" + numel(batchSetChans);
                         experimentContext.print(msg);
                         logFcn(msg);
                     end
-                    rack.rackSet(setchans, vals);
-
-                    % Interruptible startwait
-                    if count(li) == 1 && startwait_s(li) > 0
-                        rem_ = startwait_s(li);
-                        while rem_ > 0 && ~stopped
-                            if clientToEngine.QueueLength > 0
-                                ctl = poll(clientToEngine);
-                                if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
-                                    stopped = true; break;
-                                end
-                            end
-                            s_ = min(0.05, rem_); pause(s_); rem_ = rem_ - s_;
-                        end
-                    end
-                    if stopped, break; end
-
-                    % Interruptible waittime
-                    if waittime_s(li) > 0
-                        rem_ = waittime_s(li);
-                        while rem_ > 0 && ~stopped
-                            if clientToEngine.QueueLength > 0
-                                ctl = poll(clientToEngine);
-                                if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
-                                    stopped = true; break;
-                                end
-                            end
-                            s_ = min(0.05, rem_); pause(s_); rem_ = rem_ - s_;
-                        end
-                    end
+                    rack.rackSet(batchSetChans, batchSetVals);
                 end
                 if stopped, break; end
 
@@ -2564,8 +2652,8 @@ classdef measurementEngine < handle
             % Temp save config.
             enableTemp = true;
             saveLI = double(scanObj.saveloop);
-            if ~(isfinite(saveLI) && saveLI >= 1 && saveLI <= nloops && mod(saveLI, 1) == 0)
-                error("measurementEngine:InvalidSaveLoop", "saveloop must be an integer in [1, %d].", nloops);
+            if ~(isfinite(saveLI) && saveLI >= 1 && mod(saveLI, 1) == 0)
+                error("measurementEngine:InvalidSaveLoop", "saveloop must be a positive integer loop index.");
             end
             saveMinInterval_s = seconds(scanObj.saveMinInterval);
             if ~(isfinite(saveMinInterval_s) && saveMinInterval_s > 0)
@@ -2617,6 +2705,8 @@ classdef measurementEngine < handle
                     loopsToSet = 1:idx;
                 end
 
+                batchSetChans = string.empty(0, 1);
+                batchSetVals = double.empty(0, 1);
                 for li = fliplr(loopsToSet)
                     if ~stopped && clientToEngine.QueueLength > 0
                         ctl = poll(clientToEngine);
@@ -2624,7 +2714,20 @@ classdef measurementEngine < handle
                             stopped = true;
                         end
                     end
-                    if stopped, break; end
+                    if stopped
+                        if ~isempty(batchSetChans)
+                            if enableLog && ~didLogSet
+                                didLogSet = true;
+                                msg = "runSafeScanCore_ first rackSet n=" + numel(batchSetChans);
+                                experimentContext.print(msg);
+                                logFcn(msg);
+                            end
+                            rack.rackSet(batchSetChans, batchSetVals);
+                            batchSetChans = string.empty(0, 1);
+                            batchSetVals = double.empty(0, 1);
+                        end
+                        break;
+                    end
 
                     setchans = setchansByLoop{li};
                     if isempty(setchans), continue; end
@@ -2654,42 +2757,69 @@ classdef measurementEngine < handle
                         vals(:) = count(li);
                     end
 
+                    if isempty(batchSetChans)
+                        batchSetChans = setchans;
+                        batchSetVals = vals;
+                    else
+                        [isDup, dupIdx] = ismember(setchans, batchSetChans);
+                        if any(isDup)
+                            batchSetVals(dupIdx(isDup)) = vals(isDup);
+                        end
+                        if any(~isDup)
+                            batchSetChans = [batchSetChans; setchans(~isDup)];
+                            batchSetVals = [batchSetVals; vals(~isDup)];
+                        end
+                    end
+
+                    if (count(li) == 1 && startwait_s(li) > 0) || waittime_s(li) > 0
+                        if enableLog && ~didLogSet
+                            didLogSet = true;
+                            msg = "runSafeScanCore_ first rackSet n=" + numel(batchSetChans);
+                            experimentContext.print(msg);
+                            logFcn(msg);
+                        end
+                        rack.rackSet(batchSetChans, batchSetVals);
+                        batchSetChans = string.empty(0, 1);
+                        batchSetVals = double.empty(0, 1);
+
+                        % Interruptible startwait
+                        if count(li) == 1 && startwait_s(li) > 0
+                            rem_ = startwait_s(li);
+                            while rem_ > 0 && ~stopped
+                                if clientToEngine.QueueLength > 0
+                                    ctl = poll(clientToEngine);
+                                    if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
+                                        stopped = true; break;
+                                    end
+                                end
+                                s_ = min(0.05, rem_); pause(s_); rem_ = rem_ - s_;
+                            end
+                        end
+                        if stopped, break; end
+
+                        % Interruptible waittime
+                        if waittime_s(li) > 0
+                            rem_ = waittime_s(li);
+                            while rem_ > 0 && ~stopped
+                                if clientToEngine.QueueLength > 0
+                                    ctl = poll(clientToEngine);
+                                    if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
+                                        stopped = true; break;
+                                    end
+                                end
+                                s_ = min(0.05, rem_); pause(s_); rem_ = rem_ - s_;
+                            end
+                        end
+                    end
+                end
+                if ~isempty(batchSetChans)
                     if enableLog && ~didLogSet
                         didLogSet = true;
-                        msg = "runSafeScanCore_ first rackSet loop=" + li;
+                        msg = "runSafeScanCore_ first rackSet n=" + numel(batchSetChans);
                         experimentContext.print(msg);
                         logFcn(msg);
                     end
-                    rack.rackSet(setchans, vals);
-
-                    % Interruptible startwait
-                    if count(li) == 1 && startwait_s(li) > 0
-                        rem_ = startwait_s(li);
-                        while rem_ > 0 && ~stopped
-                            if clientToEngine.QueueLength > 0
-                                ctl = poll(clientToEngine);
-                                if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
-                                    stopped = true; break;
-                                end
-                            end
-                            s_ = min(0.05, rem_); pause(s_); rem_ = rem_ - s_;
-                        end
-                    end
-                    if stopped, break; end
-
-                    % Interruptible waittime
-                    if waittime_s(li) > 0
-                        rem_ = waittime_s(li);
-                        while rem_ > 0 && ~stopped
-                            if clientToEngine.QueueLength > 0
-                                ctl = poll(clientToEngine);
-                                if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
-                                    stopped = true; break;
-                                end
-                            end
-                            s_ = min(0.05, rem_); pause(s_); rem_ = rem_ - s_;
-                        end
-                    end
+                    rack.rackSet(batchSetChans, batchSetVals);
                 end
                 if stopped, break; end
 
