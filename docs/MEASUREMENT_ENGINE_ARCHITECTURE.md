@@ -152,8 +152,8 @@ Legacy scan structs are converted via `measurementScan.fromLegacy(...)`.
 
 - `addInstrument(...)` / `addVirtualInstrument(...)`
 - `addChannel(...)`
-- `addStatement(...)` for additional worker-side code
-  - Statements are evaluated sequentially in insertion order during rack build.
+- `addStatement(instrumentFriendlyName, ...)` for additional worker-side code
+  - Statements are evaluated sequentially in insertion order immediately after the named instrument is set up.
   - Prefer one executable line per `addStatement(...)` call so individual setup lines are easy to comment out in demos/scripts.
 
 #### Worker pool sizing (recipe mode)

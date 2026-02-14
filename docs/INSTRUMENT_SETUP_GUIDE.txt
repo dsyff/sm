@@ -87,13 +87,14 @@
 %   recipe = instrumentRackRecipe();
 %   recipe.addInstrument("h", "instrument_ClassName", "friendlyName", ...);
 %   recipe.addChannel("friendlyName", "instChanName", "userChanName");
-%   recipe.addStatement("h = handle_myInst.communicationHandle;");
-%   recipe.addStatement("writeline(h, ""SCPI_COMMAND"");");
+%   recipe.addStatement("friendlyName", "h = handle_myInst.communicationHandle;");
+%   recipe.addStatement("friendlyName", "writeline(h, ""SCPI_COMMAND"");");
 %   smready(recipe);
 %
 % Statement style guideline:
 % - Prefer one executable line per `recipe.addStatement(...)` call.
 % - This makes it easy to comment out individual setup lines in demos/scripts.
+% - Statements run immediately after the referenced instrument is set up.
 %
 % Optional local-debug path with the same recipe (no engine worker):
 %   smready(recipe, singleThreaded = true);
@@ -114,9 +115,9 @@
 %      writeline(h, ":OUTPut ON");
 %      rack.addInstrument(handle_K2450, "K2450_A");
 %   -> recipe.addInstrument("handle_K2450", "instrument_K2450", "K2450_A", gpibAddress(18, 0));
-%      recipe.addStatement("handle_K2450.requireSetCheck = false;");
-%      recipe.addStatement("h = handle_K2450.communicationHandle;");
-%      recipe.addStatement("writeline(h, ':OUTPut ON');");
+%      recipe.addStatement("K2450_A", "handle_K2450.requireSetCheck = false;");
+%      recipe.addStatement("K2450_A", "h = handle_K2450.communicationHandle;");
+%      recipe.addStatement("K2450_A", "writeline(h, ':OUTPut ON');");
 %
 % 3) Convert channels 1:1:
 %      rack.addChannel(...) -> recipe.addChannel(...)

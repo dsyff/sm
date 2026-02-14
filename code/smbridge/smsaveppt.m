@@ -126,17 +126,22 @@ if use_image_file
     pic_H_over_W = double(img_info.Height) / double(img_info.Width);
     forceSlideWidth = isfield(text, "forceSlideWidth") && isscalar(text.forceSlideWidth) && logical(text.forceSlideWidth);
     if forceSlideWidth
-        pic_W_scaled = maxwidth;
-        pic_H_scaled = maxwidth * pic_H_over_W;
+        title_bottom = double(get(new_slide.Shapes.Title, "Top")) + double(get(new_slide.Shapes.Title, "Height"));
+        pic_top = title_bottom;
+        pic_H_scaled = slide_H - pic_top;
+        pic_W_scaled = pic_H_scaled / pic_H_over_W;
+        pic_left = (slide_W - pic_W_scaled) / 2;
     elseif max_H_over_W >= pic_H_over_W
         pic_W_scaled = maxwidth;
         pic_H_scaled = maxwidth * pic_H_over_W;
+        pic_left = 0;
+        pic_top = slide_H - pic_H_scaled;
     else
         pic_H_scaled = maxheight;
         pic_W_scaled = maxheight / pic_H_over_W;
+        pic_left = 0;
+        pic_top = slide_H - pic_H_scaled;
     end
-    pic_left = 0;
-    pic_top = slide_H - pic_H_scaled;
     pic1 = invoke(new_slide.Shapes,'AddPicture', text.imagePath, 0, 1, ...
         single(pic_left), single(pic_top), single(pic_W_scaled), single(pic_H_scaled));
     try
