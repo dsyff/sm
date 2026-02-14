@@ -757,6 +757,7 @@ if MFLI_Use
     for i = 1:4
         recipe.addChannel("MFLI", "amplitude_" + string(i), "A" + string(i), [], [], -2, 2);
         recipe.addChannel("MFLI", "phase_" + string(i), "Th" + string(i));
+        recipe.addChannel("MFLI", "signed_amplitude_" + string(i), "As" + string(i), [], [], -2, 2);
         recipe.addChannel("MFLI", "frequency_" + string(i), "f" + string(i));
         recipe.addChannel("MFLI", "harmonic_" + string(i), "Harm" + string(i));
         recipe.addChannel("MFLI", "on_" + string(i), "On" + string(i));
