@@ -34,6 +34,7 @@ classdef instrument_SDG2042X_mixed_TARB < instrumentInterface
                 NameValueArgs.internalTimebase (1, 1) logical = true
             end
             obj@instrumentInterface();
+            obj.writeCommandInterval = seconds(5);
 
             fundamentalHz = NameValueArgs.uploadFundamentalFrequencyHz;
             numPoints = double(NameValueArgs.waveformArraySize);
