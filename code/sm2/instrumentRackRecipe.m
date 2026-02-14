@@ -29,7 +29,9 @@ classdef instrumentRackRecipe < handle
             "softwareMins", {}, ...
             "softwareMaxs", {});
 
-        statements (1, :) string = string.empty(1, 0)
+        statements (1, :) struct = struct( ...
+            "instrumentFriendlyName", {}, ...
+            "codeString", {})
     end
 
     methods
@@ -171,12 +173,16 @@ classdef instrumentRackRecipe < handle
             obj.channelSteps(end+1) = step;
         end
 
-        function addStatement(obj, codeString)
+        function addStatement(obj, instrumentFriendlyName, codeString)
             arguments
                 obj
+                instrumentFriendlyName (1, 1) string {mustBeNonzeroLengthText}
                 codeString (1, 1) string {mustBeNonzeroLengthText}
             end
-            obj.statements(end+1) = codeString;
+            step = struct();
+            step.instrumentFriendlyName = instrumentFriendlyName;
+            step.codeString = codeString;
+            obj.statements(end+1) = step;
         end
 
         function n = totalWorkersRequired(obj)

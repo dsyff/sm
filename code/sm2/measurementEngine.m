@@ -1577,9 +1577,40 @@ classdef measurementEngine < handle
                 assignin("base", "sm_spawnOnClient", spawnOnClientFcn);
             end
 
-            % Build hardware instruments.
+            virtualSteps = struct([]);
+            if isprop(recipe, "virtualInstrumentSteps")
+                virtualSteps = recipe.virtualInstrumentSteps;
+            end
+            virtualNames = string.empty(0, 1);
+            if ~isempty(virtualSteps)
+                virtualNames = string({virtualSteps.friendlyName});
+                if isrow(virtualNames)
+                    virtualNames = virtualNames.';
+                end
+            end
+
+            if ~isempty(recipe.statements)
+                statementTargets = string({recipe.statements.instrumentFriendlyName});
+                allInstrumentNames = [string({recipe.instrumentSteps.friendlyName}), string({virtualSteps.friendlyName})];
+                badStatementTarget = ~ismember(statementTargets, allInstrumentNames);
+                if any(badStatementTarget)
+                    bad = unique(statementTargets(badStatementTarget));
+                    error("measurementEngine:RecipeStatementsUnresolved", ...
+                        "Statement steps refer to instrument(s) that were not constructed: %s", strjoin(bad, ", "));
+                end
+            end
+
+            pendingChannel = true(1, numel(recipe.channelSteps));
+            pendingVirtualChannel = false(1, numel(recipe.channelSteps));
+            for k = 1:numel(recipe.channelSteps)
+                step = recipe.channelSteps(k);
+                pendingVirtualChannel(k) = any(step.instrumentFriendlyName == virtualNames);
+            end
+
+            % Build hardware instruments one by one.
             for k = 1:numel(recipe.instrumentSteps)
                 step = recipe.instrumentSteps(k);
+                experimentContext.print("Setting up instrument %s ...", step.friendlyName);
                 className = step.className;
                 ctorArgs = step.positionalArgs;
                 nv = step.nameValuePairs;
@@ -1593,41 +1624,34 @@ classdef measurementEngine < handle
                 inst.validateWorkersRequestedFromRecipe(double(step.numeWorkersRequested));
                 assignin("base", char(step.handleVar), inst);
                 rack.addInstrument(inst, step.friendlyName);
-            end
 
-            % Build channels for hardware instruments first.
-            virtualSteps = struct([]);
-            if isprop(recipe, "virtualInstrumentSteps")
-                virtualSteps = recipe.virtualInstrumentSteps;
-            end
-            virtualNames = string.empty(0, 1);
-            if ~isempty(virtualSteps)
-                virtualNames = string({virtualSteps.friendlyName});
-                if isrow(virtualNames)
-                    virtualNames = virtualNames.';
+                for chIdx = 1:numel(recipe.channelSteps)
+                    if ~pendingChannel(chIdx) || pendingVirtualChannel(chIdx)
+                        continue;
+                    end
+                    chStep = recipe.channelSteps(chIdx);
+                    if chStep.instrumentFriendlyName ~= step.friendlyName
+                        continue;
+                    end
+                    rack.addChannel( ...
+                        chStep.instrumentFriendlyName, ...
+                        chStep.channel, ...
+                        chStep.channelFriendlyName, ...
+                        chStep.rampRates, ...
+                        chStep.rampThresholds, ...
+                        chStep.softwareMins, ...
+                        chStep.softwareMaxs);
+                    pendingChannel(chIdx) = false;
                 end
-            end
-            pendingVirtualChannel = false(1, numel(recipe.channelSteps));
-            for k = 1:numel(recipe.channelSteps)
-                step = recipe.channelSteps(k);
-                pendingVirtualChannel(k) = any(step.instrumentFriendlyName == virtualNames);
-                if pendingVirtualChannel(k)
-                    continue;
-                end
-                rack.addChannel( ...
-                    step.instrumentFriendlyName, ...
-                    step.channel, ...
-                    step.channelFriendlyName, ...
-                    step.rampRates, ...
-                    step.rampThresholds, ...
-                    step.softwareMins, ...
-                    step.softwareMaxs);
+
+                runStatementsForInstrument_(step.friendlyName);
             end
 
             % Build virtual instruments (they receive the master rack during construction),
             % then add their channels.
             for vIdx = 1:numel(virtualSteps)
                 step = virtualSteps(vIdx);
+                experimentContext.print("Setting up instrument %s ...", step.friendlyName);
                 className = step.className;
                 ctorArgs = step.positionalArgs;
                 nv = step.nameValuePairs;
@@ -1647,7 +1671,7 @@ classdef measurementEngine < handle
                 rack.addInstrument(inst, step.friendlyName);
 
                 for k = 1:numel(recipe.channelSteps)
-                    if ~pendingVirtualChannel(k)
+                    if ~pendingChannel(k)
                         continue;
                     end
                     chStep = recipe.channelSteps(k);
@@ -1662,22 +1686,32 @@ classdef measurementEngine < handle
                         chStep.rampThresholds, ...
                         chStep.softwareMins, ...
                         chStep.softwareMaxs);
-                    pendingVirtualChannel(k) = false;
+                    pendingChannel(k) = false;
                 end
-            end
-            if any(pendingVirtualChannel)
-                bad = string({recipe.channelSteps(pendingVirtualChannel).instrumentFriendlyName});
-                bad = unique(bad(:));
-                error("measurementEngine:RecipeVirtualChannelsUnresolved", ...
-                    "Channel steps refer to virtual instrument(s) that were not constructed: %s", strjoin(bad, ", "));
-            end
 
-            % Additional statements.
-            for k = 1:numel(recipe.statements)
-                evalin("base", char(recipe.statements(k)));
+                runStatementsForInstrument_(step.friendlyName);
+            end
+            if any(pendingChannel)
+                bad = string({recipe.channelSteps(pendingChannel).instrumentFriendlyName});
+                bad = unique(bad(:));
+                error("measurementEngine:RecipeChannelsUnresolved", ...
+                    "Channel steps refer to instrument(s) that were not constructed: %s", strjoin(bad, ", "));
             end
 
             rack.flush();
+
+            function runStatementsForInstrument_(instrumentFriendlyName)
+                if isempty(recipe.statements)
+                    return;
+                end
+                for statementIdx = 1:numel(recipe.statements)
+                    step = recipe.statements(statementIdx);
+                    if step.instrumentFriendlyName ~= instrumentFriendlyName
+                        continue;
+                    end
+                    evalin("base", char(step.codeString));
+                end
+            end
         end
 
         function meta = computeScanMeta_(scanObj)
