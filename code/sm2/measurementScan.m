@@ -115,9 +115,6 @@ classdef measurementScan
                 if ~(isscalar(saveLoop) && isfinite(saveLoop) && saveLoop >= 1 && mod(saveLoop, 1) == 0)
                     error("measurementScan:InvalidSaveLoop", "saveloop must be a positive integer loop index.");
                 end
-                if saveLoop > nloops
-                    error("measurementScan:InvalidSaveLoop", "saveloop (%d) exceeds number of loops (%d).", saveLoop, nloops);
-                end
                 obj.saveloop = saveLoop;
             end
 

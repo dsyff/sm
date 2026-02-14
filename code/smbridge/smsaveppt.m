@@ -113,6 +113,9 @@ set(new_slide.Shapes.Title.TextFrame.TextRange.Font,'Bold',true);
 % Get height and width of slide:
 slide_H = op.PageSetup.SlideHeight;
 slide_W = op.PageSetup.SlideWidth;
+maxwidth = slide_W;
+maxheight = slide_H - 100;
+max_H_over_W = maxheight / maxwidth;
 
 % Paste the contents of the Clipboard or insert image file:
 %Thomas -07292022 added 2 retries
@@ -121,8 +124,13 @@ slide_W = op.PageSetup.SlideWidth;
 if use_image_file
     img_info = imfinfo(text.imagePath);
     pic_H_over_W = double(img_info.Height) / double(img_info.Width);
-    pic_W_scaled = slide_W;
-    pic_H_scaled = slide_W * pic_H_over_W;
+    if max_H_over_W >= pic_H_over_W
+        pic_W_scaled = maxwidth;
+        pic_H_scaled = maxwidth * pic_H_over_W;
+    else
+        pic_H_scaled = maxheight;
+        pic_W_scaled = maxheight / pic_H_over_W;
+    end
     pic_left = 0;
     pic_top = slide_H - pic_H_scaled;
     pic1 = invoke(new_slide.Shapes,'AddPicture', text.imagePath, 0, 1, ...
@@ -161,11 +169,6 @@ if ~use_image_file
     pic_W = get(pic1,'Width');
 
     pic_H_over_W = pic_H / pic_W;
-
-    maxwidth=slide_W;
-    maxheight=slide_H - 100;
-
-    max_H_over_W = maxheight / maxwidth;
 
     if max_H_over_W >= pic_H_over_W
         pic_W_scaled = maxwidth;
