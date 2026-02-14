@@ -124,7 +124,11 @@ max_H_over_W = maxheight / maxwidth;
 if use_image_file
     img_info = imfinfo(text.imagePath);
     pic_H_over_W = double(img_info.Height) / double(img_info.Width);
-    if max_H_over_W >= pic_H_over_W
+    forceSlideWidth = isfield(text, "forceSlideWidth") && isscalar(text.forceSlideWidth) && logical(text.forceSlideWidth);
+    if forceSlideWidth
+        pic_W_scaled = maxwidth;
+        pic_H_scaled = maxwidth * pic_H_over_W;
+    elseif max_H_over_W >= pic_H_over_W
         pic_W_scaled = maxwidth;
         pic_H_scaled = maxwidth * pic_H_over_W;
     else
