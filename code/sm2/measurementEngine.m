@@ -1406,6 +1406,7 @@ classdef measurementEngine < handle
 
             pngFile = sprintf("%s.png", figstring);
             png_saved = true;
+            forcePptSlideWidth = false;
             pptEnabled = false;
             pptFile = "";
             try
@@ -1430,6 +1431,7 @@ classdef measurementEngine < handle
                     exportFig.Visible = "on";
                     exportFig.WindowState = "maximized";
                     drawnow;
+                    forcePptSlideWidth = true;
                     exportgraphics(exportFig, pngFile);
                 else
                     exportgraphics(exportFig, pngFile, Resolution = 300, Padding = "tight");
@@ -1490,6 +1492,7 @@ classdef measurementEngine < handle
                         end
 
                         text_data.imagePath = pngFile;
+                        text_data.forceSlideWidth = forcePptSlideWidth;
                         smsaveppt(char(pptFile), text_data);
                     end
                 end
