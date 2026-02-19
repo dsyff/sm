@@ -12,8 +12,8 @@ data_send = sprintf('{"jsonrpc": "2.0", "method": "com.attocube.cryostat.interfa
 writeline(tcp, data_send);
 data_receive = readline(tcp);
 
-% Thomas edit (sm-dev): vendor wrapper made robust via attodry_parseResult
-[errorNumber, sample_temperature] = attodry_parseResult(data_receive, 2, "sample_getTemperature");
+% Thomas edit (sm-dev): vendor wrapper made robust via attoDRY_parseResult
+[errorNumber, sample_temperature] = attoDRY_parseResult(data_receive, 2, "sample_getTemperature");
 
 
 end

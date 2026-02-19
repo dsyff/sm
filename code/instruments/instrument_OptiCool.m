@@ -1,4 +1,4 @@
-classdef instrument_Opticool < instrumentInterface
+classdef instrument_OptiCool < instrumentInterface
     % Thomas 20241221
     properties (Access = private)
         % class variables go here
@@ -14,7 +14,7 @@ classdef instrument_Opticool < instrumentInterface
 
     methods
 
-        function obj = instrument_Opticool(address)
+        function obj = instrument_OptiCool(address)
             obj@instrumentInterface();
             assemblyFile = NET.addAssembly('C:\QdOptiCool\LabVIEW\QDInstrument.dll');
             handle_instrumentType = assemblyFile.AssemblyHandle.GetType('QuantumDesign.QDInstrument.QDInstrumentBase+QDInstrumentType');
@@ -99,7 +99,7 @@ classdef instrument_Opticool < instrumentInterface
                 case 1
                     targetTemperature = channelLastSetValues;
                     if obj.enforceTargetTemperature(targetTemperature)
-                        %warning("Opticool target temperature was changed elsewhere.");
+                        %warning("OptiCool target temperature was changed elsewhere.");
                     end
 
                     [~, ~, obj.temperatureStatus] = handle.GetTemperature(0, obj.temperatureStatus);
@@ -108,7 +108,7 @@ classdef instrument_Opticool < instrumentInterface
                     %GetFieldSetpoints is not working, so we cannot check if the target magnetic field was changed elsewhere.
                     %targetMagneticField = channelLastSetValues;
                     %if obj.enforceTargetMagneticField(targetMagneticField)
-                    %    warning("Opticool target magnetic field was changed elsewhere.");
+                    %    warning("OptiCool target magnetic field was changed elsewhere.");
                     %end
 
                     [~, ~, obj.fieldStatus] = handle.GetField(0, obj.fieldStatus);

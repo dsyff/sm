@@ -121,8 +121,11 @@ classdef virtualInstrument_nE < virtualInstrumentInterface
             end
             [nEff, EEff] = obj.computeNormalizedStateFromVoltages(vtg, vbg);
             expected = [nEff, EEff];
-            getValues = obj.getChannelByIndex(channelIndex);
-            TF = all(abs(getValues - expected(channelIndex)) <= obj.setTolerances{channelIndex});
+            rack = obj.getMasterRack();
+            gateValues = rack.rackGet([obj.vTgChannelName, obj.vBgChannelName]);
+            [nActual, EActual] = obj.computeNormalizedStateFromVoltages(gateValues(1), gateValues(2));
+            actual = [nActual, EActual];
+            TF = abs(actual(channelIndex) - expected(channelIndex)) <= obj.setTolerances{channelIndex};
         end
     end
 

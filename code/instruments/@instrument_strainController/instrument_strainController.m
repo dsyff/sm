@@ -21,8 +21,8 @@ classdef instrument_strainController < instrumentInterface
                 options.address_K2450_A (1, 1) string = gpibAddress(17)
                 options.address_K2450_B (1, 1) string = gpibAddress(18)
                 options.address_Montana2 (1, 1) string = "136.167.55.165"
-                options.address_Opticool (1, 1) string = "127.0.0.1"
-                options.cryostat (1, 1) string {mustBeMember(options.cryostat, ["Montana2", "Opticool"])}
+                options.address_OptiCool (1, 1) string = "127.0.0.1"
+                options.cryostat (1, 1) string {mustBeMember(options.cryostat, ["Montana2", "OptiCool"])}
                 options.strainCellNumber (1, 1) uint8 {mustBeInteger, mustBePositive}
                 options.spawnFcn = []
             end
@@ -44,7 +44,7 @@ classdef instrument_strainController < instrumentInterface
                 address_K2450_A = options.address_K2450_A, ...
                 address_K2450_B = options.address_K2450_B, ...
                 address_Montana2 = options.address_Montana2, ...
-                address_Opticool = options.address_Opticool, ...
+                address_OptiCool = options.address_OptiCool, ...
                 cryostat = options.cryostat, ...
                 strainCellNumber = options.strainCellNumber, ...
                 experimentRootPath = rootPath, ...
@@ -56,7 +56,7 @@ classdef instrument_strainController < instrumentInterface
             dogSet(obj.handle_strainWatchdog, "V_str_i", 0);
             dogSet(obj.handle_strainWatchdog, "frequency", 100E3);
 
-            if options.cryostat == "Opticool"
+            if options.cryostat == "OptiCool"
                 % dogSet(obj.handle_strainWatchdog, "Z_short_r", 5.68);
                 % dogSet(obj.handle_strainWatchdog, "Z_short_theta", deg2rad(22.2));
                 % dogSet(obj.handle_strainWatchdog, "Z_open_r", 28.9E6);

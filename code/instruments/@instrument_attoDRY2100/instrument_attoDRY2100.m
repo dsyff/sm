@@ -1,5 +1,5 @@
-classdef instrument_attodry2100 < instrumentInterface
-    % Minimal Attodry2100 integration supporting temperature and field reads
+classdef instrument_attoDRY2100 < instrumentInterface
+    % Minimal attoDRY2100 integration supporting temperature and field reads
     properties (Access = private)
         lastTemperature double = NaN
         lastField double = NaN
@@ -7,7 +7,7 @@ classdef instrument_attodry2100 < instrumentInterface
     end
 
     methods
-        function obj = instrument_attodry2100(address)
+        function obj = instrument_attoDRY2100(address)
             arguments
                 address (1, 1) string {mustBeNonzeroLengthText}
             end
@@ -34,7 +34,7 @@ classdef instrument_attodry2100 < instrumentInterface
 
     methods (Access = ?instrumentInterface)
         function getWriteChannelHelper(obj, channelIndex)
-            magnetChannel = 0; % Thomas: Attodry2100 has a single magnet channel (always 0)
+            magnetChannel = 0; % Thomas: attoDRY2100 has a single magnet channel (always 0)
             switch channelIndex
                 case 1
                     [errorNumber, rawTemperature] = sample_getTemperature(obj.communicationHandle);
@@ -64,7 +64,7 @@ classdef instrument_attodry2100 < instrumentInterface
 
         function setWriteChannelHelper(obj, channelIndex, setValues)
             handle = obj.communicationHandle;
-            magnetChannel = 0; % Thomas: Attodry2100 has a single magnet channel (always 0)
+            magnetChannel = 0; % Thomas: attoDRY2100 has a single magnet channel (always 0)
             switch channelIndex
                 case 1
                     errorNumber = sample_setSetPoint(handle, setValues);
@@ -84,7 +84,7 @@ classdef instrument_attodry2100 < instrumentInterface
                 case 3
                     drivenMode = double(setValues);
                     if ~(drivenMode == 0 || drivenMode == 1)
-                        error("instrument_attodry2100:InvalidDrivenMode", ...
+                        error("instrument_attoDRY2100:InvalidDrivenMode", ...
                             "Driven mode must be 0 (not driven) or 1 (driven).");
                     end
 
@@ -100,7 +100,7 @@ classdef instrument_attodry2100 < instrumentInterface
             if errorNumber ~= 0
                 errStr  = system_errorNumberToString(obj.communicationHandle, errorNumber);
 
-                error("instrument_attodry2100:CommandFailed", ...
+                error("instrument_attoDRY2100:CommandFailed", ...
                     "%s returned error %d: %s", ...
                     operation, errorNumber, string(errStr));
             end

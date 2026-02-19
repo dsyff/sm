@@ -61,6 +61,8 @@ Pattern:
   - Keep a small amount of internal state (the last requested virtual value)
   - Compute physical targets
   - Write the physical targets via `rack.rackSetWrite(...)` (or `rack.rackSet(...)`)
+  - Do not call physical instrument `getChannel`/`setChannel` directly from virtual
+    instrument methods; use rack APIs so rack locking/batching stays correct
 
 See `code/instruments/virtualInstrument_nE.m` for a concrete example.
 
@@ -94,6 +96,8 @@ To add a virtual instrument to a recipe:
   - Do not rely on globals: always use `obj.getMasterRack()`.
   - Avoid recursion: do not read/write your own virtual channel(s) via the rack.
   - Keep reads fast: virtual reads run inline with the measurement loop.
+  - Direct physical instrument get/set calls inside virtual instruments are blocked
+    by the framework; use `rack.rackGet(...)` and `rack.rackSetWrite(...)`.
 
 
 ================================================================================

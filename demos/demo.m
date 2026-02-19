@@ -25,7 +25,7 @@ sminit; % shared setup script keeps demo logic concise
 %% instrument addresses
 Montana1_IP = "136.167.55.127";
 Montana2_IP = "136.167.55.165";
-Opticool_IP = "127.0.0.1";
+OptiCool_IP = "127.0.0.1";
 
 SR860_1_GPIB = 7; % use same GPIB as SR830_1
 SR830_1_GPIB = SR860_1_GPIB; %sd
@@ -54,7 +54,8 @@ K10CR1_Serial = ""; % Leave blank to use the first detected device
 % Thorlabs CS165MU camera (TLCamera SDK)
 CS165MU_Serial = ""; % Leave blank to use the first detected camera
 
-Attodry2100_Address = "192.168.1.1";
+attoDRY2100_Address = "192.168.1.1";
+ANC300_Serial = "COM6";
 
 % ST3215-HS bus servos via Waveshare Bus Servo Adapter (A)
 ST3215HS_Serial = "COM4";
@@ -82,30 +83,48 @@ counter_Use = 0;
 clock_Use = 0;
 
 strainController_Use = 0;
-strain_cryostat = "Opticool"; %Opticool, Montana2
+strain_cryostat = "OptiCool"; %OptiCool, Montana2
 
 Montana1_Use = 0;
 Montana2_Use = 0;
-Opticool_Use = 0;
+OptiCool_Use = 0;
+attoDRY2100_Use = 0;
+ANC300_Use = 0; % nano positioner for attoDRY2100
 
 SR860_1_Use = 0;
+SR860_1_keyword = "Ixx";
 SR830_1_Use = 0;
+SR830_1_keyword = "Ixx";
 SR860_2_Use = 0;
+SR860_2_keyword = "Vxx1";
 SR830_2_Use = 0;
+SR830_2_keyword = "Vxx1";
 SR860_3_Use = 0;
+SR860_3_keyword = "Vxx2";
 SR830_3_Use = 0;
+SR830_3_keyword = "Vxx2";
 SR860_4_Use = 0;
+SR860_4_keyword = "Vxx3";
 SR830_4_Use = 0;
+SR830_4_keyword = "Vxx3";
 SR860_5_Use = 0;
+SR860_5_keyword = "Vxx4";
 SR830_5_Use = 0;
+SR830_5_keyword = "Vxx4";
 
 K2450_A_Use = 0;
+K2450_A_keyword = "bg";
 K2450_B_Use = 0;
+K2450_B_keyword = "tg";
 K2450_C_Use = 0;
+K2450_C_keyword = "tg";
 
 K2400_A_Use = 0;
+K2400_A_keyword = "bg";
 K2400_B_Use = 0;
+K2400_B_keyword = "tg";
 K2400_C_Use = 0;
+K2400_C_keyword = "tg";
 
 HP34401A_A_Use = 0;
 HP34401A_B_Use = 0;
@@ -113,7 +132,6 @@ HP34401A_B_Use = 0;
 K10CR1_Use = 0;
 CS165MU_Use = 0;
 Andor_Use = 0;
-Attodry2100_Use = 0;
 ST3215HS_Use = 0;
 colorLED_Use = 0;
 
@@ -152,12 +170,12 @@ if clock_Use
 end
 
 if strainController_Use
-    if strain_cryostat == "Opticool"
+    if strain_cryostat == "OptiCool"
         strainCellNumber_default = 1;
     elseif strain_cryostat == "Montana2"
         strainCellNumber_default = 2;
     else
-        error("demo:InvalidStrainCryostat", "strain_cryostat must be either 'Opticool' or 'Montana2'");
+        error("demo:InvalidStrainCryostat", "strain_cryostat must be either 'OptiCool' or 'Montana2'");
     end
 
     recipe.addInstrument("handle_strainController", "instrument_strainController", "strain", "strainController_1", ...
@@ -165,7 +183,7 @@ if strainController_Use
         address_K2450_A = gpibAddress(K2450_A_GPIB, adaptorIndex_strain), ...
         address_K2450_B = gpibAddress(K2450_B_GPIB, adaptorIndex_strain), ...
         address_Montana2 = Montana2_IP, ...
-        address_Opticool = Opticool_IP, ...
+        address_OptiCool = OptiCool_IP, ...
         cryostat = strain_cryostat, ...
         strainCellNumber = strainCellNumber_default, ...
         numeWorkersRequested = 1);
@@ -195,12 +213,12 @@ if Montana2_Use && ~strainController_Use
     recipe.addChannel("Montana2", "T", "T");
 end
 
-if Opticool_Use
-    recipe.addInstrument("handle_Opticool", "instrument_Opticool", "Opticool", Opticool_IP);
+if OptiCool_Use
+    recipe.addInstrument("handle_OptiCool", "instrument_OptiCool", "OptiCool", OptiCool_IP);
     if ~strainController_Use
-        recipe.addChannel("Opticool", "T", "T");
+        recipe.addChannel("OptiCool", "T", "T");
     end
-    recipe.addChannel("Opticool", "B", "B");
+    recipe.addChannel("OptiCool", "B", "B");
 end
 
 if SR860_1_Use
@@ -213,12 +231,12 @@ if SR860_1_Use
     % recipe.addStatement("SR860_1", "writeline(h, ""ignd 1"");"); % Input grounding: 0=float, 1=ground
     % recipe.addStatement("SR860_1", "writeline(h, ""icpl 0"");"); % Input coupling: 0=AC, 1=DC
     % Optional SR860 channels (commented by default):
-    % recipe.addChannel("SR860_1", "X", "Ixx_X");
-    % recipe.addChannel("SR860_1", "Y", "Ixx_Y");
-    % recipe.addChannel("SR860_1", "R", "Ixx_R");
-    % recipe.addChannel("SR860_1", "Theta", "Ixx_Theta");
-    recipe.addChannel("SR860_1", "frequency", "Freq");
-    recipe.addChannel("SR860_1", "amplitude", "V_exc");
+    % recipe.addChannel("SR860_1", "X", SR860_1_keyword + "_X");
+    % recipe.addChannel("SR860_1", "Y", SR860_1_keyword + "_Y");
+    % recipe.addChannel("SR860_1", "R", SR860_1_keyword + "_R");
+    % recipe.addChannel("SR860_1", "Theta", SR860_1_keyword + "_Theta");
+    recipe.addChannel("SR860_1", "frequency", SR860_1_keyword + "_Freq");
+    recipe.addChannel("SR860_1", "amplitude", SR860_1_keyword + "_V_exc");
     % recipe.addChannel("SR860_1", "aux_in_0", "SR860_aux_in_0");
     % recipe.addChannel("SR860_1", "aux_in_1", "SR860_aux_in_1");
     % recipe.addChannel("SR860_1", "aux_in_2", "SR860_aux_in_2");
@@ -227,14 +245,14 @@ if SR860_1_Use
     % recipe.addChannel("SR860_1", "aux_out_1", "SR860_aux_out_1");
     % recipe.addChannel("SR860_1", "aux_out_2", "SR860_aux_out_2");
     % recipe.addChannel("SR860_1", "aux_out_3", "SR860_aux_out_3");
-    recipe.addChannel("SR860_1", "sensitivity", "Ixx_Sens");
-    % recipe.addChannel("SR860_1", "time_constant", "Ixx_tau");
-    % recipe.addChannel("SR860_1", "sync_filter", "Ixx_sync");
-    % recipe.addChannel("SR860_1", "XY", "Ixx_XY");
-    recipe.addChannel("SR860_1", "XTheta", "Ixx_XTheta");
-    % recipe.addChannel("SR860_1", "YTheta", "Ixx_YTheta");
-    % recipe.addChannel("SR860_1", "RTheta", "Ixx_RTheta");
-    % recipe.addChannel("SR860_1", "dc_offset", "SR860_dc_offset");
+    recipe.addChannel("SR860_1", "sensitivity", SR860_1_keyword + "_Sens");
+    % recipe.addChannel("SR860_1", "time_constant", SR860_1_keyword + "_tau");
+    % recipe.addChannel("SR860_1", "sync_filter", SR860_1_keyword + "_sync");
+    % recipe.addChannel("SR860_1", "XY", SR860_1_keyword + "_XY");
+    recipe.addChannel("SR860_1", "XTheta", SR860_1_keyword + "_XTheta");
+    % recipe.addChannel("SR860_1", "YTheta", SR860_1_keyword + "_YTheta");
+    % recipe.addChannel("SR860_1", "RTheta", SR860_1_keyword + "_RTheta");
+    % recipe.addChannel("SR860_1", "dc_offset", SR860_1_keyword + "_dc_offset");
 end
 
 if SR830_1_Use
@@ -249,12 +267,12 @@ if SR830_1_Use
     % recipe.addStatement("SR830_1", "writeline(h, ""rmod 0"");"); % Reserve mode: 0=high, 1=normal, 2=low
     % recipe.addStatement("SR830_1", "writeline(h, ""slp 0"");"); % Output filter slope: 0=6dB, 1=12dB, 2=18dB, 3=24dB
     % Optional SR830 channels (commented by default):
-    % recipe.addChannel("SR830_1", "X", "Ixx_X");
-    % recipe.addChannel("SR830_1", "Y", "Ixx_Y");
-    % recipe.addChannel("SR830_1", "R", "Ixx_R");
-    % recipe.addChannel("SR830_1", "Theta", "Ixx_Theta");
-    recipe.addChannel("SR830_1", "frequency", "Freq");
-    recipe.addChannel("SR830_1", "amplitude", "V_exc");
+    % recipe.addChannel("SR830_1", "X", SR830_1_keyword + "_X");
+    % recipe.addChannel("SR830_1", "Y", SR830_1_keyword + "_Y");
+    % recipe.addChannel("SR830_1", "R", SR830_1_keyword + "_R");
+    % recipe.addChannel("SR830_1", "Theta", SR830_1_keyword + "_Theta");
+    recipe.addChannel("SR830_1", "frequency", SR830_1_keyword + "_Freq");
+    recipe.addChannel("SR830_1", "amplitude", SR830_1_keyword + "_V_exc");
     % recipe.addChannel("SR830_1", "aux_in_1", "SR830_1_aux_in_1");
     % recipe.addChannel("SR830_1", "aux_in_2", "SR830_1_aux_in_2");
     % recipe.addChannel("SR830_1", "aux_in_3", "SR830_1_aux_in_3");
@@ -263,13 +281,13 @@ if SR830_1_Use
     % recipe.addChannel("SR830_1", "aux_out_2", "SR830_1_aux_out_2");
     % recipe.addChannel("SR830_1", "aux_out_3", "SR830_1_aux_out_3");
     % recipe.addChannel("SR830_1", "aux_out_4", "SR830_1_aux_out_4");
-    recipe.addChannel("SR830_1", "sensitivity", "Ixx_Sens");
-    % recipe.addChannel("SR830_1", "time_constant", "Ixx_tau");
-    % recipe.addChannel("SR830_1", "sync_filter", "Ixx_sync");
-    % recipe.addChannel("SR830_1", "XY", "Ixx_XY");
-    recipe.addChannel("SR830_1", "XTheta", "Ixx_XTheta");
-    % recipe.addChannel("SR830_1", "YTheta", "Ixx_YTheta");
-    % recipe.addChannel("SR830_1", "RTheta", "Ixx_RTheta");
+    recipe.addChannel("SR830_1", "sensitivity", SR830_1_keyword + "_Sens");
+    % recipe.addChannel("SR830_1", "time_constant", SR830_1_keyword + "_tau");
+    % recipe.addChannel("SR830_1", "sync_filter", SR830_1_keyword + "_sync");
+    % recipe.addChannel("SR830_1", "XY", SR830_1_keyword + "_XY");
+    recipe.addChannel("SR830_1", "XTheta", SR830_1_keyword + "_XTheta");
+    % recipe.addChannel("SR830_1", "YTheta", SR830_1_keyword + "_YTheta");
+    % recipe.addChannel("SR830_1", "RTheta", SR830_1_keyword + "_RTheta");
 end
 
 if SR860_2_Use
@@ -282,12 +300,12 @@ if SR860_2_Use
     % recipe.addStatement("SR860_2", "writeline(h, ""ignd 1"");"); % Input grounding: 0=float, 1=ground
     % recipe.addStatement("SR860_2", "writeline(h, ""icpl 0"");"); % Input coupling: 0=AC, 1=DC
     % Optional SR860 channels (commented by default):
-    % recipe.addChannel("SR860_2", "X", "Vxx1_X");
-    % recipe.addChannel("SR860_2", "Y", "Vxx1_Y");
-    % recipe.addChannel("SR860_2", "R", "Vxx1_R");
-    % recipe.addChannel("SR860_2", "Theta", "Vxx1_Theta");
-    % recipe.addChannel("SR860_2", "frequency", "Vxx1_Freq");
-    % recipe.addChannel("SR860_2", "amplitude", "Vxx1_V_exc");
+    % recipe.addChannel("SR860_2", "X", SR860_2_keyword + "_X");
+    % recipe.addChannel("SR860_2", "Y", SR860_2_keyword + "_Y");
+    % recipe.addChannel("SR860_2", "R", SR860_2_keyword + "_R");
+    % recipe.addChannel("SR860_2", "Theta", SR860_2_keyword + "_Theta");
+    % recipe.addChannel("SR860_2", "frequency", SR860_2_keyword + "_Freq");
+    % recipe.addChannel("SR860_2", "amplitude", SR860_2_keyword + "_V_exc");
     % recipe.addChannel("SR860_2", "aux_in_0", "SR860_2_aux_in_0");
     % recipe.addChannel("SR860_2", "aux_in_1", "SR860_2_aux_in_1");
     % recipe.addChannel("SR860_2", "aux_in_2", "SR860_2_aux_in_2");
@@ -296,14 +314,14 @@ if SR860_2_Use
     % recipe.addChannel("SR860_2", "aux_out_1", "SR860_2_aux_out_1");
     % recipe.addChannel("SR860_2", "aux_out_2", "SR860_2_aux_out_2");
     % recipe.addChannel("SR860_2", "aux_out_3", "SR860_2_aux_out_3");
-    recipe.addChannel("SR860_2", "sensitivity", "Vxx1_Sens");
-    % recipe.addChannel("SR860_2", "time_constant", "Vxx1_tau");
-    % recipe.addChannel("SR860_2", "sync_filter", "Vxx1_sync");
-    % recipe.addChannel("SR860_2", "XY", "Vxx1_XY");
-    recipe.addChannel("SR860_2", "XTheta", "Vxx1_XTheta");
-    % recipe.addChannel("SR860_2", "YTheta", "Vxx1_YTheta");
-    % recipe.addChannel("SR860_2", "RTheta", "Vxx1_RTheta");
-    % recipe.addChannel("SR860_2", "dc_offset", "SR860_2_dc_offset");
+    recipe.addChannel("SR860_2", "sensitivity", SR860_2_keyword + "_Sens");
+    % recipe.addChannel("SR860_2", "time_constant", SR860_2_keyword + "_tau");
+    % recipe.addChannel("SR860_2", "sync_filter", SR860_2_keyword + "_sync");
+    % recipe.addChannel("SR860_2", "XY", SR860_2_keyword + "_XY");
+    recipe.addChannel("SR860_2", "XTheta", SR860_2_keyword + "_XTheta");
+    % recipe.addChannel("SR860_2", "YTheta", SR860_2_keyword + "_YTheta");
+    % recipe.addChannel("SR860_2", "RTheta", SR860_2_keyword + "_RTheta");
+    % recipe.addChannel("SR860_2", "dc_offset", SR860_2_keyword + "_dc_offset");
 end
 
 if SR830_2_Use
@@ -318,12 +336,12 @@ if SR830_2_Use
     % recipe.addStatement("SR830_2", "writeline(h, ""rmod 0"");"); % Reserve mode: 0=high, 1=normal, 2=low
     % recipe.addStatement("SR830_2", "writeline(h, ""slp 0"");"); % Output filter slope: 0=6dB, 1=12dB, 2=18dB, 3=24dB
     % Optional SR830 channels (commented by default):
-    % recipe.addChannel("SR830_2", "X", "Vxx1_X");
-    % recipe.addChannel("SR830_2", "Y", "Vxx1_Y");
-    % recipe.addChannel("SR830_2", "R", "Vxx1_R");
-    % recipe.addChannel("SR830_2", "Theta", "Vxx1_Theta");
-    % recipe.addChannel("SR830_2", "frequency", "Vxx1_Freq");
-    % recipe.addChannel("SR830_2", "amplitude", "Vxx1_V_exc");
+    % recipe.addChannel("SR830_2", "X", SR830_2_keyword + "_X");
+    % recipe.addChannel("SR830_2", "Y", SR830_2_keyword + "_Y");
+    % recipe.addChannel("SR830_2", "R", SR830_2_keyword + "_R");
+    % recipe.addChannel("SR830_2", "Theta", SR830_2_keyword + "_Theta");
+    % recipe.addChannel("SR830_2", "frequency", SR830_2_keyword + "_Freq");
+    % recipe.addChannel("SR830_2", "amplitude", SR830_2_keyword + "_V_exc");
     % recipe.addChannel("SR830_2", "aux_in_1", "SR830_2_aux_in_1");
     % recipe.addChannel("SR830_2", "aux_in_2", "SR830_2_aux_in_2");
     % recipe.addChannel("SR830_2", "aux_in_3", "SR830_2_aux_in_3");
@@ -332,13 +350,13 @@ if SR830_2_Use
     % recipe.addChannel("SR830_2", "aux_out_2", "SR830_2_aux_out_2");
     % recipe.addChannel("SR830_2", "aux_out_3", "SR830_2_aux_out_3");
     % recipe.addChannel("SR830_2", "aux_out_4", "SR830_2_aux_out_4");
-    recipe.addChannel("SR830_2", "sensitivity", "Vxx1_Sens");
-    % recipe.addChannel("SR830_2", "time_constant", "Vxx1_tau");
-    % recipe.addChannel("SR830_2", "sync_filter", "Vxx1_sync");
-    % recipe.addChannel("SR830_2", "XY", "Vxx1_XY");
-    recipe.addChannel("SR830_2", "XTheta", "Vxx1_XTheta");
-    % recipe.addChannel("SR830_2", "YTheta", "Vxx1_YTheta");
-    % recipe.addChannel("SR830_2", "RTheta", "Vxx1_RTheta");
+    recipe.addChannel("SR830_2", "sensitivity", SR830_2_keyword + "_Sens");
+    % recipe.addChannel("SR830_2", "time_constant", SR830_2_keyword + "_tau");
+    % recipe.addChannel("SR830_2", "sync_filter", SR830_2_keyword + "_sync");
+    % recipe.addChannel("SR830_2", "XY", SR830_2_keyword + "_XY");
+    recipe.addChannel("SR830_2", "XTheta", SR830_2_keyword + "_XTheta");
+    % recipe.addChannel("SR830_2", "YTheta", SR830_2_keyword + "_YTheta");
+    % recipe.addChannel("SR830_2", "RTheta", SR830_2_keyword + "_RTheta");
 end
 
 if SR860_3_Use
@@ -351,12 +369,12 @@ if SR860_3_Use
     % recipe.addStatement("SR860_3", "writeline(h, ""ignd 1"");"); % Input grounding: 0=float, 1=ground
     % recipe.addStatement("SR860_3", "writeline(h, ""icpl 0"");"); % Input coupling: 0=AC, 1=DC
     % Optional SR860 channels (commented by default):
-    % recipe.addChannel("SR860_3", "X", "Vxx2_X");
-    % recipe.addChannel("SR860_3", "Y", "Vxx2_Y");
-    % recipe.addChannel("SR860_3", "R", "Vxx2_R");
-    % recipe.addChannel("SR860_3", "Theta", "Vxx2_Theta");
-    % recipe.addChannel("SR860_3", "frequency", "Vxx2_Freq");
-    % recipe.addChannel("SR860_3", "amplitude", "Vxx2_V_exc");
+    % recipe.addChannel("SR860_3", "X", SR860_3_keyword + "_X");
+    % recipe.addChannel("SR860_3", "Y", SR860_3_keyword + "_Y");
+    % recipe.addChannel("SR860_3", "R", SR860_3_keyword + "_R");
+    % recipe.addChannel("SR860_3", "Theta", SR860_3_keyword + "_Theta");
+    % recipe.addChannel("SR860_3", "frequency", SR860_3_keyword + "_Freq");
+    % recipe.addChannel("SR860_3", "amplitude", SR860_3_keyword + "_V_exc");
     % recipe.addChannel("SR860_3", "aux_in_0", "SR860_3_aux_in_0");
     % recipe.addChannel("SR860_3", "aux_in_1", "SR860_3_aux_in_1");
     % recipe.addChannel("SR860_3", "aux_in_2", "SR860_3_aux_in_2");
@@ -365,14 +383,14 @@ if SR860_3_Use
     % recipe.addChannel("SR860_3", "aux_out_1", "SR860_3_aux_out_1");
     % recipe.addChannel("SR860_3", "aux_out_2", "SR860_3_aux_out_2");
     % recipe.addChannel("SR860_3", "aux_out_3", "SR860_3_aux_out_3");
-    recipe.addChannel("SR860_3", "sensitivity", "Vxx2_Sens");
-    % recipe.addChannel("SR860_3", "time_constant", "Vxx2_tau");
-    % recipe.addChannel("SR860_3", "sync_filter", "Vxx2_sync");
-    % recipe.addChannel("SR860_3", "XY", "Vxx2_XY");
-    recipe.addChannel("SR860_3", "XTheta", "Vxx2_XTheta");
-    % recipe.addChannel("SR860_3", "YTheta", "Vxx2_YTheta");
-    % recipe.addChannel("SR860_3", "RTheta", "Vxx2_RTheta");
-    % recipe.addChannel("SR860_3", "dc_offset", "SR860_3_dc_offset");
+    recipe.addChannel("SR860_3", "sensitivity", SR860_3_keyword + "_Sens");
+    % recipe.addChannel("SR860_3", "time_constant", SR860_3_keyword + "_tau");
+    % recipe.addChannel("SR860_3", "sync_filter", SR860_3_keyword + "_sync");
+    % recipe.addChannel("SR860_3", "XY", SR860_3_keyword + "_XY");
+    recipe.addChannel("SR860_3", "XTheta", SR860_3_keyword + "_XTheta");
+    % recipe.addChannel("SR860_3", "YTheta", SR860_3_keyword + "_YTheta");
+    % recipe.addChannel("SR860_3", "RTheta", SR860_3_keyword + "_RTheta");
+    % recipe.addChannel("SR860_3", "dc_offset", SR860_3_keyword + "_dc_offset");
 end
 
 if SR830_3_Use
@@ -387,12 +405,12 @@ if SR830_3_Use
     % recipe.addStatement("SR830_3", "writeline(h, ""rmod 0"");"); % Reserve mode: 0=high, 1=normal, 2=low
     % recipe.addStatement("SR830_3", "writeline(h, ""slp 0"");"); % Output filter slope: 0=6dB, 1=12dB, 2=18dB, 3=24dB
     % Optional SR830 channels (commented by default):
-    % recipe.addChannel("SR830_3", "X", "Vxx2_X");
-    % recipe.addChannel("SR830_3", "Y", "Vxx2_Y");
-    % recipe.addChannel("SR830_3", "R", "Vxx2_R");
-    % recipe.addChannel("SR830_3", "Theta", "Vxx2_Theta");
-    % recipe.addChannel("SR830_3", "frequency", "Vxx2_Freq");
-    % recipe.addChannel("SR830_3", "amplitude", "Vxx2_V_exc");
+    % recipe.addChannel("SR830_3", "X", SR830_3_keyword + "_X");
+    % recipe.addChannel("SR830_3", "Y", SR830_3_keyword + "_Y");
+    % recipe.addChannel("SR830_3", "R", SR830_3_keyword + "_R");
+    % recipe.addChannel("SR830_3", "Theta", SR830_3_keyword + "_Theta");
+    % recipe.addChannel("SR830_3", "frequency", SR830_3_keyword + "_Freq");
+    % recipe.addChannel("SR830_3", "amplitude", SR830_3_keyword + "_V_exc");
     % recipe.addChannel("SR830_3", "aux_in_1", "SR830_3_aux_in_1");
     % recipe.addChannel("SR830_3", "aux_in_2", "SR830_3_aux_in_2");
     % recipe.addChannel("SR830_3", "aux_in_3", "SR830_3_aux_in_3");
@@ -401,13 +419,13 @@ if SR830_3_Use
     % recipe.addChannel("SR830_3", "aux_out_2", "SR830_3_aux_out_2");
     % recipe.addChannel("SR830_3", "aux_out_3", "SR830_3_aux_out_3");
     % recipe.addChannel("SR830_3", "aux_out_4", "SR830_3_aux_out_4");
-    recipe.addChannel("SR830_3", "sensitivity", "Vxx2_Sens");
-    % recipe.addChannel("SR830_3", "time_constant", "Vxx2_tau");
-    % recipe.addChannel("SR830_3", "sync_filter", "Vxx2_sync");
-    % recipe.addChannel("SR830_3", "XY", "Vxx2_XY");
-    recipe.addChannel("SR830_3", "XTheta", "Vxx2_XTheta");
-    % recipe.addChannel("SR830_3", "YTheta", "Vxx2_YTheta");
-    % recipe.addChannel("SR830_3", "RTheta", "Vxx2_RTheta");
+    recipe.addChannel("SR830_3", "sensitivity", SR830_3_keyword + "_Sens");
+    % recipe.addChannel("SR830_3", "time_constant", SR830_3_keyword + "_tau");
+    % recipe.addChannel("SR830_3", "sync_filter", SR830_3_keyword + "_sync");
+    % recipe.addChannel("SR830_3", "XY", SR830_3_keyword + "_XY");
+    recipe.addChannel("SR830_3", "XTheta", SR830_3_keyword + "_XTheta");
+    % recipe.addChannel("SR830_3", "YTheta", SR830_3_keyword + "_YTheta");
+    % recipe.addChannel("SR830_3", "RTheta", SR830_3_keyword + "_RTheta");
 end
 
 if SR860_4_Use
@@ -420,12 +438,12 @@ if SR860_4_Use
     % recipe.addStatement("SR860_4", "writeline(h, ""ignd 1"");"); % Input grounding: 0=float, 1=ground
     % recipe.addStatement("SR860_4", "writeline(h, ""icpl 0"");"); % Input coupling: 0=AC, 1=DC
     % Optional SR860 channels (commented by default):
-    % recipe.addChannel("SR860_4", "X", "Vxx3_X");
-    % recipe.addChannel("SR860_4", "Y", "Vxx3_Y");
-    % recipe.addChannel("SR860_4", "R", "Vxx3_R");
-    % recipe.addChannel("SR860_4", "Theta", "Vxx3_Theta");
-    % recipe.addChannel("SR860_4", "frequency", "Vxx3_Freq");
-    % recipe.addChannel("SR860_4", "amplitude", "Vxx3_V_exc");
+    % recipe.addChannel("SR860_4", "X", SR860_4_keyword + "_X");
+    % recipe.addChannel("SR860_4", "Y", SR860_4_keyword + "_Y");
+    % recipe.addChannel("SR860_4", "R", SR860_4_keyword + "_R");
+    % recipe.addChannel("SR860_4", "Theta", SR860_4_keyword + "_Theta");
+    % recipe.addChannel("SR860_4", "frequency", SR860_4_keyword + "_Freq");
+    % recipe.addChannel("SR860_4", "amplitude", SR860_4_keyword + "_V_exc");
     % recipe.addChannel("SR860_4", "aux_in_0", "SR860_4_aux_in_0");
     % recipe.addChannel("SR860_4", "aux_in_1", "SR860_4_aux_in_1");
     % recipe.addChannel("SR860_4", "aux_in_2", "SR860_4_aux_in_2");
@@ -434,14 +452,14 @@ if SR860_4_Use
     % recipe.addChannel("SR860_4", "aux_out_1", "SR860_4_aux_out_1");
     % recipe.addChannel("SR860_4", "aux_out_2", "SR860_4_aux_out_2");
     % recipe.addChannel("SR860_4", "aux_out_3", "SR860_4_aux_out_3");
-    recipe.addChannel("SR860_4", "sensitivity", "Vxx3_Sens");
-    % recipe.addChannel("SR860_4", "time_constant", "Vxx3_tau");
-    % recipe.addChannel("SR860_4", "sync_filter", "Vxx3_sync");
-    % recipe.addChannel("SR860_4", "XY", "Vxx3_XY");
-    recipe.addChannel("SR860_4", "XTheta", "Vxx3_XTheta");
-    % recipe.addChannel("SR860_4", "YTheta", "Vxx3_YTheta");
-    % recipe.addChannel("SR860_4", "RTheta", "Vxx3_RTheta");
-    % recipe.addChannel("SR860_4", "dc_offset", "SR860_4_dc_offset");
+    recipe.addChannel("SR860_4", "sensitivity", SR860_4_keyword + "_Sens");
+    % recipe.addChannel("SR860_4", "time_constant", SR860_4_keyword + "_tau");
+    % recipe.addChannel("SR860_4", "sync_filter", SR860_4_keyword + "_sync");
+    % recipe.addChannel("SR860_4", "XY", SR860_4_keyword + "_XY");
+    recipe.addChannel("SR860_4", "XTheta", SR860_4_keyword + "_XTheta");
+    % recipe.addChannel("SR860_4", "YTheta", SR860_4_keyword + "_YTheta");
+    % recipe.addChannel("SR860_4", "RTheta", SR860_4_keyword + "_RTheta");
+    % recipe.addChannel("SR860_4", "dc_offset", SR860_4_keyword + "_dc_offset");
 end
 
 if SR830_4_Use
@@ -456,12 +474,12 @@ if SR830_4_Use
     % recipe.addStatement("SR830_4", "writeline(h, ""rmod 0"");"); % Reserve mode: 0=high, 1=normal, 2=low
     % recipe.addStatement("SR830_4", "writeline(h, ""slp 0"");"); % Output filter slope: 0=6dB, 1=12dB, 2=18dB, 3=24dB
     % Optional SR830 channels (commented by default):
-    % recipe.addChannel("SR830_4", "X", "Vxx3_X");
-    % recipe.addChannel("SR830_4", "Y", "Vxx3_Y");
-    % recipe.addChannel("SR830_4", "R", "Vxx3_R");
-    % recipe.addChannel("SR830_4", "Theta", "Vxx3_Theta");
-    % recipe.addChannel("SR830_4", "frequency", "Vxx3_Freq");
-    % recipe.addChannel("SR830_4", "amplitude", "Vxx3_V_exc");
+    % recipe.addChannel("SR830_4", "X", SR830_4_keyword + "_X");
+    % recipe.addChannel("SR830_4", "Y", SR830_4_keyword + "_Y");
+    % recipe.addChannel("SR830_4", "R", SR830_4_keyword + "_R");
+    % recipe.addChannel("SR830_4", "Theta", SR830_4_keyword + "_Theta");
+    % recipe.addChannel("SR830_4", "frequency", SR830_4_keyword + "_Freq");
+    % recipe.addChannel("SR830_4", "amplitude", SR830_4_keyword + "_V_exc");
     % recipe.addChannel("SR830_4", "aux_in_1", "SR830_4_aux_in_1");
     % recipe.addChannel("SR830_4", "aux_in_2", "SR830_4_aux_in_2");
     % recipe.addChannel("SR830_4", "aux_in_3", "SR830_4_aux_in_3");
@@ -470,13 +488,13 @@ if SR830_4_Use
     % recipe.addChannel("SR830_4", "aux_out_2", "SR830_4_aux_out_2");
     % recipe.addChannel("SR830_4", "aux_out_3", "SR830_4_aux_out_3");
     % recipe.addChannel("SR830_4", "aux_out_4", "SR830_4_aux_out_4");
-    recipe.addChannel("SR830_4", "sensitivity", "Vxx3_Sens");
-    % recipe.addChannel("SR830_4", "time_constant", "Vxx3_tau");
-    % recipe.addChannel("SR830_4", "sync_filter", "Vxx3_sync");
-    % recipe.addChannel("SR830_4", "XY", "Vxx3_XY");
-    recipe.addChannel("SR830_4", "XTheta", "Vxx3_XTheta");
-    % recipe.addChannel("SR830_4", "YTheta", "Vxx3_YTheta");
-    % recipe.addChannel("SR830_4", "RTheta", "Vxx3_RTheta");
+    recipe.addChannel("SR830_4", "sensitivity", SR830_4_keyword + "_Sens");
+    % recipe.addChannel("SR830_4", "time_constant", SR830_4_keyword + "_tau");
+    % recipe.addChannel("SR830_4", "sync_filter", SR830_4_keyword + "_sync");
+    % recipe.addChannel("SR830_4", "XY", SR830_4_keyword + "_XY");
+    recipe.addChannel("SR830_4", "XTheta", SR830_4_keyword + "_XTheta");
+    % recipe.addChannel("SR830_4", "YTheta", SR830_4_keyword + "_YTheta");
+    % recipe.addChannel("SR830_4", "RTheta", SR830_4_keyword + "_RTheta");
 end
 
 if SR860_5_Use
@@ -489,12 +507,12 @@ if SR860_5_Use
     % recipe.addStatement("SR860_5", "writeline(h, ""ignd 1"");"); % Input grounding: 0=float, 1=ground
     % recipe.addStatement("SR860_5", "writeline(h, ""icpl 0"");"); % Input coupling: 0=AC, 1=DC
     % Optional SR860 channels (commented by default):
-    % recipe.addChannel("SR860_5", "X", "Vxx4_X");
-    % recipe.addChannel("SR860_5", "Y", "Vxx4_Y");
-    % recipe.addChannel("SR860_5", "R", "Vxx4_R");
-    % recipe.addChannel("SR860_5", "Theta", "Vxx4_Theta");
-    % recipe.addChannel("SR860_5", "frequency", "Vxx4_Freq");
-    % recipe.addChannel("SR860_5", "amplitude", "Vxx4_V_exc");
+    % recipe.addChannel("SR860_5", "X", SR860_5_keyword + "_X");
+    % recipe.addChannel("SR860_5", "Y", SR860_5_keyword + "_Y");
+    % recipe.addChannel("SR860_5", "R", SR860_5_keyword + "_R");
+    % recipe.addChannel("SR860_5", "Theta", SR860_5_keyword + "_Theta");
+    % recipe.addChannel("SR860_5", "frequency", SR860_5_keyword + "_Freq");
+    % recipe.addChannel("SR860_5", "amplitude", SR860_5_keyword + "_V_exc");
     % recipe.addChannel("SR860_5", "aux_in_0", "SR860_5_aux_in_0");
     % recipe.addChannel("SR860_5", "aux_in_1", "SR860_5_aux_in_1");
     % recipe.addChannel("SR860_5", "aux_in_2", "SR860_5_aux_in_2");
@@ -503,14 +521,14 @@ if SR860_5_Use
     % recipe.addChannel("SR860_5", "aux_out_1", "SR860_5_aux_out_1");
     % recipe.addChannel("SR860_5", "aux_out_2", "SR860_5_aux_out_2");
     % recipe.addChannel("SR860_5", "aux_out_3", "SR860_5_aux_out_3");
-    recipe.addChannel("SR860_5", "sensitivity", "Vxx4_Sens");
-    % recipe.addChannel("SR860_5", "time_constant", "Vxx4_tau");
-    % recipe.addChannel("SR860_5", "sync_filter", "Vxx4_sync");
-    % recipe.addChannel("SR860_5", "XY", "Vxx4_XY");
-    recipe.addChannel("SR860_5", "XTheta", "Vxx4_XTheta");
-    % recipe.addChannel("SR860_5", "YTheta", "Vxx4_YTheta");
-    % recipe.addChannel("SR860_5", "RTheta", "Vxx4_RTheta");
-    % recipe.addChannel("SR860_5", "dc_offset", "SR860_5_dc_offset");
+    recipe.addChannel("SR860_5", "sensitivity", SR860_5_keyword + "_Sens");
+    % recipe.addChannel("SR860_5", "time_constant", SR860_5_keyword + "_tau");
+    % recipe.addChannel("SR860_5", "sync_filter", SR860_5_keyword + "_sync");
+    % recipe.addChannel("SR860_5", "XY", SR860_5_keyword + "_XY");
+    recipe.addChannel("SR860_5", "XTheta", SR860_5_keyword + "_XTheta");
+    % recipe.addChannel("SR860_5", "YTheta", SR860_5_keyword + "_YTheta");
+    % recipe.addChannel("SR860_5", "RTheta", SR860_5_keyword + "_RTheta");
+    % recipe.addChannel("SR860_5", "dc_offset", SR860_5_keyword + "_dc_offset");
 end
 
 if SR830_5_Use
@@ -525,12 +543,12 @@ if SR830_5_Use
     % recipe.addStatement("SR830_5", "writeline(h, ""rmod 0"");"); % Reserve mode: 0=high, 1=normal, 2=low
     % recipe.addStatement("SR830_5", "writeline(h, ""slp 0"");"); % Output filter slope: 0=6dB, 1=12dB, 2=18dB, 3=24dB
     % Optional SR830 channels (commented by default):
-    % recipe.addChannel("SR830_5", "X", "Vxx4_X");
-    % recipe.addChannel("SR830_5", "Y", "Vxx4_Y");
-    % recipe.addChannel("SR830_5", "R", "Vxx4_R");
-    % recipe.addChannel("SR830_5", "Theta", "Vxx4_Theta");
-    % recipe.addChannel("SR830_5", "frequency", "Vxx4_Freq");
-    % recipe.addChannel("SR830_5", "amplitude", "Vxx4_V_exc");
+    % recipe.addChannel("SR830_5", "X", SR830_5_keyword + "_X");
+    % recipe.addChannel("SR830_5", "Y", SR830_5_keyword + "_Y");
+    % recipe.addChannel("SR830_5", "R", SR830_5_keyword + "_R");
+    % recipe.addChannel("SR830_5", "Theta", SR830_5_keyword + "_Theta");
+    % recipe.addChannel("SR830_5", "frequency", SR830_5_keyword + "_Freq");
+    % recipe.addChannel("SR830_5", "amplitude", SR830_5_keyword + "_V_exc");
     % recipe.addChannel("SR830_5", "aux_in_1", "SR830_5_aux_in_1");
     % recipe.addChannel("SR830_5", "aux_in_2", "SR830_5_aux_in_2");
     % recipe.addChannel("SR830_5", "aux_in_3", "SR830_5_aux_in_3");
@@ -539,13 +557,13 @@ if SR830_5_Use
     % recipe.addChannel("SR830_5", "aux_out_2", "SR830_5_aux_out_2");
     % recipe.addChannel("SR830_5", "aux_out_3", "SR830_5_aux_out_3");
     % recipe.addChannel("SR830_5", "aux_out_4", "SR830_5_aux_out_4");
-    recipe.addChannel("SR830_5", "sensitivity", "Vxx4_Sens");
-    % recipe.addChannel("SR830_5", "time_constant", "Vxx4_tau");
-    % recipe.addChannel("SR830_5", "sync_filter", "Vxx4_sync");
-    % recipe.addChannel("SR830_5", "XY", "Vxx4_XY");
-    recipe.addChannel("SR830_5", "XTheta", "Vxx4_XTheta");
-    % recipe.addChannel("SR830_5", "YTheta", "Vxx4_YTheta");
-    % recipe.addChannel("SR830_5", "RTheta", "Vxx4_RTheta");
+    recipe.addChannel("SR830_5", "sensitivity", SR830_5_keyword + "_Sens");
+    % recipe.addChannel("SR830_5", "time_constant", SR830_5_keyword + "_tau");
+    % recipe.addChannel("SR830_5", "sync_filter", SR830_5_keyword + "_sync");
+    % recipe.addChannel("SR830_5", "XY", SR830_5_keyword + "_XY");
+    recipe.addChannel("SR830_5", "XTheta", SR830_5_keyword + "_XTheta");
+    % recipe.addChannel("SR830_5", "YTheta", SR830_5_keyword + "_YTheta");
+    % recipe.addChannel("SR830_5", "RTheta", SR830_5_keyword + "_RTheta");
 end
 
 if K2450_A_Use && ~strainController_Use
@@ -562,9 +580,9 @@ if K2450_A_Use && ~strainController_Use
     recipe.addStatement("K2450_A", "writeline(h, ':SENSe:CURRent:NPLCycles 0.5');");
     recipe.addStatement("K2450_A", "writeline(h, ':OUTPut ON');");
     recipe.addStatement("K2450_A", "pause(2);");
-    recipe.addChannel("K2450_A", "V_source", "V_bg", 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
-    recipe.addChannel("K2450_A", "I_measure", "I_bg");
-    recipe.addChannel("K2450_A", "VI", "VI_bg");
+    recipe.addChannel("K2450_A", "V_source", "V_" + K2450_A_keyword, 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
+    recipe.addChannel("K2450_A", "I_measure", "I_" + K2450_A_keyword);
+    recipe.addChannel("K2450_A", "VI", "VI_" + K2450_A_keyword);
 end
 
 if K2450_B_Use && ~strainController_Use
@@ -581,9 +599,9 @@ if K2450_B_Use && ~strainController_Use
     recipe.addStatement("K2450_B", "writeline(h, ':SENSe:CURRent:NPLCycles 0.5');");
     recipe.addStatement("K2450_B", "writeline(h, ':OUTPut ON');");
     recipe.addStatement("K2450_B", "pause(2);");
-    recipe.addChannel("K2450_B", "V_source", "V_tg", 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
-    recipe.addChannel("K2450_B", "I_measure", "I_tg");
-    recipe.addChannel("K2450_B", "VI", "VI_tg");
+    recipe.addChannel("K2450_B", "V_source", "V_" + K2450_B_keyword, 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
+    recipe.addChannel("K2450_B", "I_measure", "I_" + K2450_B_keyword);
+    recipe.addChannel("K2450_B", "VI", "VI_" + K2450_B_keyword);
 end
 
 if K2450_C_Use
@@ -600,9 +618,9 @@ if K2450_C_Use
     recipe.addStatement("K2450_C", "writeline(h, ':SENSe:CURRent:NPLCycles 0.5');");
     recipe.addStatement("K2450_C", "writeline(h, ':OUTPut ON');");
     recipe.addStatement("K2450_C", "pause(2);");
-    recipe.addChannel("K2450_C", "V_source", "V_tg", 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
-    recipe.addChannel("K2450_C", "I_measure", "I_tg");
-    recipe.addChannel("K2450_C", "VI", "VI_tg");
+    recipe.addChannel("K2450_C", "V_source", "V_" + K2450_C_keyword, 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
+    recipe.addChannel("K2450_C", "I_measure", "I_" + K2450_C_keyword);
+    recipe.addChannel("K2450_C", "VI", "VI_" + K2450_C_keyword);
 end
 
 if K2400_A_Use
@@ -618,9 +636,9 @@ if K2400_A_Use
     recipe.addStatement("K2400_A", "writeline(h, ':CURRent:NPLCycles 0.5');");
     recipe.addStatement("K2400_A", "writeline(h, ':OUTPut ON');");
     recipe.addStatement("K2400_A", "pause(2);");
-    recipe.addChannel("K2400_A", "V_source", "V_bg", 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
-    recipe.addChannel("K2400_A", "I_measure", "I_bg");
-    recipe.addChannel("K2400_A", "VI", "VI_bg");
+    recipe.addChannel("K2400_A", "V_source", "V_" + K2400_A_keyword, 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
+    recipe.addChannel("K2400_A", "I_measure", "I_" + K2400_A_keyword);
+    recipe.addChannel("K2400_A", "VI", "VI_" + K2400_A_keyword);
 end
 
 if K2400_B_Use
@@ -636,9 +654,9 @@ if K2400_B_Use
     recipe.addStatement("K2400_B", "writeline(h, ':CURRent:NPLCycles 0.5');");
     recipe.addStatement("K2400_B", "writeline(h, ':OUTPut ON');");
     recipe.addStatement("K2400_B", "pause(2);");
-    recipe.addChannel("K2400_B", "V_source", "V_tg", 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
-    recipe.addChannel("K2400_B", "I_measure", "I_tg");
-    recipe.addChannel("K2400_B", "VI", "VI_tg");
+    recipe.addChannel("K2400_B", "V_source", "V_" + K2400_B_keyword, 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
+    recipe.addChannel("K2400_B", "I_measure", "I_" + K2400_B_keyword);
+    recipe.addChannel("K2400_B", "VI", "VI_" + K2400_B_keyword);
 end
 
 if K2400_C_Use
@@ -654,9 +672,9 @@ if K2400_C_Use
     recipe.addStatement("K2400_C", "writeline(h, ':CURRent:NPLCycles 0.5');");
     recipe.addStatement("K2400_C", "writeline(h, ':OUTPut ON');");
     recipe.addStatement("K2400_C", "pause(2);");
-    recipe.addChannel("K2400_C", "V_source", "V_tg", 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
-    recipe.addChannel("K2400_C", "I_measure", "I_tg");
-    recipe.addChannel("K2400_C", "VI", "VI_tg");
+    recipe.addChannel("K2400_C", "V_source", "V_" + K2400_C_keyword, 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
+    recipe.addChannel("K2400_C", "I_measure", "I_" + K2400_C_keyword);
+    recipe.addChannel("K2400_C", "VI", "VI_" + K2400_C_keyword);
 end
 
 if HP34401A_A_Use
@@ -711,11 +729,24 @@ if Andor_Use
     recipe.addStatement("AndorSpectrometer", "handle_AndorSpectrometer.currentGratingInfo();");
 end
 
-if Attodry2100_Use
-    recipe.addInstrument("handle_attodry2100", "instrument_attodry2100", "Attodry2100", Attodry2100_Address);
-    recipe.addChannel("Attodry2100", "T", "T");
-    recipe.addChannel("Attodry2100", "B", "B");
-    recipe.addChannel("Attodry2100", "driven", "driven");
+if attoDRY2100_Use
+    recipe.addInstrument("handle_attoDRY2100", "instrument_attoDRY2100", "attoDRY2100", attoDRY2100_Address);
+    recipe.addChannel("attoDRY2100", "T", "T");
+    recipe.addChannel("attoDRY2100", "B", "B");
+    recipe.addChannel("attoDRY2100", "driven", "driven");
+end
+
+if ANC300_Use
+    recipe.addInstrument("handle_ANC300", "instrument_ANC300", "ANC300", ANC300_Serial);
+    recipe.addStatement("ANC300", "handle_ANC300.requireSetCheck = false;");
+    recipe.addChannel("ANC300", "voltage_x", "ANC300_Vx", [], [], 0, 150);
+    recipe.addChannel("ANC300", "voltage_y", "ANC300_Vy", [], [], 0, 150);
+    recipe.addChannel("ANC300", "voltage_z", "ANC300_Vz", [], [], 0, 150);
+    recipe.addChannel("ANC300", "frequency_x", "ANC300_fx", [], [], 1, 10000);
+    recipe.addChannel("ANC300", "frequency_y", "ANC300_fy", [], [], 1, 10000);
+    recipe.addChannel("ANC300", "frequency_z", "ANC300_fz", [], [], 1, 10000);
+    % Optional one-shot step command:
+    % recipe.addStatement("ANC300", "handle_ANC300.stepAxis(""x"", 100);");
 end
 
 if ST3215HS_Use
