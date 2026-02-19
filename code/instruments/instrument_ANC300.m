@@ -144,9 +144,9 @@ classdef instrument_ANC300 < instrumentInterface
         end
 
         function assertFiniteVoltage(~, value)
-            if ~isfinite(value)
+            if ~isfinite(value) || value < 0 || value > 60
                 error("instrument_ANC300:InvalidVoltage", ...
-                    "Voltage must be finite. Received %g.", value);
+                    "Voltage must be finite and within [0, 60] V. Received %g.", value);
             end
         end
 
