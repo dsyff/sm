@@ -5,8 +5,8 @@ arguments
     options.address_K2450_A (1, 1) string;
     options.address_K2450_B (1, 1) string;
     options.address_Montana2 (1, 1) string;
-    options.address_Opticool (1, 1) string;
-    options.cryostat (1, 1) string {mustBeMember(options.cryostat, ["Montana2", "Opticool"])};
+    options.address_OptiCool (1, 1) string;
+    options.cryostat (1, 1) string {mustBeMember(options.cryostat, ["Montana2", "OptiCool"])};
     options.strainCellNumber (1, 1) uint8 {mustBeInteger, mustBePositive};
     options.experimentRootPath {mustBeTextScalar} = ""
 end
@@ -98,11 +98,11 @@ if options.cryostat == "Montana2"
     handle_cryostat = instrument_Montana2(options.address_Montana2);
     rack_strain.addInstrument(handle_cryostat, "Montana2");
     rack_strain.addChannel("Montana2", "T", "T");
-elseif options.cryostat == "Opticool"
-    handle_cryostat = instrument_Opticool(options.address_Opticool);
-    rack_strain.addInstrument(handle_cryostat, "Opticool");
-    rack_strain.addChannel("Opticool", "T", "T");
-    %rack_strain.addChannel("Opticool", "B", "B");
+elseif options.cryostat == "OptiCool"
+    handle_cryostat = instrument_OptiCool(options.address_OptiCool);
+    rack_strain.addInstrument(handle_cryostat, "OptiCool");
+    rack_strain.addChannel("OptiCool", "T", "T");
+    %rack_strain.addChannel("OptiCool", "B", "B");
 end
 
 %%

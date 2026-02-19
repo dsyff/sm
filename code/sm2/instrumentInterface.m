@@ -125,6 +125,7 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 obj;
                 channelIndex (1, 1) {mustBePositive, mustBeInteger};
             end
+            obj.assertByIndexPhysicalAccessFromVirtualContextAllowed("getWriteChannelByIndex");
             channelIndex = obj.normalizeChannelIndex(channelIndex);
             obj.performGetWriteByIndex(channelIndex);
         end
@@ -134,6 +135,7 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 obj;
                 channelIndex (1, 1) {mustBePositive, mustBeInteger};
             end
+            obj.assertByIndexPhysicalAccessFromVirtualContextAllowed("getReadChannelByIndex");
             channelIndex = obj.normalizeChannelIndex(channelIndex);
             getValues = obj.performGetReadByIndex(channelIndex);
         end
@@ -143,6 +145,7 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 obj;
                 channelIndex (1, 1) {mustBePositive, mustBeInteger};
             end
+            obj.assertByIndexPhysicalAccessFromVirtualContextAllowed("getChannelByIndex");
             channelIndex = obj.normalizeChannelIndex(channelIndex);
             obj.performGetWriteByIndex(channelIndex);
             getValues = obj.performGetReadByIndex(channelIndex);
@@ -154,6 +157,7 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 channelIndex (1, 1) {mustBePositive, mustBeInteger};
                 setValues double {mustBeVector};
             end
+            obj.assertByIndexPhysicalAccessFromVirtualContextAllowed("setChannelByIndex");
             obj.setWriteChannelByIndex(channelIndex, setValues);
             if ~obj.setCheckChannelByIndex(channelIndex)
                 startTime = datetime("now");
@@ -171,6 +175,7 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 channelIndex (1, 1) {mustBePositive, mustBeInteger};
                 setValues double {mustBeVector};
             end
+            obj.assertByIndexPhysicalAccessFromVirtualContextAllowed("setWriteChannelByIndex");
             channelIndex = obj.normalizeChannelIndex(channelIndex);
             channel = obj.channelTable.channels(channelIndex);
             obj.checkSize(channelIndex, setValues);
@@ -179,6 +184,10 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 setValues = setValues.';
             end
             obj.enforceWriteCommandInterval();
+            if isa(obj, "virtualInstrumentInterface")
+                instrumentInterface.virtualInstrumentCallContext("push");
+                cleanupObj = onCleanup(@() instrumentInterface.virtualInstrumentCallContext("pop")); %#ok<NASGU>
+            end
             obj.setWriteChannelHelper(channelIndex, setValues);
             obj.lastSetValues{channelIndex} = setValues;
 
@@ -191,6 +200,7 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 obj;
                 channelIndex (1, 1) {mustBePositive, mustBeInteger};
             end
+            obj.assertByIndexPhysicalAccessFromVirtualContextAllowed("setCheckChannelByIndex");
             channelIndex = obj.normalizeChannelIndex(channelIndex);
             if ~obj.requireSetCheck
                 TF = true;
@@ -200,6 +210,10 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
             channel = obj.channelTable.channels(channelIndex);
             channelLastSetValues = obj.lastSetValues{channelIndex};
             assert(~isempty(channelLastSetValues), "setWriteChannel for channel %s has not been called succesfully yet.", channel);
+            if isa(obj, "virtualInstrumentInterface")
+                instrumentInterface.virtualInstrumentCallContext("push");
+                cleanupObj = onCleanup(@() instrumentInterface.virtualInstrumentCallContext("pop")); %#ok<NASGU>
+            end
             TF = obj.setCheckChannelHelper(channelIndex, channelLastSetValues);
         end
 
@@ -212,6 +226,7 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 obj;
                 channel (1, 1) string {mustBeNonzeroLengthText};
             end
+            obj.assertDirectPhysicalAccessFromVirtualContextAllowed("getChannel");
             channelIndex = obj.findChannelIndex(channel);
             getValues = obj.getChannelByIndex(channelIndex);
         end
@@ -222,6 +237,7 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 channel (1, 1) string {mustBeNonzeroLengthText};
                 setValues double {mustBeVector};
             end
+            obj.assertDirectPhysicalAccessFromVirtualContextAllowed("setChannel");
             channelIndex = obj.findChannelIndex(channel);
             obj.setChannelByIndex(channelIndex, setValues);
         end
@@ -232,6 +248,7 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 channel (1, 1) string {mustBeNonzeroLengthText};
                 setValues double {mustBeVector};
             end
+            obj.assertDirectPhysicalAccessFromVirtualContextAllowed("setWriteChannel");
             channelIndex = obj.findChannelIndex(channel);
             obj.setWriteChannelByIndex(channelIndex, setValues);
         end
@@ -242,6 +259,7 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 obj;
                 channel (1, 1) string {mustBeNonzeroLengthText};
             end
+            obj.assertDirectPhysicalAccessFromVirtualContextAllowed("setCheckChannel");
             channelIndex = obj.findChannelIndex(channel);
             TF = obj.setCheckChannelByIndex(channelIndex);
         end
@@ -348,6 +366,10 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
             channel = obj.channelTable.channels(channelIndex);
             assert(~isempty(obj.lastGetChannelIndex), "getWrite has not been called for channel %s, or setWrite has been called", channel);
             assert(channelIndex == obj.lastGetChannelIndex, "Last getWrite was channel %s, but getRead was called for channel %s.", obj.channelTable.channels(obj.lastGetChannelIndex), channel);
+            if isa(obj, "virtualInstrumentInterface")
+                instrumentInterface.virtualInstrumentCallContext("push");
+                cleanupObj = onCleanup(@() instrumentInterface.virtualInstrumentCallContext("pop")); %#ok<NASGU>
+            end
             getValues = obj.getReadChannelHelper(channelIndex);
             obj.checkSize(channelIndex, getValues);
             if ~isscalar(getValues) && isrow(getValues)
@@ -383,6 +405,39 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
             obj.writesSinceLastRead = obj.writesSinceLastRead + 1;
         end
 
+        function assertDirectPhysicalAccessFromVirtualContextAllowed(obj, apiName)
+            if isa(obj, "virtualInstrumentInterface")
+                return;
+            end
+            if ~instrumentInterface.virtualInstrumentCallContext("isActive")
+                return;
+            end
+            error("instrumentInterface:VirtualInstrumentMustUseRack", ...
+                "Virtual instruments must use rack.rackGet/rackSetWrite instead of direct instrument.%s for %s.", ...
+                apiName, class(obj));
+        end
+
+        function assertByIndexPhysicalAccessFromVirtualContextAllowed(obj, apiName)
+            if isa(obj, "virtualInstrumentInterface")
+                return;
+            end
+            if ~instrumentInterface.virtualInstrumentCallContext("isActive")
+                return;
+            end
+
+            st = dbstack();
+            if numel(st) >= 2
+                callerName = string(st(2).name);
+                if startsWith(callerName, "instrumentRack.")
+                    return;
+                end
+            end
+
+            error("instrumentInterface:VirtualInstrumentMustUseRack", ...
+                "Virtual instruments must use rack.rackGet/rackSetWrite instead of direct instrument.%s for %s.", ...
+                apiName, class(obj));
+        end
+
     end
 
     methods (Access = protected, Sealed)
@@ -401,6 +456,29 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
             obj.setTolerances = [obj.setTolerances, {NameValueArgs.setTolerances}];
         end
 
+    end
+
+    methods (Static, Access = private, Sealed)
+        function isActive = virtualInstrumentCallContext(action)
+            arguments
+                action (1, 1) string {mustBeMember(action, ["push", "pop", "isActive"])}
+            end
+
+            persistent contextDepth
+            if isempty(contextDepth)
+                contextDepth = 0;
+            end
+
+            switch action
+                case "push"
+                    contextDepth = contextDepth + 1;
+                case "pop"
+                    contextDepth = max(0, contextDepth - 1);
+                case "isActive"
+                    % No state update.
+            end
+            isActive = contextDepth > 0;
+        end
     end
 
 end
