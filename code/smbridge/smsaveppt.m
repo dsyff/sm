@@ -111,10 +111,22 @@ set(new_slide.Shapes.Title.TextFrame.TextRange.Font,'Size',single(20));
 set(new_slide.Shapes.Title.TextFrame.TextRange.Font,'Bold',true);
 
 % Get height and width of slide:
-slide_H = op.PageSetup.SlideHeight;
-slide_W = op.PageSetup.SlideWidth;
+slide_H = double(op.PageSetup.SlideHeight);
+slide_W = double(op.PageSetup.SlideWidth);
+if ~isfinite(slide_H) || ~isfinite(slide_W) || slide_H <= 0 || slide_W <= 0
+    error("smsaveppt:InvalidSlideSize", ...
+        "PowerPoint slide size is invalid (width=%g, height=%g).", slide_W, slide_H);
+end
+titleTop = 0;
+titleHeight = 100;
+try
+    titleTop = double(get(new_slide.Shapes.Title, "Top"));
+    titleHeight = double(get(new_slide.Shapes.Title, "Height"));
+catch
+end
+contentTop = min(slide_H, max(0, titleTop + titleHeight));
 maxwidth = slide_W;
-maxheight = slide_H - 100;
+maxheight = max(1, slide_H - contentTop);
 max_H_over_W = maxheight / maxwidth;
 
 % Paste the contents of the Clipboard or insert image file:
@@ -126,22 +138,21 @@ if use_image_file
     pic_H_over_W = double(img_info.Height) / double(img_info.Width);
     forceSlideWidth = isfield(text, "forceSlideWidth") && isscalar(text.forceSlideWidth) && logical(text.forceSlideWidth);
     if forceSlideWidth
-        title_bottom = double(get(new_slide.Shapes.Title, "Top")) + double(get(new_slide.Shapes.Title, "Height"));
-        pic_top = title_bottom;
-        pic_H_scaled = slide_H - pic_top;
-        pic_W_scaled = pic_H_scaled / pic_H_over_W;
-        pic_left = (slide_W - pic_W_scaled) / 2;
+        pic_W_scaled = maxwidth;
+        pic_H_scaled = maxwidth * pic_H_over_W;
+        if pic_H_scaled > maxheight
+            pic_H_scaled = maxheight;
+            pic_W_scaled = maxheight / pic_H_over_W;
+        end
     elseif max_H_over_W >= pic_H_over_W
         pic_W_scaled = maxwidth;
         pic_H_scaled = maxwidth * pic_H_over_W;
-        pic_left = 0;
-        pic_top = slide_H - pic_H_scaled;
     else
         pic_H_scaled = maxheight;
         pic_W_scaled = maxheight / pic_H_over_W;
-        pic_left = 0;
-        pic_top = slide_H - pic_H_scaled;
     end
+    pic_left = (slide_W - pic_W_scaled) / 2;
+    pic_top = contentTop + (maxheight - pic_H_scaled);
     pic1 = invoke(new_slide.Shapes,'AddPicture', text.imagePath, 0, 1, ...
         single(pic_left), single(pic_top), single(pic_W_scaled), single(pic_H_scaled));
     try
@@ -190,8 +201,8 @@ if ~use_image_file
     %pic_H_scaled = pic_H_scaled * 2;
     set(pic1,'Height', pic_H_scaled);
     set(pic1,'Width', pic_W_scaled);
-    set(pic1,'Left',0);
-    set(pic1,'Top', slide_H - pic_H_scaled);
+    set(pic1,'Left', (slide_W - pic_W_scaled) / 2);
+    set(pic1,'Top', contentTop + (maxheight - pic_H_scaled));
 end
 
 % if (pic_H > maxheight || pic_W > maxwidth)
