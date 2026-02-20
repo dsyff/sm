@@ -42,7 +42,7 @@ function resolvedUserId = smnotifySlackScanComplete(scanName, imagePath, dataFil
     durationText = strjoin(durationParts, " ");
     [~, dataName, dataExt] = fileparts(dataFilePath);
     dataFilename = dataName + dataExt;
-    messageText = "Scan """ + scanName + """ has completed. The scan took " + durationText + ". Saved data file: " + dataFilename + ".";
+    messageText = "Scan """ + scanName + """ from your queue has completed. The scan took " + durationText + ". Saved data file: " + dataFilename + ".";
 
     token = "";
     if isfield(slack_notification_settings, "api_token")
