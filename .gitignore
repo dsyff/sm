@@ -12,6 +12,7 @@ tests/
 
 # Data files (but keep GUI figure files like sm.fig)
 *.mat
+!demos/demo_nE_scan.mat
 *.pdf
 *.ppt
 demos/data/
