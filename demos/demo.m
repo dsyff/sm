@@ -59,6 +59,10 @@ ANC300_Serial = "COM6";
 
 % ST3215-HS bus servos via Waveshare Bus Servo Adapter (A)
 ST3215HS_Serial = "COM4";
+% Attodry autofocus optics: 3 sets (camera BS + LED BS; red block + red ND; green block + green ND)
+ST3215HS_BS_Serial = "COM4";       % camera BS (servo 1), LED BS (servo 2)
+ST3215HS_red_Serial = "COM4";     % red block (servo 1), red ND (servo 2)
+ST3215HS_green_Serial = "COM4";   % green block (servo 1), green ND (servo 2)
 
 % WS2811 color LED controller (Pico 2 USB CDC)
 colorLED_Serial = "COM5";
@@ -133,7 +137,11 @@ K10CR1_Use = 0;
 CS165MU_Use = 0;
 Andor_Use = 0;
 ST3215HS_Use = 0;
+ST3215HS_BS_Use = 0;
+ST3215HS_red_Use = 0;
+ST3215HS_green_Use = 0;
 colorLED_Use = 0;
+virtual_attodryAutofocus_Use = 0;
 
 E4980AL_Use = 0;
 BK889B_Use = 0;
@@ -766,6 +774,45 @@ if ST3215HS_Use
     recipe.addChannel("ST3215HS", "setConsistently_2", "ST3215HS_setConsistently2", [], [], 0, 1);
 end
 
+% Attodry autofocus optics: camera BS + LED BS (beamsplitters)
+if ST3215HS_BS_Use
+    recipe.addInstrument("handle_ST3215HS_BS", "instrument_ST3215HS", "ST3215HS_BS", ST3215HS_BS_Serial, servoId_1 = 10, servoId_2 = 11);
+    recipe.addChannel("ST3215HS_BS", "position_1_deg", "BS_camera_pos_deg");
+    recipe.addChannel("ST3215HS_BS", "load_1_percent", "BS_camera_load_percent");
+    recipe.addChannel("ST3215HS_BS", "setConsistently_1", "BS_camera_setConsistently", [], [], 0, 1);
+    recipe.addChannel("ST3215HS_BS", "position_2_deg", "BS_LED_pos_deg");
+    recipe.addChannel("ST3215HS_BS", "load_2_percent", "BS_LED_load_percent");
+    recipe.addChannel("ST3215HS_BS", "setConsistently_2", "BS_LED_setConsistently", [], [], 0, 1);
+    % recipe.addStatement("ST3215HS_BS", "handle_ST3215HS_BS.calibrateSoftLimits(1);");
+    % recipe.addStatement("ST3215HS_BS", "handle_ST3215HS_BS.calibrateSoftLimits(2);");
+end
+
+% Attodry autofocus optics: red beam block + red ND
+if ST3215HS_red_Use
+    recipe.addInstrument("handle_ST3215HS_red", "instrument_ST3215HS", "ST3215HS_red", ST3215HS_red_Serial, servoId_1 = 20, servoId_2 = 21);
+    recipe.addChannel("ST3215HS_red", "position_1_deg", "block_red_pos_deg");
+    recipe.addChannel("ST3215HS_red", "load_1_percent", "block_red_load_percent");
+    recipe.addChannel("ST3215HS_red", "setConsistently_1", "block_red_setConsistently", [], [], 0, 1);
+    recipe.addChannel("ST3215HS_red", "position_2_deg", "ND_red_pos_deg");
+    recipe.addChannel("ST3215HS_red", "load_2_percent", "ND_red_load_percent");
+    recipe.addChannel("ST3215HS_red", "setConsistently_2", "ND_red_setConsistently", [], [], 0, 1);
+    % recipe.addStatement("ST3215HS_red", "handle_ST3215HS_red.calibrateSoftLimits(1);");
+    % recipe.addStatement("ST3215HS_red", "handle_ST3215HS_red.calibrateSoftLimits(2);");
+end
+
+% Attodry autofocus optics: green beam block + green ND
+if ST3215HS_green_Use
+    recipe.addInstrument("handle_ST3215HS_green", "instrument_ST3215HS", "ST3215HS_green", ST3215HS_green_Serial, servoId_1 = 22, servoId_2 = 23);
+    recipe.addChannel("ST3215HS_green", "position_1_deg", "block_green_pos_deg");
+    recipe.addChannel("ST3215HS_green", "load_1_percent", "block_green_load_percent");
+    recipe.addChannel("ST3215HS_green", "setConsistently_1", "block_green_setConsistently", [], [], 0, 1);
+    recipe.addChannel("ST3215HS_green", "position_2_deg", "ND_green_pos_deg");
+    recipe.addChannel("ST3215HS_green", "load_2_percent", "ND_green_load_percent");
+    recipe.addChannel("ST3215HS_green", "setConsistently_2", "ND_green_setConsistently", [], [], 0, 1);
+    % recipe.addStatement("ST3215HS_green", "handle_ST3215HS_green.calibrateSoftLimits(1);");
+    % recipe.addStatement("ST3215HS_green", "handle_ST3215HS_green.calibrateSoftLimits(2);");
+end
+
 if colorLED_Use
     recipe.addInstrument("handle_colorLED", "instrument_colorLED", "colorLED", colorLED_Serial);
     recipe.addChannel("colorLED", "R", "colorLED_R", [], [], 0, 1);
@@ -882,6 +929,25 @@ if virtual_nE_Use
     recipe.addChannel("virtual_nE", "E", "E_normalized", [], [], 0, 1);
     recipe.addChannel("virtual_nE", "nE_within_bounds", "nE_within_bounds");
     recipe.addChannel("virtual_nE", "skipOutOfBounds", "skipOutOfBounds", [], [], 0, 1);
+end
+
+if virtual_attodryAutofocus_Use
+    recipe.addVirtualInstrument("handle_virtual_attodryAutofocus", "virtualInstrument_attodryAutofocus", "attodryAutofocus", "attodryAutofocus", ...
+        T_channelName = "T", ...
+        B_channelName = "B", ...
+        cameraInstrumentFriendlyName = "CS165MU", ...
+        block_red_positionChannelName = "block_red_pos_deg", ...
+        block_green_positionChannelName = "block_green_pos_deg", ...
+        ND_red_positionChannelName = "ND_red_pos_deg", ...
+        ND_green_positionChannelName = "ND_green_pos_deg", ...
+        BS_camera_positionChannelName = "BS_camera_pos_deg", ...
+        BS_LED_positionChannelName = "BS_LED_pos_deg", ...
+        BS_camera_setConsistentlyChannelName = "BS_camera_setConsistently", ...
+        BS_LED_setConsistentlyChannelName = "BS_LED_setConsistently", ...
+        ledRgbChannelName = "colorLED_RGB");
+    recipe.addChannel("attodryAutofocus", "T", "attodry_T", [], [], 0, 400);
+    recipe.addChannel("attodryAutofocus", "B", "attodry_B", [], [], -1, 1);
+    recipe.addChannel("attodryAutofocus", "color", "attodry_color", [], [], 0, 1);
 end
 
 

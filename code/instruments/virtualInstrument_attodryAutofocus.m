@@ -2,32 +2,33 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
     % Virtual instrument for Attodry T/B control with optics references.
 
     properties
-        tSetChannelName (1, 1) string
-        bSetChannelName (1, 1) string
-        tReadChannelName (1, 1) string
-        bReadChannelName (1, 1) string
+        T_channelName (1, 1) string
+        B_channelName (1, 1) string
 
         cameraInstrumentFriendlyName (1, 1) string = "CS165MU"
 
-        blockerPositionChannelName (1, 1) string = ""
-        ndPositionChannelName (1, 1) string = ""
-        bsCameraPositionChannelName (1, 1) string = ""
-        bsLedPositionChannelName (1, 1) string = ""
-        bsCameraSetConsistentlyChannelName (1, 1) string = ""
-        bsLedSetConsistentlyChannelName (1, 1) string = ""
+        block_red_positionChannelName (1, 1) string = ""
+        block_green_positionChannelName (1, 1) string = ""
+        ND_red_positionChannelName (1, 1) string = ""
+        ND_green_positionChannelName (1, 1) string = ""
+        BS_camera_positionChannelName (1, 1) string = ""
+        BS_LED_positionChannelName (1, 1) string = ""
+        BS_camera_setConsistentlyChannelName (1, 1) string = ""
+        BS_LED_setConsistentlyChannelName (1, 1) string = ""
         ledRgbChannelName (1, 1) string = ""
 
-        blockerBlockedDeg (1, 1) double = 180
-        blockerUnblockedDeg (1, 1) double = 0
-        ndOnDeg (1, 1) double = 180
-        ndOffDeg (1, 1) double = 0
-
-        bsCameraOnCommandDeg (1, 1) double = 180
-        bsCameraOffCommandDeg (1, 1) double = 0
-        bsLedOnCommandDeg (1, 1) double = 180
-        bsLedOffCommandDeg (1, 1) double = 0
-
-        ledOnRgb (3, 1) double = [1; 1; 1]
+        block_red_blocked_PositionDeg (1, 1) double = 180
+        block_red_unblocked_PositionDeg (1, 1) double = 0
+        block_green_blocked_PositionDeg (1, 1) double = 180
+        block_green_unblocked_PositionDeg (1, 1) double = 0
+        ND_red_on_PositionDeg (1, 1) double = 180
+        ND_red_off_PositionDeg (1, 1) double = 0
+        ND_green_on_PositionDeg (1, 1) double = 180
+        ND_green_off_PositionDeg (1, 1) double = 0
+        BS_camera_on_PositionDeg (1, 1) double = 180
+        BS_camera_off_PositionDeg (1, 1) double = 0
+        BS_LED_on_PositionDeg (1, 1) double = 180
+        BS_LED_off_PositionDeg (1, 1) double = 0
 
         tbTargetTolerance (2, 1) double {mustBePositive} = [0.1; 1E-2]
         targetWaitTimeout (1, 1) duration = minutes(20)
@@ -36,7 +37,8 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         bsCalibrationCycles (1, 1) double {mustBeInteger, mustBePositive} = 6
         bsSetMaxAttempts (1, 1) double {mustBeInteger, mustBePositive} = 20
         bsPositionToleranceDeg (1, 1) double {mustBePositive} = 0.3
-        bsQuantizationDeg (1, 1) double {mustBePositive} = 0.1
+        % Binning step (deg) in pickLikelyPosition when finding BS endpoint from repeated reads. Default = 1 tick (4096 ticks/360°).
+        bsQuantizationDeg (1, 1) double {mustBePositive} = 360 / 4096
 
         shiftFitTrimRatio (2, 1) double = [0.2; 0.2]
     end
@@ -44,6 +46,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
     properties (SetAccess = private)
         targetT (1, 1) double = NaN
         targetB (1, 1) double = NaN
+        colorStored (1, 1) double = 0  % 0 = red, 1 = green
 
         referenceSampleImage
         referenceLaserOnSampleImage
@@ -53,10 +56,10 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
     end
 
     properties (Access = private)
-        bsCameraLikelyOnDeg (1, 1) double = NaN
-        bsCameraLikelyOffDeg (1, 1) double = NaN
-        bsLedLikelyOnDeg (1, 1) double = NaN
-        bsLedLikelyOffDeg (1, 1) double = NaN
+        BS_camera_likelyOn_PositionDeg (1, 1) double = NaN
+        BS_camera_likelyOff_PositionDeg (1, 1) double = NaN
+        BS_LED_likelyOn_PositionDeg (1, 1) double = NaN
+        BS_LED_likelyOff_PositionDeg (1, 1) double = NaN
 
         referenceSampleInterpolant
         referenceShiftFitModel
@@ -69,32 +72,33 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             arguments
                 address (1, 1) string {mustBeNonzeroLengthText}
                 masterRack (1, 1) instrumentRack
-                NameValueArgs.tSetChannelName (1, 1) string
-                NameValueArgs.bSetChannelName (1, 1) string
-                NameValueArgs.tReadChannelName (1, 1) string = ""
-                NameValueArgs.bReadChannelName (1, 1) string = ""
+                NameValueArgs.T_channelName (1, 1) string
+                NameValueArgs.B_channelName (1, 1) string
 
                 NameValueArgs.cameraInstrumentFriendlyName (1, 1) string = "CS165MU"
 
-                NameValueArgs.blockerPositionChannelName (1, 1) string = ""
-                NameValueArgs.ndPositionChannelName (1, 1) string = ""
-                NameValueArgs.bsCameraPositionChannelName (1, 1) string = ""
-                NameValueArgs.bsLedPositionChannelName (1, 1) string = ""
-                NameValueArgs.bsCameraSetConsistentlyChannelName (1, 1) string = ""
-                NameValueArgs.bsLedSetConsistentlyChannelName (1, 1) string = ""
+                NameValueArgs.block_red_positionChannelName (1, 1) string = ""
+                NameValueArgs.block_green_positionChannelName (1, 1) string = ""
+                NameValueArgs.ND_red_positionChannelName (1, 1) string = ""
+                NameValueArgs.ND_green_positionChannelName (1, 1) string = ""
+                NameValueArgs.BS_camera_positionChannelName (1, 1) string = ""
+                NameValueArgs.BS_LED_positionChannelName (1, 1) string = ""
+                NameValueArgs.BS_camera_setConsistentlyChannelName (1, 1) string = ""
+                NameValueArgs.BS_LED_setConsistentlyChannelName (1, 1) string = ""
                 NameValueArgs.ledRgbChannelName (1, 1) string = ""
 
-                NameValueArgs.blockerBlockedDeg (1, 1) double = 180
-                NameValueArgs.blockerUnblockedDeg (1, 1) double = 0
-                NameValueArgs.ndOnDeg (1, 1) double = 180
-                NameValueArgs.ndOffDeg (1, 1) double = 0
-
-                NameValueArgs.bsCameraOnCommandDeg (1, 1) double = 180
-                NameValueArgs.bsCameraOffCommandDeg (1, 1) double = 0
-                NameValueArgs.bsLedOnCommandDeg (1, 1) double = 180
-                NameValueArgs.bsLedOffCommandDeg (1, 1) double = 0
-
-                NameValueArgs.ledOnRgb (3, 1) double = [1; 1; 1]
+                NameValueArgs.block_red_blocked_PositionDeg (1, 1) double = 180
+                NameValueArgs.block_red_unblocked_PositionDeg (1, 1) double = 0
+                NameValueArgs.block_green_blocked_PositionDeg (1, 1) double = 180
+                NameValueArgs.block_green_unblocked_PositionDeg (1, 1) double = 0
+                NameValueArgs.ND_red_on_PositionDeg (1, 1) double = 180
+                NameValueArgs.ND_red_off_PositionDeg (1, 1) double = 0
+                NameValueArgs.ND_green_on_PositionDeg (1, 1) double = 180
+                NameValueArgs.ND_green_off_PositionDeg (1, 1) double = 0
+                NameValueArgs.BS_camera_on_PositionDeg (1, 1) double = 180
+                NameValueArgs.BS_camera_off_PositionDeg (1, 1) double = 0
+                NameValueArgs.BS_LED_on_PositionDeg (1, 1) double = 180
+                NameValueArgs.BS_LED_off_PositionDeg (1, 1) double = 0
 
                 NameValueArgs.tbTargetTolerance (2, 1) double {mustBePositive} = [0.1; 1E-2]
                 NameValueArgs.targetWaitTimeout (1, 1) duration = minutes(20)
@@ -102,52 +106,41 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
 
                 NameValueArgs.bsCalibrationCycles (1, 1) double {mustBeInteger, mustBePositive} = 6
                 NameValueArgs.bsSetMaxAttempts (1, 1) double {mustBeInteger, mustBePositive} = 20
-                NameValueArgs.bsPositionToleranceDeg (1, 1) double {mustBePositive} = 0.3
-                NameValueArgs.bsQuantizationDeg (1, 1) double {mustBePositive} = 0.1
+                NameValueArgs.bsPositionToleranceDeg (1, 1) double {mustBePositive} = 0.08
+                NameValueArgs.bsQuantizationDeg (1, 1) double {mustBePositive} = 360 / 4096
 
                 NameValueArgs.shiftFitTrimRatio (2, 1) double = [0.2; 0.2]
             end
 
             obj@virtualInstrumentInterface(address, masterRack);
 
-            obj.tSetChannelName = NameValueArgs.tSetChannelName;
-            obj.bSetChannelName = NameValueArgs.bSetChannelName;
-
-            if strlength(NameValueArgs.tReadChannelName) == 0
-                obj.tReadChannelName = obj.tSetChannelName;
-            else
-                obj.tReadChannelName = NameValueArgs.tReadChannelName;
-            end
-            if strlength(NameValueArgs.bReadChannelName) == 0
-                obj.bReadChannelName = obj.bSetChannelName;
-            else
-                obj.bReadChannelName = NameValueArgs.bReadChannelName;
-            end
+            obj.T_channelName = NameValueArgs.T_channelName;
+            obj.B_channelName = NameValueArgs.B_channelName;
 
             obj.cameraInstrumentFriendlyName = NameValueArgs.cameraInstrumentFriendlyName;
 
-            obj.blockerPositionChannelName = NameValueArgs.blockerPositionChannelName;
-            obj.ndPositionChannelName = NameValueArgs.ndPositionChannelName;
-            obj.bsCameraPositionChannelName = NameValueArgs.bsCameraPositionChannelName;
-            obj.bsLedPositionChannelName = NameValueArgs.bsLedPositionChannelName;
-            obj.bsCameraSetConsistentlyChannelName = NameValueArgs.bsCameraSetConsistentlyChannelName;
-            obj.bsLedSetConsistentlyChannelName = NameValueArgs.bsLedSetConsistentlyChannelName;
+            obj.block_red_positionChannelName = NameValueArgs.block_red_positionChannelName;
+            obj.block_green_positionChannelName = NameValueArgs.block_green_positionChannelName;
+            obj.ND_red_positionChannelName = NameValueArgs.ND_red_positionChannelName;
+            obj.ND_green_positionChannelName = NameValueArgs.ND_green_positionChannelName;
+            obj.BS_camera_positionChannelName = NameValueArgs.BS_camera_positionChannelName;
+            obj.BS_LED_positionChannelName = NameValueArgs.BS_LED_positionChannelName;
+            obj.BS_camera_setConsistentlyChannelName = NameValueArgs.BS_camera_setConsistentlyChannelName;
+            obj.BS_LED_setConsistentlyChannelName = NameValueArgs.BS_LED_setConsistentlyChannelName;
             obj.ledRgbChannelName = NameValueArgs.ledRgbChannelName;
 
-            obj.blockerBlockedDeg = NameValueArgs.blockerBlockedDeg;
-            obj.blockerUnblockedDeg = NameValueArgs.blockerUnblockedDeg;
-            obj.ndOnDeg = NameValueArgs.ndOnDeg;
-            obj.ndOffDeg = NameValueArgs.ndOffDeg;
-            obj.bsCameraOnCommandDeg = NameValueArgs.bsCameraOnCommandDeg;
-            obj.bsCameraOffCommandDeg = NameValueArgs.bsCameraOffCommandDeg;
-            obj.bsLedOnCommandDeg = NameValueArgs.bsLedOnCommandDeg;
-            obj.bsLedOffCommandDeg = NameValueArgs.bsLedOffCommandDeg;
-
-            if any(NameValueArgs.ledOnRgb < 0 | NameValueArgs.ledOnRgb > 1)
-                error("virtualInstrument_attodryAutofocus:InvalidLedOnRgb", ...
-                    "ledOnRgb must be in [0, 1] for each component.");
-            end
-            obj.ledOnRgb = NameValueArgs.ledOnRgb;
+            obj.block_red_blocked_PositionDeg = NameValueArgs.block_red_blocked_PositionDeg;
+            obj.block_red_unblocked_PositionDeg = NameValueArgs.block_red_unblocked_PositionDeg;
+            obj.block_green_blocked_PositionDeg = NameValueArgs.block_green_blocked_PositionDeg;
+            obj.block_green_unblocked_PositionDeg = NameValueArgs.block_green_unblocked_PositionDeg;
+            obj.ND_red_on_PositionDeg = NameValueArgs.ND_red_on_PositionDeg;
+            obj.ND_red_off_PositionDeg = NameValueArgs.ND_red_off_PositionDeg;
+            obj.ND_green_on_PositionDeg = NameValueArgs.ND_green_on_PositionDeg;
+            obj.ND_green_off_PositionDeg = NameValueArgs.ND_green_off_PositionDeg;
+            obj.BS_camera_on_PositionDeg = NameValueArgs.BS_camera_on_PositionDeg;
+            obj.BS_camera_off_PositionDeg = NameValueArgs.BS_camera_off_PositionDeg;
+            obj.BS_LED_on_PositionDeg = NameValueArgs.BS_LED_on_PositionDeg;
+            obj.BS_LED_off_PositionDeg = NameValueArgs.BS_LED_off_PositionDeg;
 
             obj.tbTargetTolerance = NameValueArgs.tbTargetTolerance;
             obj.targetWaitTimeout = NameValueArgs.targetWaitTimeout;
@@ -164,10 +157,11 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             end
             obj.shiftFitTrimRatio = NameValueArgs.shiftFitTrimRatio;
 
-            obj.assertChannelsExist(unique([obj.tSetChannelName; obj.bSetChannelName; obj.tReadChannelName; obj.bReadChannelName]));
+            obj.assertChannelsExist([obj.T_channelName; obj.B_channelName]);
 
             obj.addChannel("T", setTolerances = obj.tbTargetTolerance(1));
             obj.addChannel("B", setTolerances = obj.tbTargetTolerance(2));
+            obj.addChannel("color");  % 0 = red, 1 = green
 
             currentTB = obj.getCurrentTB();
             obj.targetT = currentTB(1);
@@ -178,17 +172,17 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             obj.assertOpticsChannelsConfigured();
 
             rack = obj.getMasterRack();
-            rack.rackSet([obj.bsCameraSetConsistentlyChannelName; obj.bsLedSetConsistentlyChannelName], [1; 1]);
+            rack.rackSet([obj.BS_camera_setConsistentlyChannelName; obj.BS_LED_setConsistentlyChannelName], [1; 1]);
 
             [cameraOnDeg, cameraOffDeg] = obj.measureLikelyEndpoints( ...
-                obj.bsCameraPositionChannelName, obj.bsCameraOnCommandDeg, obj.bsCameraOffCommandDeg);
+                obj.BS_camera_positionChannelName, obj.BS_camera_on_PositionDeg, obj.BS_camera_off_PositionDeg);
             [ledOnDeg, ledOffDeg] = obj.measureLikelyEndpoints( ...
-                obj.bsLedPositionChannelName, obj.bsLedOnCommandDeg, obj.bsLedOffCommandDeg);
+                obj.BS_LED_positionChannelName, obj.BS_LED_on_PositionDeg, obj.BS_LED_off_PositionDeg);
 
-            obj.bsCameraLikelyOnDeg = cameraOnDeg;
-            obj.bsCameraLikelyOffDeg = cameraOffDeg;
-            obj.bsLedLikelyOnDeg = ledOnDeg;
-            obj.bsLedLikelyOffDeg = ledOffDeg;
+            obj.BS_camera_likelyOn_PositionDeg = cameraOnDeg;
+            obj.BS_camera_likelyOff_PositionDeg = cameraOffDeg;
+            obj.BS_LED_likelyOn_PositionDeg = ledOnDeg;
+            obj.BS_LED_likelyOff_PositionDeg = ledOffDeg;
 
             positions = struct( ...
                 "cameraOnDeg", cameraOnDeg, ...
@@ -206,24 +200,24 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
 
             switch beamSplitterName
                 case "camera"
-                    positionChannelName = obj.bsCameraPositionChannelName;
-                    setConsistentChannelName = obj.bsCameraSetConsistentlyChannelName;
+                    positionChannelName = obj.BS_camera_positionChannelName;
+                    setConsistentChannelName = obj.BS_camera_setConsistentlyChannelName;
                     if isOn
-                        targetLikelyDeg = obj.bsCameraLikelyOnDeg;
-                        commandDeg = obj.bsCameraOnCommandDeg;
+                        targetLikelyDeg = obj.BS_camera_likelyOn_PositionDeg;
+                        commandDeg = obj.BS_camera_on_PositionDeg;
                     else
-                        targetLikelyDeg = obj.bsCameraLikelyOffDeg;
-                        commandDeg = obj.bsCameraOffCommandDeg;
+                        targetLikelyDeg = obj.BS_camera_likelyOff_PositionDeg;
+                        commandDeg = obj.BS_camera_off_PositionDeg;
                     end
                 case "led"
-                    positionChannelName = obj.bsLedPositionChannelName;
-                    setConsistentChannelName = obj.bsLedSetConsistentlyChannelName;
+                    positionChannelName = obj.BS_LED_positionChannelName;
+                    setConsistentChannelName = obj.BS_LED_setConsistentlyChannelName;
                     if isOn
-                        targetLikelyDeg = obj.bsLedLikelyOnDeg;
-                        commandDeg = obj.bsLedOnCommandDeg;
+                        targetLikelyDeg = obj.BS_LED_likelyOn_PositionDeg;
+                        commandDeg = obj.BS_LED_on_PositionDeg;
                     else
-                        targetLikelyDeg = obj.bsLedLikelyOffDeg;
-                        commandDeg = obj.bsLedOffCommandDeg;
+                        targetLikelyDeg = obj.BS_LED_likelyOff_PositionDeg;
+                        commandDeg = obj.BS_LED_off_PositionDeg;
                     end
             end
 
@@ -285,10 +279,10 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 "sampleImage", sampleImage, ...
                 "laserOnSampleImage", laserOnSampleImage, ...
                 "laserOnlyImage", laserOnlyImage, ...
-                "cameraBsLikelyOnDeg", obj.bsCameraLikelyOnDeg, ...
-                "cameraBsLikelyOffDeg", obj.bsCameraLikelyOffDeg, ...
-                "ledBsLikelyOnDeg", obj.bsLedLikelyOnDeg, ...
-                "ledBsLikelyOffDeg", obj.bsLedLikelyOffDeg);
+                "cameraBsLikelyOnDeg", obj.BS_camera_likelyOn_PositionDeg, ...
+                "cameraBsLikelyOffDeg", obj.BS_camera_likelyOff_PositionDeg, ...
+                "ledBsLikelyOnDeg", obj.BS_LED_likelyOn_PositionDeg, ...
+                "ledBsLikelyOffDeg", obj.BS_LED_likelyOff_PositionDeg);
         end
 
         function [dx, dy, gof] = estimateSampleOffset(obj, image2D)
@@ -331,7 +325,8 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             result = struct("didApplyCorrection", false, "dx_px", NaN, "dy_px", NaN);
 
             if isempty(obj.referenceSampleImage)
-                return;
+                error("virtualInstrument_attodryAutofocus:MissingReferenceData", ...
+                    "Call takeReferenceData() before performAutofocusAndAutoshift().");
             end
 
             liveImage = obj.acquireCameraImage();
@@ -345,12 +340,13 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
 
     methods (Access = ?instrumentInterface)
         function getValues = getReadChannelHelper(obj, channelIndex)
-            currentTB = obj.getCurrentTB();
             switch channelIndex
                 case 1
-                    getValues = currentTB(1);
+                    getValues = obj.getCurrentTB()(1);
                 case 2
-                    getValues = currentTB(2);
+                    getValues = obj.getCurrentTB()(2);
+                case 3
+                    getValues = obj.colorStored;
                 otherwise
                     error("virtualInstrument_attodryAutofocus:UnsupportedReadChannel", ...
                         "Unsupported read channel index %d.", channelIndex);
@@ -361,21 +357,32 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             switch channelIndex
                 case 1
                     obj.targetT = setValues(1);
+                    obj.waitForTargetsWithCompensation();
                 case 2
                     obj.targetB = setValues(1);
+                    obj.waitForTargetsWithCompensation();
+                case 3
+                    c = setValues(1);
+                    if c ~= 0 && c ~= 1
+                        error("virtualInstrument_attodryAutofocus:InvalidColor", ...
+                            "color must be 0 (red) or 1 (green).");
+                    end
+                    obj.colorStored = c;
                 otherwise
                     setWriteChannelHelper@virtualInstrumentInterface(obj, channelIndex, setValues);
             end
-            obj.waitForTargetsWithCompensation();
         end
 
         function TF = setCheckChannelHelper(obj, channelIndex, ~)
-            currentTB = obj.getCurrentTB();
             switch channelIndex
                 case 1
+                    currentTB = obj.getCurrentTB();
                     TF = abs(currentTB(1) - obj.targetT) <= obj.tbTargetTolerance(1);
                 case 2
+                    currentTB = obj.getCurrentTB();
                     TF = abs(currentTB(2) - obj.targetB) <= obj.tbTargetTolerance(2);
+                case 3
+                    TF = true;
                 otherwise
                     TF = true;
             end
@@ -385,7 +392,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
     methods (Access = private)
         function waitForTargetsWithCompensation(obj)
             rack = obj.getMasterRack();
-            rack.rackSetWrite([obj.tSetChannelName; obj.bSetChannelName], [obj.targetT; obj.targetB]);
+            rack.rackSetWrite([obj.T_channelName; obj.B_channelName], [obj.targetT; obj.targetB]);
 
             deadline = datetime("now") + obj.targetWaitTimeout;
             while true
@@ -415,7 +422,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
 
         function currentTB = getCurrentTB(obj)
             rack = obj.getMasterRack();
-            currentTB = rack.rackGet([obj.tReadChannelName; obj.bReadChannelName]);
+            currentTB = rack.rackGet([obj.T_channelName; obj.B_channelName]);
             currentTB = currentTB(:);
             if numel(currentTB) ~= 2
                 error("virtualInstrument_attodryAutofocus:UnexpectedTBReadLength", ...
@@ -430,30 +437,43 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 NameValueArgs.ndOn (1, 1) logical
             end
 
-            blockerTargetDeg = obj.blockerUnblockedDeg;
-            if NameValueArgs.blocked
-                blockerTargetDeg = obj.blockerBlockedDeg;
-            end
-
-            ndTargetDeg = obj.ndOffDeg;
-            if NameValueArgs.ndOn
-                ndTargetDeg = obj.ndOnDeg;
+            if obj.colorStored == 0
+                blockChannel = obj.block_red_positionChannelName;
+                NDChannel = obj.ND_red_positionChannelName;
+                blockTargetDeg = obj.block_red_unblocked_PositionDeg;
+                ndTargetDeg = obj.ND_red_off_PositionDeg;
+                if NameValueArgs.blocked
+                    blockTargetDeg = obj.block_red_blocked_PositionDeg;
+                end
+                if NameValueArgs.ndOn
+                    ndTargetDeg = obj.ND_red_on_PositionDeg;
+                end
+            else
+                blockChannel = obj.block_green_positionChannelName;
+                NDChannel = obj.ND_green_positionChannelName;
+                blockTargetDeg = obj.block_green_unblocked_PositionDeg;
+                ndTargetDeg = obj.ND_green_off_PositionDeg;
+                if NameValueArgs.blocked
+                    blockTargetDeg = obj.block_green_blocked_PositionDeg;
+                end
+                if NameValueArgs.ndOn
+                    ndTargetDeg = obj.ND_green_on_PositionDeg;
+                end
             end
 
             rack = obj.getMasterRack();
-            rack.rackSet([obj.blockerPositionChannelName; obj.ndPositionChannelName], [blockerTargetDeg; ndTargetDeg]);
+            rack.rackSet([blockChannel; NDChannel], [blockTargetDeg; ndTargetDeg]);
         end
 
         function setLedState(obj, ledOn)
             if ledOn
-                rgb = obj.ledOnRgb;
+                if obj.colorStored == 0
+                    rgb = [1; 0; 0];  % red
+                else
+                    rgb = [0; 1; 0];  % green
+                end
             else
                 rgb = [0; 0; 0];
-            end
-
-            if any(rgb < 0 | rgb > 1)
-                error("virtualInstrument_attodryAutofocus:InvalidLedRgb", ...
-                    "RGB values must be in [0, 1].");
             end
 
             rack = obj.getMasterRack();
@@ -547,21 +567,25 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
 
         function assertOpticsChannelsConfigured(obj)
             labels = [ ...
-                "blockerPositionChannelName"; ...
-                "ndPositionChannelName"; ...
-                "bsCameraPositionChannelName"; ...
-                "bsLedPositionChannelName"; ...
-                "bsCameraSetConsistentlyChannelName"; ...
-                "bsLedSetConsistentlyChannelName"; ...
+                "block_red_positionChannelName"; ...
+                "block_green_positionChannelName"; ...
+                "ND_red_positionChannelName"; ...
+                "ND_green_positionChannelName"; ...
+                "BS_camera_positionChannelName"; ...
+                "BS_LED_positionChannelName"; ...
+                "BS_camera_setConsistentlyChannelName"; ...
+                "BS_LED_setConsistentlyChannelName"; ...
                 "ledRgbChannelName"];
 
             values = [ ...
-                obj.blockerPositionChannelName; ...
-                obj.ndPositionChannelName; ...
-                obj.bsCameraPositionChannelName; ...
-                obj.bsLedPositionChannelName; ...
-                obj.bsCameraSetConsistentlyChannelName; ...
-                obj.bsLedSetConsistentlyChannelName; ...
+                obj.block_red_positionChannelName; ...
+                obj.block_green_positionChannelName; ...
+                obj.ND_red_positionChannelName; ...
+                obj.ND_green_positionChannelName; ...
+                obj.BS_camera_positionChannelName; ...
+                obj.BS_LED_positionChannelName; ...
+                obj.BS_camera_setConsistentlyChannelName; ...
+                obj.BS_LED_setConsistentlyChannelName; ...
                 obj.ledRgbChannelName];
 
             missingConfigMask = strlength(values) == 0;
