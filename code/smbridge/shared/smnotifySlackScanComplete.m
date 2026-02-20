@@ -117,7 +117,13 @@ function resolvedUserId = smnotifySlackScanComplete(scanName, imagePath, dataFil
                 return;
             end
             if ~(isstruct(lookupResp) && isfield(lookupResp, "ok") && logical(lookupResp.ok))
-                warning("sm:SlackUserLookupFailed", "Slack image notification skipped: users.lookupByEmail returned not-ok.");
+                errText = "unknown";
+                if isstruct(lookupResp) && isfield(lookupResp, "error")
+                    errText = string(lookupResp.error);
+                end
+                warning("sm:SlackUserLookupFailed", ...
+                    "Slack image notification skipped: users.lookupByEmail returned not-ok for account_email %s (%s).", ...
+                    accountEmail, errText);
                 return;
             end
             if ~isfield(lookupResp, "user") || ~isfield(lookupResp.user, "id")
