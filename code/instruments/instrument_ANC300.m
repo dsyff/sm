@@ -27,7 +27,7 @@ classdef instrument_ANC300 < instrumentInterface
 
             for axisId = 1:3
                 obj.writeCommand(sprintf("setm %d stp", axisId));
-                obj.writeCommand(sprintf("setf %d %d", axisId, 100));
+                obj.writeCommand(sprintf("setf %d %d", axisId, 50));
             end
 
             obj.addChannel("voltage_x");
