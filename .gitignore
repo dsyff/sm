@@ -41,3 +41,7 @@ Thumbs.db
 
 # exclude llm instructions
 .github/
+
+# Local secrets and installer artifacts
+secrets.env
+installation/
