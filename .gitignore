@@ -13,7 +13,6 @@ tests/
 # Data files (but keep GUI figure files like sm.fig)
 *.mat
 *.pdf
-!manuals/**/*.pdf
 *.ppt
 demos/data/
 
@@ -45,3 +44,4 @@ Thumbs.db
 # Local secrets and installer artifacts
 secrets.env
 installation/
+manuals/
