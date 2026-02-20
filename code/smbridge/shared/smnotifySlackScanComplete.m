@@ -42,7 +42,7 @@ function resolvedUserId = smnotifySlackScanComplete(scanName, imagePath, dataFil
     durationText = strjoin(durationParts, " ");
     [~, dataName, dataExt] = fileparts(dataFilePath);
     dataFilename = dataName + dataExt;
-    messageText = "scan """ + scanName + """ has completed. the scan took " + durationText + ". saved data file: " + dataFilename + ".";
+    messageText = "Scan """ + scanName + """ has completed. The scan took " + durationText + ". Saved data file: " + dataFilename + ".";
 
     token = "";
     if isfield(slack_notification_settings, "api_token")
@@ -153,7 +153,6 @@ function resolvedUserId = smnotifySlackScanComplete(scanName, imagePath, dataFil
 
     try
         uploadPaths = [imagePath; dataFilePath];
-        fileObjs = repmat(struct("id", "", "title", ""), numel(uploadPaths), 1);
         for k = 1:numel(uploadPaths)
             currentPath = uploadPaths(k);
             fid = fopen(currentPath, "rb");
@@ -196,23 +195,21 @@ function resolvedUserId = smnotifySlackScanComplete(scanName, imagePath, dataFil
                 return;
             end
 
-            fileObjs(k).id = char(fileId);
-            fileObjs(k).title = char(uploadFilename);
-        end
-
-        filesJsonArray = string(jsonencode(fileObjs));
-        r3 = webwrite("https://slack.com/api/files.completeUploadExternal", ...
-            "files", char(filesJsonArray), ...
-            "channel_id", char(targetChannelId), ...
-            "initial_comment", "", ...
-            optsForm);
-        if ~(isstruct(r3) && isfield(r3, "ok") && logical(r3.ok))
-            errText = "unknown";
-            if isstruct(r3) && isfield(r3, "error")
-                errText = string(r3.error);
+            fileObj = struct("id", char(fileId), "title", char(uploadFilename));
+            filesJsonArray = "[" + string(jsonencode(fileObj)) + "]";
+            r3 = webwrite("https://slack.com/api/files.completeUploadExternal", ...
+                "files", char(filesJsonArray), ...
+                "channel_id", char(targetChannelId), ...
+                "initial_comment", "", ...
+                optsForm);
+            if ~(isstruct(r3) && isfield(r3, "ok") && logical(r3.ok))
+                errText = "unknown";
+                if isstruct(r3) && isfield(r3, "error")
+                    errText = string(r3.error);
+                end
+                warning("sm:SlackUploadCompleteFailed", "Slack image notification skipped: files.completeUploadExternal returned not-ok (%s).", errText);
+                return;
             end
-            warning("sm:SlackUploadCompleteFailed", "Slack image notification skipped: files.completeUploadExternal returned not-ok (%s).", errText);
-            return;
         end
 
         r4 = webwrite("https://slack.com/api/chat.postMessage", ...
