@@ -462,7 +462,11 @@ function Run
                 end
             else
                 %filename for this run - final safety net: sanitize for Windows invalid chars
-                scan_file_name = regexprep(scan.name, '[\\/:*?"<>|.]', '_');
+                scan_name_for_notification = string(scan.name);
+                if strlength(scan_name_for_notification) == 0
+                    scan_name_for_notification = "scan";
+                end
+                scan_file_name = regexprep(scan_name_for_notification, "[\\/:*?""<>|.]", "_");
                 if ~isfield(smaux,'datadir') || isempty(smaux.datadir)
                     smaux.datadir = smdatapathDefaultPath();
                 end
@@ -476,7 +480,24 @@ function Run
                 if ~exist("engine", "var") || isempty(engine) || ~isa(engine, "measurementEngine")
                     error("sm:MissingEngine", "measurementEngine not found. Please run smready(...) first.");
                 end
-                engine.run(scan, "", "turbo");
+                [~, runMetadata] = engine.run(scan, "", "turbo");
+                if isfield(runMetadata, "isComplete") && runMetadata.isComplete
+                    notificationSettings = engine.slack_notification_settings;
+                    if isfield(scan, "slack_notification_account_email") && strlength(string(scan.slack_notification_account_email)) > 0
+                        overrideEmail = strip(string(scan.slack_notification_account_email));
+                        if isfield(notificationSettings, "account_email") && isfield(notificationSettings, "user_id")
+                            baseEmail = strip(string(notificationSettings.account_email));
+                            if ~strcmpi(char(baseEmail), char(overrideEmail))
+                                notificationSettings.user_id = "";
+                            end
+                        end
+                        notificationSettings.account_email = overrideEmail;
+                    end
+                    resolvedUserId = smnotifySlackScanComplete(scan_name_for_notification, runMetadata.pngFile, runMetadata.filename, runMetadata.duration, notificationSettings);
+                    if strlength(string(resolvedUserId)) > 0 && isfield(notificationSettings, "account_email")
+                        engine.cacheSlackNotificationUserId(string(notificationSettings.account_email), string(resolvedUserId));
+                    end
+                end
                 UpdateToGUI;
                 drawnow;
                 pause(3);

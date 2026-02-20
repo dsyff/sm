@@ -150,6 +150,7 @@ virtual_nE_Use = 0;
 
 %% Create instrumentRackRecipe
 recipe = instrumentRackRecipe();
+recipe.slack_notification_account_email = "";
 
 % Recipe calling syntax (quick reference):
 % recipe.addInstrument("handleVar", "instrument_ClassName", "friendlyName", constructorArgs..., nameValueArgs...);
@@ -753,12 +754,16 @@ if ST3215HS_Use
     recipe.addInstrument("handle_ST3215HS", "instrument_ST3215HS", "ST3215HS", ST3215HS_Serial, servoId_1 = 12, servoId_2 = 13);
     recipe.addChannel("ST3215HS", "position_1_deg", "ST3215HS_pos1_deg");
     recipe.addChannel("ST3215HS", "load_1_percent", "ST3215HS_load1_percent");
+    % 0 = direct set, 1 = setPositionConsistent
+    recipe.addChannel("ST3215HS", "setConsistently_1", "ST3215HS_setConsistently1", [], [], 0, 1);
     recipe.addStatement("ST3215HS", "handle_ST3215HS.calibrateSoftLimits(1);");
     recipe.addStatement("ST3215HS", "if handle_ST3215HS.hasServo2");
     recipe.addStatement("ST3215HS", "  handle_ST3215HS.calibrateSoftLimits(2);");
     recipe.addStatement("ST3215HS", "end");
     recipe.addChannel("ST3215HS", "position_2_deg", "ST3215HS_pos2_deg");
     recipe.addChannel("ST3215HS", "load_2_percent", "ST3215HS_load2_percent");
+    % 0 = direct set, 1 = setPositionConsistent
+    recipe.addChannel("ST3215HS", "setConsistently_2", "ST3215HS_setConsistently2", [], [], 0, 1);
 end
 
 if colorLED_Use

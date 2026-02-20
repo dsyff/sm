@@ -17,6 +17,7 @@ classdef measurementEngine < handle
         constructionMode (1, 1) string {mustBeMember(constructionMode, ["rack", "recipe"])} = "rack"
 
         experimentRootPath (1, 1) string = ""
+        slack_notification_settings (1, 1) struct = struct("webhook", "", "api_token", "", "channel_id", "", "user_id", "", "account_email", "")
 
         rackLocal instrumentRack = instrumentRack.empty(0, 1)
         recipe instrumentRackRecipe = instrumentRackRecipe.empty(0, 1)
@@ -64,13 +65,15 @@ classdef measurementEngine < handle
                 options.verboseClient (1, 1) logical = false
                 options.clientLogFile (1, 1) string = ""
                 options.experimentRootPath (1, 1) string = ""
+                options.slack_notification_settings (1, 1) struct = struct("webhook", "", "api_token", "", "channel_id", "", "user_id", "", "account_email", "")
             end
 
             obj = measurementEngine(instrumentRackRecipe(), ...
                 internalDeferInit = true, ...
                 verboseClient = options.verboseClient, ...
                 clientLogFile = options.clientLogFile, ...
-                experimentRootPath = options.experimentRootPath);
+                experimentRootPath = options.experimentRootPath, ...
+                slack_notification_settings = options.slack_notification_settings);
             obj.constructionMode = "rack";
             obj.rackLocal = rack;
             obj.recipe = instrumentRackRecipe.empty(0, 1);
@@ -90,6 +93,7 @@ classdef measurementEngine < handle
                 options.workerLogFile (1, 1) string = ""
                 options.clientLogFile (1, 1) string = ""
                 options.experimentRootPath (1, 1) string = ""
+                options.slack_notification_settings (1, 1) struct = struct("webhook", "", "api_token", "", "channel_id", "", "user_id", "", "account_email", "")
             end
 
             rootPath = options.experimentRootPath;
@@ -101,6 +105,48 @@ classdef measurementEngine < handle
             end
             obj.experimentRootPath = rootPath;
             experimentContext.setExperimentRootPath(rootPath);
+            slackSettings = options.slack_notification_settings;
+            if ~isfield(slackSettings, "webhook")
+                slackSettings.webhook = "";
+            end
+            if ~isfield(slackSettings, "api_token")
+                slackSettings.api_token = "";
+            end
+            if ~isfield(slackSettings, "channel_id")
+                slackSettings.channel_id = "";
+            end
+            if ~isfield(slackSettings, "user_id")
+                slackSettings.user_id = "";
+            end
+            if ~isfield(slackSettings, "account_email")
+                slackSettings.account_email = "";
+            end
+            slackSettings.webhook = string(slackSettings.webhook);
+            slackSettings.api_token = string(slackSettings.api_token);
+            slackSettings.channel_id = string(slackSettings.channel_id);
+            slackSettings.user_id = string(slackSettings.user_id);
+            slackSettings.account_email = string(slackSettings.account_email);
+            if ~isscalar(slackSettings.webhook)
+                error("measurementEngine:InvalidSlackNotificationSettings", ...
+                    "slack_notification_settings.webhook must be a scalar string.");
+            end
+            if ~isscalar(slackSettings.api_token)
+                error("measurementEngine:InvalidSlackNotificationSettings", ...
+                    "slack_notification_settings.api_token must be a scalar string.");
+            end
+            if ~isscalar(slackSettings.channel_id)
+                error("measurementEngine:InvalidSlackNotificationSettings", ...
+                    "slack_notification_settings.channel_id must be a scalar string.");
+            end
+            if ~isscalar(slackSettings.user_id)
+                error("measurementEngine:InvalidSlackNotificationSettings", ...
+                    "slack_notification_settings.user_id must be a scalar string.");
+            end
+            if ~isscalar(slackSettings.account_email)
+                error("measurementEngine:InvalidSlackNotificationSettings", ...
+                    "slack_notification_settings.account_email must be a scalar string.");
+            end
+            obj.slack_notification_settings = slackSettings;
 
             obj.verboseClient = options.verboseClient;
             obj.verboseWorker = options.verboseWorker;
@@ -325,7 +371,7 @@ classdef measurementEngine < handle
             end
         end
 
-        function dataOut = run(obj, scan, filename, mode)
+        function [dataOut, runMetadata] = run(obj, scan, filename, mode)
             arguments
                 obj
                 scan
@@ -333,6 +379,7 @@ classdef measurementEngine < handle
                 mode (1, 1) string {mustBeMember(mode, ["safe", "turbo"])} = "safe"
             end
 
+            runMetadata = struct("filename", "", "pngFile", "", "pngSaved", false, "duration", seconds(NaN), "isComplete", false);
             scanObj = scan;
             if isstruct(scanObj)
                 scanObj = measurementScan.fromLegacy(scanObj, @(name) obj.channelSizeOf_(name), mode);
@@ -385,9 +432,9 @@ classdef measurementEngine < handle
             obj.logClient_("run() target file=" + filename);
 
             if obj.constructionMode == "rack"
-                dataOut = obj.runLocal_(scanObj, filename);
+                [dataOut, scanForSave] = obj.runLocal_(scanObj, filename);
             else
-                dataOut = obj.runOnWorker_(scanObj, filename, mode);
+                [dataOut, scanForSave] = obj.runOnWorker_(scanObj, filename, mode);
             end
 
             if autoRun
@@ -396,6 +443,38 @@ classdef measurementEngine < handle
                 catch
                 end
             end
+
+            runMetadata.filename = filename;
+            [runPath, runBase] = fileparts(filename);
+            if strlength(runBase) == 0
+                runMetadata.pngFile = filename + ".png";
+            elseif strlength(runPath) == 0
+                runMetadata.pngFile = runBase + ".png";
+            else
+                runMetadata.pngFile = fullfile(runPath, runBase + ".png");
+            end
+            runMetadata.pngSaved = isfile(runMetadata.pngFile);
+            if isfield(scanForSave, "duration") && isduration(scanForSave.duration)
+                runMetadata.duration = scanForSave.duration;
+            end
+            if isfield(scanForSave, "isComplete")
+                runMetadata.isComplete = logical(scanForSave.isComplete);
+            end
+        end
+
+        function cacheSlackNotificationUserId(obj, accountEmail, userId)
+            arguments
+                obj
+                accountEmail (1, 1) string
+                userId (1, 1) string
+            end
+            accountEmail = strip(accountEmail);
+            userId = strip(userId);
+            if strlength(accountEmail) == 0 || strlength(userId) == 0
+                return;
+            end
+            obj.slack_notification_settings.account_email = accountEmail;
+            obj.slack_notification_settings.user_id = userId;
         end
     end
 
@@ -714,7 +793,7 @@ classdef measurementEngine < handle
             chanSize = double(obj.channelSizes(idx));
         end
 
-        function dataOut = runLocal_(obj, scanObj, filename)
+        function [dataOut, scanForSave] = runLocal_(obj, scanObj, filename)
             rack = obj.rackLocal;
             if isempty(rack)
                 error("measurementEngine:MissingRack", "Local rack is not available.");
@@ -728,7 +807,7 @@ classdef measurementEngine < handle
             end
         end
 
-        function dataOut = runOnWorker_(obj, scanObj, filename, mode)
+        function [dataOut, scanForSave] = runOnWorker_(obj, scanObj, filename, mode)
             arguments
                 obj
                 scanObj (1, 1) measurementScan
@@ -749,6 +828,7 @@ classdef measurementEngine < handle
             % Runs a scan against a local rack and updates GUI on the client.
 
             scanForSave = scanObj.toSaveStruct();
+            scanForSave.isComplete = false;
             [figHandle, plotState] = obj.initLiveFigure_(scanObj, scanForSave);
 
             pendingClose = false;
@@ -798,17 +878,19 @@ classdef measurementEngine < handle
 
             scanStart = datetime("now");
             scanForSave.startTime = scanStart;
-            dataOut = measurementEngine.runScanCore_(rack, scanObj, @onRead, figHandle, duration.empty, [], @onTemp);
+            [dataOut, stopped] = measurementEngine.runScanCore_(rack, scanObj, @onRead, figHandle, duration.empty, [], @onTemp);
             scanEnd = datetime("now");
             scanForSave.startTime = scanStart;
             scanForSave.endTime = scanEnd;
             scanForSave.duration = scanEnd - scanStart;
+            scanForSave.isComplete = ~stopped;
         end
 
         function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, scanObj, tempFile)
             % Runs a scan on the engine worker and updates GUI on the client.
 
             scanForSave = scanObj.toSaveStruct();
+            scanForSave.isComplete = false;
 
             [figHandle, plotState] = obj.initLiveFigure_(scanObj, scanForSave);
             stopRequested = false;
@@ -876,6 +958,7 @@ classdef measurementEngine < handle
             end
 
             done = false;
+            runComplete = false;
             while ~done
                 checkEsc();
                 % Turbo mode requirement:
@@ -952,6 +1035,7 @@ classdef measurementEngine < handle
                             if isfield(msg, "data")
                                 dataOut = msg.data;
                             end
+                            runComplete = isfield(msg, "completed") && logical(msg.completed);
                             done = true;
                             continue;
                         end
@@ -1039,6 +1123,7 @@ classdef measurementEngine < handle
                         if isfield(msg, "data")
                             dataOut = msg.data;
                         end
+                        runComplete = isfield(msg, "completed") && logical(msg.completed);
                         obj.logClient_("runDone ok " + runId);
                         done = true;
                         continue;
@@ -1135,6 +1220,7 @@ classdef measurementEngine < handle
             scanForSave.startTime = scanStart;
             scanForSave.endTime = scanEnd;
             scanForSave.duration = scanEnd - scanStart;
+            scanForSave.isComplete = runComplete;
         end
 
         function [figHandle, plotState] = initLiveFigure_(obj, scanObj, scanForSave)
@@ -1456,6 +1542,11 @@ classdef measurementEngine < handle
                         if isfield(scanForSave, "duration") && isduration(scanForSave.duration) && isfinite(seconds(scanForSave.duration))
                             headerLines(end+1) = "duration: " + string(scanForSave.duration);
                         end
+                        statusText = "INCOMPLETE";
+                        if isfield(scanForSave, "isComplete") && logical(scanForSave.isComplete)
+                            statusText = "COMPLETE";
+                        end
+                        headerLines(end+1) = "status: " + statusText;
                         if ~isempty(headerLines)
                             text_data.header = char(strjoin(headerLines, newline));
                         else
@@ -1846,7 +1937,7 @@ classdef measurementEngine < handle
             end
         end
 
-        function data = runScanCore_(rack, scanObj, onRead, figHandle, snapshotInterval, onSnapshot, onTemp, logFcn)
+        function [data, stopped] = runScanCore_(rack, scanObj, onRead, figHandle, snapshotInterval, onSnapshot, onTemp, logFcn)
             % Single-threaded scan loop. Stop via figure handle (ESC + UserData.stopRequested).
             if nargin < 5
                 snapshotInterval = duration.empty;
@@ -3092,6 +3183,7 @@ classdef measurementEngine < handle
                         ok = true;
                         err = [];
                         data = {};
+                        completed = false;
                         try
                             if ~isa(currentRunScanObj, "measurementScan")
                                 error("measurementEngine:InvalidScan", "run expects a measurementScan.");
@@ -3103,7 +3195,8 @@ classdef measurementEngine < handle
                                 logCore = @wlog;
                             end
                             if mode == "safe"
-                                [data, ~] = measurementEngine.runSafeScanCore_(rack, currentRunScanObj, clientToEngine, engineToClient, currentRunRequestId, logCore);
+                                [data, stopped] = measurementEngine.runSafeScanCore_(rack, currentRunScanObj, clientToEngine, engineToClient, currentRunRequestId, logCore);
+                                completed = ~stopped;
                             elseif mode == "turbo"
                                 snapshotInterval = seconds(0.2);
                                 if isfield(msg, "snapshotInterval") && ~isempty(msg.snapshotInterval)
@@ -3115,7 +3208,8 @@ classdef measurementEngine < handle
                                 if ~(isduration(snapshotInterval) && isfinite(seconds(snapshotInterval)) && snapshotInterval > seconds(0))
                                     error("measurementEngine:InvalidTurboInterval", "Invalid snapshotInterval for turbo mode.");
                                 end
-                                [data, ~, ~] = measurementEngine.runTurboScanCore_(rack, currentRunScanObj, clientToEngine, engineToClient, currentRunRequestId, snapshotInterval, logCore);
+                                [data, ~, stopped] = measurementEngine.runTurboScanCore_(rack, currentRunScanObj, clientToEngine, engineToClient, currentRunRequestId, snapshotInterval, logCore);
+                                completed = ~stopped;
                             else
                                 error("measurementEngine:InvalidMode", "Unknown scan mode %s.", mode);
                             end
@@ -3129,6 +3223,7 @@ classdef measurementEngine < handle
                             "type", "runDone", ...
                             "requestId", currentRunRequestId, ...
                             "ok", ok, ...
+                            "completed", completed, ...
                             "data", {data}, ...
                             "error", err));
                         if verbose

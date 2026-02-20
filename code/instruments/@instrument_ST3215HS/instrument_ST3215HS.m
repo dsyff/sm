@@ -11,8 +11,10 @@ classdef instrument_ST3215HS < instrumentInterface
     % Channels:
     %   - "position_1_deg" : servo 1 position in degrees
     %   - "load_1_percent" : servo 1 load (signed percent, -100..+100)
+    %   - "setConsistently_1" : servo 1 position mode (0 = direct set, 1 = setPositionConsistent)
     %   - "position_2_deg" : servo 2 position in degrees
     %   - "load_2_percent" : servo 2 load (signed percent, -100..+100)
+    %   - "setConsistently_2" : servo 2 position mode (0 = direct set, 1 = setPositionConsistent)
     %
     % Example:
     %   s = instrument_ST3215HS("COM6", servoId_1=1);          % one servo
@@ -60,6 +62,8 @@ classdef instrument_ST3215HS < instrumentInterface
 
     properties (SetAccess = private)
         hasServo2 (1, 1) logical = false;
+        useSetPositionConsistent_1 (1, 1) logical = false;
+        useSetPositionConsistent_2 (1, 1) logical = false;
 
         % Soft limits (degrees) found by calibrateSoftLimits().
         % Defaults are unbounded to simplify bring-up/testing.
@@ -71,6 +75,7 @@ classdef instrument_ST3215HS < instrumentInterface
 
     properties (Access = private)
         ioTimeoutSeconds (1, 1) double = 0.2;
+        bypassConsistentPositionSet_ (1, 1) logical = false;
     end
 
     properties (Constant, Access = private)
@@ -146,6 +151,7 @@ classdef instrument_ST3215HS < instrumentInterface
             obj.addChannel("position_1_deg");
             % load_* channels are read-only, so setTolerances would be unused/misleading.
             obj.addChannel("load_1_percent");
+            obj.addChannel("setConsistently_1");
 
             % Optional servo 2: only add channels if explicitly enabled
             if obj.hasServo2
@@ -156,6 +162,7 @@ classdef instrument_ST3215HS < instrumentInterface
                 obj.addChannel("position_2_deg");
                 % load_* channels are read-only, so setTolerances would be unused/misleading.
                 obj.addChannel("load_2_percent");
+                obj.addChannel("setConsistently_2");
             end
         end
 
@@ -295,7 +302,12 @@ classdef instrument_ST3215HS < instrumentInterface
             % Ensure setChannel uses settle checks.
             prevRequireSetCheck = obj.requireSetCheck;
             obj.requireSetCheck = true;
-            c = onCleanup(@() obj.restoreRequireSetCheck_(prevRequireSetCheck));
+            cleanupSetCheck = onCleanup(@() obj.restoreRequireSetCheck_(prevRequireSetCheck)); %#ok<NASGU>
+
+            % Prevent recursive re-entry when setPositionConsistent() drives setChannel().
+            prevBypassConsistentSet = obj.bypassConsistentPositionSet_;
+            obj.bypassConsistentPositionSet_ = true;
+            cleanupBypassConsistentSet = onCleanup(@() obj.restoreBypassConsistentPositionSet_(prevBypassConsistentSet)); %#ok<NASGU>
 
             % Helper: measure tick after a settled setChannel.
             function [dTick, actualTick] = setTargetAndMeasure_()
@@ -425,6 +437,9 @@ classdef instrument_ST3215HS < instrumentInterface
             prevRequireSetCheck = obj.requireSetCheck;
             obj.requireSetCheck = true;
             c = onCleanup(@() obj.restoreRequireSetCheck_(prevRequireSetCheck)); %#ok<NASGU>
+            prevBypassConsistentSet = obj.bypassConsistentPositionSet_;
+            obj.bypassConsistentPositionSet_ = true;
+            cleanupBypassConsistentSet = onCleanup(@() obj.restoreBypassConsistentPositionSet_(prevBypassConsistentSet)); %#ok<NASGU>
 
             loadThreshold_percent = obj.defaultLoadThreshold_percent;
 
@@ -465,10 +480,14 @@ classdef instrument_ST3215HS < instrumentInterface
                     obj.sendRead_(obj.servoId_1, obj.SMS_STS_PRESENT_POSITION_L, uint8(2));
                 case 2 % "load_1_percent"
                     obj.sendRead_(obj.servoId_1, obj.SMS_STS_PRESENT_LOAD_L, uint8(2));
-                case 3 % "position_2_deg"
+                case 3 % "setConsistently_1"
+                    % software-only channel; no bus read needed
+                case 4 % "position_2_deg"
                     obj.sendRead_(obj.servoId_2, obj.SMS_STS_PRESENT_POSITION_L, uint8(2));
-                case 4 % "load_2_percent"
+                case 5 % "load_2_percent"
                     obj.sendRead_(obj.servoId_2, obj.SMS_STS_PRESENT_LOAD_L, uint8(2));
+                case 6 % "setConsistently_2"
+                    % software-only channel; no bus read needed
                 otherwise
                     error("ST3215HS:UnknownChannelIndex", "Unknown channelIndex %d.", channelIndex);
             end
@@ -480,10 +499,14 @@ classdef instrument_ST3215HS < instrumentInterface
                     getValues = obj.readPositionDeg_(obj.servoId_1);
                 case 2 % "load_1_percent"
                     getValues = obj.readLoad_(obj.servoId_1);
-                case 3 % "position_2_deg"
+                case 3 % "setConsistently_1"
+                    getValues = double(obj.useSetPositionConsistent_1);
+                case 4 % "position_2_deg"
                     getValues = obj.readPositionDeg_(obj.servoId_2);
-                case 4 % "load_2_percent"
+                case 5 % "load_2_percent"
                     getValues = obj.readLoad_(obj.servoId_2);
+                case 6 % "setConsistently_2"
+                    getValues = double(obj.useSetPositionConsistent_2);
                 otherwise
                     error("ST3215HS:UnknownChannelIndex", "Unknown channelIndex %d.", channelIndex);
             end
@@ -492,9 +515,31 @@ classdef instrument_ST3215HS < instrumentInterface
         function setWriteChannelHelper(obj, channelIndex, setValues)
             switch channelIndex
                 case 1 % "position_1_deg"
-                    obj.writePositionDeg_(obj.servoId_1, setValues(1), obj.softMin_1_deg, obj.softMax_1_deg);
-                case 3 % "position_2_deg"
-                    obj.writePositionDeg_(obj.servoId_2, setValues(1), obj.softMin_2_deg, obj.softMax_2_deg);
+                    if obj.useSetPositionConsistent_1 && ~obj.bypassConsistentPositionSet_
+                        obj.setPositionConsistent(setValues(1), 1);
+                    else
+                        obj.writePositionDeg_(obj.servoId_1, setValues(1), obj.softMin_1_deg, obj.softMax_1_deg);
+                    end
+                case 3 % "setConsistently_1"
+                    v = setValues(1);
+                    if ~(v == 0 || v == 1)
+                        error("ST3215HS:InvalidSetConsistentlyChannelValue", ...
+                            "setConsistently_1 must be 0 or 1. Received %s.", formattedDisplayText(v));
+                    end
+                    obj.useSetPositionConsistent_1 = logical(v);
+                case 4 % "position_2_deg"
+                    if obj.useSetPositionConsistent_2 && ~obj.bypassConsistentPositionSet_
+                        obj.setPositionConsistent(setValues(1), 2);
+                    else
+                        obj.writePositionDeg_(obj.servoId_2, setValues(1), obj.softMin_2_deg, obj.softMax_2_deg);
+                    end
+                case 6 % "setConsistently_2"
+                    v = setValues(1);
+                    if ~(v == 0 || v == 1)
+                        error("ST3215HS:InvalidSetConsistentlyChannelValue", ...
+                            "setConsistently_2 must be 0 or 1. Received %s.", formattedDisplayText(v));
+                    end
+                    obj.useSetPositionConsistent_2 = logical(v);
                 otherwise
                     setWriteChannelHelper@instrumentInterface(obj, channelIndex, setValues);
             end
@@ -502,7 +547,9 @@ classdef instrument_ST3215HS < instrumentInterface
 
         function TF = setCheckChannelHelper(obj, channelIndex, channelLastSetValues)
             switch channelIndex
-                case {1, 3} % "position_1_deg" / "position_2_deg"
+                case {3, 6} % "setConsistently_1" / "setConsistently_2"
+                    TF = true;
+                case {1, 4} % "position_1_deg" / "position_2_deg"
                     % Settled-ness check (no target comparison):
                     % Read two consecutive position samples and consider the
                     % servo settled if the quantized tick is unchanged.
@@ -885,6 +932,10 @@ classdef instrument_ST3215HS < instrumentInterface
 
         function restoreRequireSetCheck_(obj, prevValue)
             obj.requireSetCheck = prevValue;
+        end
+
+        function restoreBypassConsistentPositionSet_(obj, prevValue)
+            obj.bypassConsistentPositionSet_ = prevValue;
         end
     end
 

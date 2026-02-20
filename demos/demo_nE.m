@@ -23,6 +23,7 @@ sminit; % shared setup script keeps demo logic concise
 
 %% instrument rack (recipe, built on worker engine)
 recipe = instrumentRackRecipe();
+recipe.slack_notification_account_email = "";
 
 recipe.addInstrument("handle_blg", "instrument_toyBLG", "blg_test", "blg_test", ...
     h_bg = 30e-9, ...

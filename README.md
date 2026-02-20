@@ -38,7 +38,7 @@
 - `docs/INSTRUMENT_CREATION_GUIDE.txt` (instrument authoring best practices)
 - `docs/VIRTUAL_INSTRUMENT_CREATION_GUIDE.txt` (virtual instrument authoring)
 - `docs/MEASUREMENT_ENGINE_ARCHITECTURE.md` (engine/recipe/safe/turbo architecture + worker protocol)
-- `docs/general_coding_guidelines.md` (repo-wide coding guidelines)
+- `docs/general_coding_guidelines.md` (repo-wide coding guidelines; includes git guidelines)
 - `docs/SMBRIDGE_GUI_ARCHITECTURE.txt` (smbridge GUI structure and scan flow)
 
 ## 🔧 TROUBLESHOOTING:

@@ -2,6 +2,9 @@ classdef instrumentRackRecipe < handle
     % Recipe for constructing an instrumentRack on a worker.
     %
     % The recipe is serializable and contains only construction instructions.
+    properties
+        slack_notification_account_email (1, 1) string = ""
+    end
 
     properties (SetAccess = private)
         instrumentSteps (1, :) struct = struct( ...
