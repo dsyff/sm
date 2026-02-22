@@ -141,4 +141,6 @@
 % - The "instName" string must match between addInstrument and addChannel.
 % - "instChanName" must exist in the instrument class (see its constructor/addChannel calls).
 % - All names must be unique (instrument names, userChanName).
+% - In demo scripts, keep the same instrument order across address variables,
+%   `_Use` flags, and `if ..._Use` instrument blocks to keep maintenance predictable.
 

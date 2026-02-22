@@ -40,6 +40,8 @@ function resolvedUserId = smnotifySlackScanComplete(scanName, imagePath, dataFil
     end
     durationParts(end+1) = secondsPart + " seconds";
     durationText = strjoin(durationParts, " ");
+    [~, imageName, imageExt] = fileparts(imagePath);
+    imageFilename = imageName + imageExt;
     [~, dataName, dataExt] = fileparts(dataFilePath);
     dataFilename = dataName + dataExt;
     messageText = "Scan """ + scanName + """ from your queue has completed. The scan took " + durationText + ". Saved data file: " + dataFilename + ".";
@@ -159,8 +161,10 @@ function resolvedUserId = smnotifySlackScanComplete(scanName, imagePath, dataFil
 
     try
         uploadPaths = [imagePath; dataFilePath];
+        uploadFilenames = [imageFilename; dataFilename];
         for k = 1:numel(uploadPaths)
             currentPath = uploadPaths(k);
+            uploadFilename = uploadFilenames(k);
             fid = fopen(currentPath, "rb");
             if fid < 0
                 warning("sm:UploadFileOpenFailed", "Slack image notification skipped: cannot open file %s", currentPath);
@@ -174,8 +178,6 @@ function resolvedUserId = smnotifySlackScanComplete(scanName, imagePath, dataFil
                 return;
             end
 
-            [~, baseName, baseExt] = fileparts(currentPath);
-            uploadFilename = baseName + baseExt;
             r1 = webwrite("https://slack.com/api/files.getUploadURLExternal", ...
                 "filename", char(uploadFilename), ...
                 "length", char(string(fileLen)), ...

@@ -66,6 +66,7 @@ ST3215HS_green_Serial = "COM4";   % green block (servo 1), green ND (servo 2)
 
 % WS2811 color LED controller (Pico 2 USB CDC)
 colorLED_Serial = "COM5";
+USB6001_Device = "Dev1";
 
 E4980AL_GPIB = 6; %E4980AL LCR meter for strain controller
 BK889B_Serial = "COM3";
@@ -141,6 +142,7 @@ ST3215HS_BS_Use = 0;
 ST3215HS_red_Use = 0;
 ST3215HS_green_Use = 0;
 colorLED_Use = 0;
+USB6001_Use = 0;
 virtual_attodryAutofocus_Use = 0;
 
 E4980AL_Use = 0;
@@ -819,6 +821,23 @@ if colorLED_Use
     recipe.addChannel("colorLED", "G", "colorLED_G", [], [], 0, 1);
     recipe.addChannel("colorLED", "B", "colorLED_B", [], [], 0, 1);
     recipe.addChannel("colorLED", "RGB", "colorLED_RGB", [], [], 0, 1);
+end
+
+if USB6001_Use
+    recipe.addInstrument("handle_USB6001", "instrument_USB6001", "USB6001", USB6001_Device);
+    recipe.addChannel("USB6001", "AI0", "USB6001_AI0");
+    recipe.addChannel("USB6001", "AI1", "USB6001_AI1");
+    recipe.addChannel("USB6001", "AI2", "USB6001_AI2");
+    recipe.addChannel("USB6001", "AI3", "USB6001_AI3");
+    recipe.addChannel("USB6001", "AI4", "USB6001_AI4");
+    recipe.addChannel("USB6001", "AI5", "USB6001_AI5");
+    recipe.addChannel("USB6001", "AI6", "USB6001_AI6");
+    recipe.addChannel("USB6001", "AI7", "USB6001_AI7");
+    recipe.addChannel("USB6001", "AI01234567", "USB6001_AI01234567");
+    recipe.addChannel("USB6001", "AO0", "USB6001_AO0");
+    recipe.addChannel("USB6001", "AO1", "USB6001_AO1");
+    recipe.addChannel("USB6001", "integration_time_s", "USB6001_integration_time_s");
+    recipe.addChannel("USB6001", "sampling_rate_Hz", "USB6001_sampling_rate_Hz");
 end
 
 if E4980AL_Use
