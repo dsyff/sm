@@ -67,6 +67,7 @@ ST3215HS_green_Serial = "COM4";   % green block (servo 1), green ND (servo 2)
 % WS2811 color LED controller (Pico 2 USB CDC)
 colorLED_Serial = "COM5";
 USB6001_Device = "Dev1";
+USB6001_numAIChannels = 1;
 
 E4980AL_GPIB = 6; %E4980AL LCR meter for strain controller
 BK889B_Serial = "COM3";
@@ -824,16 +825,15 @@ if colorLED_Use
 end
 
 if USB6001_Use
-    recipe.addInstrument("handle_USB6001", "instrument_USB6001", "USB6001", USB6001_Device);
-    recipe.addChannel("USB6001", "AI0", "USB6001_AI0");
-    recipe.addChannel("USB6001", "AI1", "USB6001_AI1");
-    recipe.addChannel("USB6001", "AI2", "USB6001_AI2");
-    recipe.addChannel("USB6001", "AI3", "USB6001_AI3");
-    recipe.addChannel("USB6001", "AI4", "USB6001_AI4");
-    recipe.addChannel("USB6001", "AI5", "USB6001_AI5");
-    recipe.addChannel("USB6001", "AI6", "USB6001_AI6");
-    recipe.addChannel("USB6001", "AI7", "USB6001_AI7");
-    recipe.addChannel("USB6001", "AI01234567", "USB6001_AI01234567");
+    recipe.addInstrument("handle_USB6001", "instrument_USB6001", "USB6001", USB6001_Device, USB6001_numAIChannels);
+    for aiIndex = 0:USB6001_numAIChannels-1
+        aiChannelName = "AI" + string(aiIndex);
+        recipe.addChannel("USB6001", aiChannelName, "USB6001_" + aiChannelName);
+    end
+    if USB6001_numAIChannels > 1
+        aiVectorChannelName = "AI" + join(string(0:USB6001_numAIChannels-1), "");
+        recipe.addChannel("USB6001", aiVectorChannelName, "USB6001_" + aiVectorChannelName);
+    end
     recipe.addChannel("USB6001", "AO0", "USB6001_AO0");
     recipe.addChannel("USB6001", "AO1", "USB6001_AO1");
     recipe.addChannel("USB6001", "integration_time_s", "USB6001_integration_time_s");
