@@ -24,7 +24,7 @@ classdef instrument_USB6001 < instrumentInterface
             obj.requireSetCheck = false;
             obj.numAIChannels = numAIChannels;
             obj.AI_values = NaN(numAIChannels, 1);
-            obj.samplingRate_Hz = 2E4 / numAIChannels;
+            obj.samplingRate_Hz = min(2E4 / numAIChannels, 5E3);
 
             handle = daq("ni");
             for inputIndex = 0:numAIChannels-1
@@ -116,6 +116,12 @@ classdef instrument_USB6001 < instrumentInterface
                     if value <= 0
                         error("instrument_USB6001:InvalidSamplingRate", ...
                             "sampling_rate_Hz must be greater than 0.");
+                    end
+                    maxRate_Hz = min(2E4 / obj.numAIChannels, 5E3);
+                    if value > maxRate_Hz
+                        error("instrument_USB6001:SamplingRateTooHigh", ...
+                            "sampling_rate_Hz must be less than or equal to %.15g for numAIChannels=%d.", ...
+                            maxRate_Hz, obj.numAIChannels);
                     end
                     obj.samplingRate_Hz = value;
                     obj.communicationHandle.Rate = value;
