@@ -66,7 +66,7 @@ ST3215HS_green_Serial = "COM4";   % green block (servo 1), green ND (servo 2)
 
 % WS2811 color LED controller (Pico 2 USB CDC)
 colorLED_Serial = "COM5";
-USB6001_Device = "Dev1";
+USB6001_Device = "dev1";
 USB6001_numAIChannels = 1;
 USB6001_integrationTime_s = 0;
 
@@ -838,6 +838,7 @@ if USB6001_Use
     end
     recipe.addChannel("USB6001", "AO0", "USB6001_AO0");
     recipe.addChannel("USB6001", "AO1", "USB6001_AO1");
+    recipe.addChannel("USB6001", "AO01", "USB6001_AO01");
     recipe.addChannel("USB6001", "integration_time_s", "USB6001_integration_time_s");
     recipe.addChannel("USB6001", "sampling_rate_Hz", "USB6001_sampling_rate_Hz");
 end
