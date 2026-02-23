@@ -75,7 +75,7 @@ while dog2Man.QueueLength == 0
         end
     end
     assert(datetime("now") - startTime < handshakeTimeout, "Strain watch dog did not start successfully (timeout).");
-    pause(0.01);
+    pause(1E-6);
 end
 man2Dog = poll(dog2Man);
 pause(5);

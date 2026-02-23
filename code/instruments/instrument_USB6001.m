@@ -9,30 +9,33 @@ classdef instrument_USB6001 < instrumentInterface
         ao0ChannelIndex (1, 1) double = 0;
         ao1ChannelIndex (1, 1) double = 0;
         aoVectorChannelIndex (1, 1) double = 0;
-        integrationChannelIndex (1, 1) double = 0;
-        samplingRateChannelIndex (1, 1) double = 0;
-        integrationTime_s (1, 1) double = 0;
+        accumulationChannelIndex (1, 1) double = 0;
+        accumulation (1, 1) double = 1;
         samplingRate_Hz (1, 1) double = 2E4;
         acquisitionPending (1, 1) logical = false;
         pendingInputMask (1, :) logical = false;
         aiCacheValidMask (1, :) logical = false;
-        scansPerAcquisition (1, 1) double = 1;
     end
 
     methods
-        function obj = instrument_USB6001(address, numAIChannels, integrationTime_s)
+        function obj = instrument_USB6001(address, numAIChannels, accumulation, samplingRate_Hz)
             arguments
                 address (1, 1) string = "Dev1";
                 numAIChannels (1, 1) double {mustBeInteger, mustBePositive} = 1;
-                integrationTime_s (1, 1) double = 0;
+                accumulation (1, 1) double = 1;
+                samplingRate_Hz (1, 1) double = 2E4;
             end
             if numAIChannels > 8
                 error("instrument_USB6001:InvalidNumAIChannels", ...
                     "numAIChannels must be between 1 and 8.");
             end
-            if ~isfinite(integrationTime_s) || integrationTime_s < 0
-                error("instrument_USB6001:InvalidIntegrationTime", ...
-                    "integrationTime_s must be finite and greater than or equal to 0.");
+            if ~isfinite(accumulation) || accumulation < 1 || mod(accumulation, 1) ~= 0
+                error("instrument_USB6001:InvalidAccumulation", ...
+                    "accumulation must be a finite integer greater than or equal to 1.");
+            end
+            if ~isfinite(samplingRate_Hz) || samplingRate_Hz <= 0
+                error("instrument_USB6001:InvalidSamplingRate", ...
+                    "samplingRate_Hz must be finite and greater than 0.");
             end
 
             obj@instrumentInterface();
@@ -41,16 +44,14 @@ classdef instrument_USB6001 < instrumentInterface
             obj.AI_values = NaN(numAIChannels, 1);
             obj.pendingInputMask = false(1, numAIChannels);
             obj.aiCacheValidMask = false(1, numAIChannels);
-            obj.integrationTime_s = integrationTime_s;
-            obj.samplingRate_Hz = min(2E4 / numAIChannels, 5E3);
+            obj.accumulation = accumulation;
+            obj.samplingRate_Hz = samplingRate_Hz;
 
             obj.inputDaqs = cell(numAIChannels, 1);
             for inputIndex = 1:numAIChannels
                 inputDaq = daq("ni");
                 addinput(inputDaq, address, "ai" + string(inputIndex - 1), "Voltage");
                 inputDaq.Rate = obj.samplingRate_Hz;
-                inputDaq.ScansAvailableFcn = @(~, ~) [];
-                inputDaq.ScansAvailableFcnCount = 1;
                 flush(inputDaq);
                 obj.inputDaqs{inputIndex} = inputDaq;
             end
@@ -80,14 +81,12 @@ classdef instrument_USB6001 < instrumentInterface
             obj.ao0ChannelIndex = nextIndex + 1;
             obj.ao1ChannelIndex = obj.ao0ChannelIndex + 1;
             obj.aoVectorChannelIndex = obj.ao1ChannelIndex + 1;
-            obj.integrationChannelIndex = obj.aoVectorChannelIndex + 1;
-            obj.samplingRateChannelIndex = obj.integrationChannelIndex + 1;
+            obj.accumulationChannelIndex = obj.aoVectorChannelIndex + 1;
 
             obj.addChannel("AO0");
             obj.addChannel("AO1");
             obj.addChannel("AO01", 2);
-            obj.addChannel("integration_time_s");
-            obj.addChannel("sampling_rate_Hz");
+            obj.addChannel("accumulations");
         end
 
         function delete(obj)
@@ -129,7 +128,6 @@ classdef instrument_USB6001 < instrumentInterface
             obj.pendingInputMask(:) = false;
             obj.aiCacheValidMask(:) = false;
             obj.acquisitionPending = false;
-            obj.scansPerAcquisition = 1;
         end
     end
 
@@ -138,10 +136,9 @@ classdef instrument_USB6001 < instrumentInterface
             if ~(channelIndex <= obj.numAIChannels || channelIndex == obj.aiVectorChannelIndex)
                 return;
             end
-            if obj.integrationTime_s == 0
+            if obj.accumulation == 1
                 return;
             end
-            obj.scansPerAcquisition = max(1, floor(obj.integrationTime_s * obj.samplingRate_Hz));
             if channelIndex <= obj.numAIChannels
                 inputIndices = channelIndex;
             else
@@ -153,10 +150,8 @@ classdef instrument_USB6001 < instrumentInterface
                     continue;
                 end
                 inputDaq = obj.inputDaqs{inputIndex};
-                inputDaq.ScansAvailableFcnCount = obj.scansPerAcquisition;
-                inputDaq.ScansAvailableFcn = @(~, ~) [];
                 flush(inputDaq);
-                start(inputDaq, "Duration", obj.integrationTime_s);
+                start(inputDaq, "NumScans", obj.accumulation);
                 obj.pendingInputMask(inputIndex) = true;
             end
             obj.acquisitionPending = any(obj.pendingInputMask);
@@ -180,37 +175,17 @@ classdef instrument_USB6001 < instrumentInterface
                     obj.AO_values = setValues;
                     write(obj.outputDaqs{1}, obj.AO_values(1));
                     write(obj.outputDaqs{2}, obj.AO_values(2));
-                case obj.integrationChannelIndex
+                case obj.accumulationChannelIndex
                     if obj.acquisitionPending
                         error("instrument_USB6001:SetDuringAcquisition", ...
-                            "Cannot set integration_time_s while acquisition is pending. Complete the read or call flush().");
+                            "Cannot set accumulation while acquisition is pending. Complete the read or call flush().");
                     end
                     value = setValues(1);
-                    if ~isfinite(value) || value < 0
-                        error("instrument_USB6001:InvalidIntegrationTime", ...
-                            "integration_time_s must be finite and greater than or equal to 0.");
+                    if ~isfinite(value) || value < 1 || mod(value, 1) ~= 0
+                        error("instrument_USB6001:InvalidAccumulation", ...
+                            "accumulation must be a finite integer greater than or equal to 1.");
                     end
-                    obj.integrationTime_s = value;
-                case obj.samplingRateChannelIndex
-                    if obj.acquisitionPending
-                        error("instrument_USB6001:SetDuringAcquisition", ...
-                            "Cannot set sampling_rate_Hz while acquisition is pending. Complete the read or call flush().");
-                    end
-                    value = setValues(1);
-                    if value <= 0
-                        error("instrument_USB6001:InvalidSamplingRate", ...
-                            "sampling_rate_Hz must be greater than 0.");
-                    end
-                    maxRate_Hz = min(2E4 / obj.numAIChannels, 5E3);
-                    if value > maxRate_Hz
-                        error("instrument_USB6001:SamplingRateTooHigh", ...
-                            "sampling_rate_Hz must be less than or equal to %.15g for numAIChannels=%d.", ...
-                            maxRate_Hz, obj.numAIChannels);
-                    end
-                    obj.samplingRate_Hz = value;
-                    for inputIndex = 1:numel(obj.inputDaqs)
-                        obj.inputDaqs{inputIndex}.Rate = value;
-                    end
+                    obj.accumulation = value;
                 otherwise
                     setWriteChannelHelper@instrumentInterface(obj, channelIndex, setValues);
             end
@@ -218,37 +193,25 @@ classdef instrument_USB6001 < instrumentInterface
 
         function getValues = getReadChannelHelper(obj, channelIndex)
             if channelIndex <= obj.numAIChannels || channelIndex == obj.aiVectorChannelIndex
-                if obj.integrationTime_s == 0
-                    if channelIndex <= obj.numAIChannels
-                        inputIndices = channelIndex;
-                    else
-                        inputIndices = 1:obj.numAIChannels;
-                    end
+                if channelIndex <= obj.numAIChannels
+                    inputIndices = channelIndex;
+                else
+                    inputIndices = 1:obj.numAIChannels;
+                end
+
+                if obj.accumulation == 1
                     for inputIndex = inputIndices
-                        inputDaq = obj.inputDaqs{inputIndex};
-                        if isempty(inputDaq.ScansAvailableFcn)
-                            error("instrument_USB6001:MissingScansAvailableFcn", ...
-                                "ScansAvailableFcn must be configured before reading.");
-                        end
-                        data = read(inputDaq, 1, "OutputFormat", "Matrix");
+                        data = read(obj.inputDaqs{inputIndex}, 1, "OutputFormat", "Matrix");
                         obj.AI_values(inputIndex) = mean(data, 1).';
                         obj.aiCacheValidMask(inputIndex) = true;
+                        obj.pendingInputMask(inputIndex) = false;
                     end
                 else
-                    if channelIndex <= obj.numAIChannels
-                        inputIndices = channelIndex;
-                    else
-                        inputIndices = 1:obj.numAIChannels;
-                    end
                     for inputIndex = inputIndices
                         if obj.pendingInputMask(inputIndex)
                             inputDaq = obj.inputDaqs{inputIndex};
-                            if isempty(inputDaq.ScansAvailableFcn)
-                                error("instrument_USB6001:MissingScansAvailableFcn", ...
-                                    "ScansAvailableFcn must be configured before reading.");
-                            end
-                            while logical(inputDaq.Running)
-                                pause(1E-3);
+                            while inputDaq.Running
+                                pause(1E-6);
                             end
                             scansAvailable = inputDaq.NumScansAvailable;
                             if scansAvailable <= 0
@@ -266,8 +229,8 @@ classdef instrument_USB6001 < instrumentInterface
                                 "No pending or cached acquisition for requested AI channel.");
                         end
                     end
-                    obj.acquisitionPending = any(obj.pendingInputMask);
                 end
+                obj.acquisitionPending = any(obj.pendingInputMask);
 
                 if channelIndex <= obj.numAIChannels
                     getValues = obj.AI_values(channelIndex);
@@ -284,10 +247,8 @@ classdef instrument_USB6001 < instrumentInterface
                     getValues = obj.AO_values(2);
                 case obj.aoVectorChannelIndex
                     getValues = obj.AO_values;
-                case obj.integrationChannelIndex
-                    getValues = obj.integrationTime_s;
-                case obj.samplingRateChannelIndex
-                    getValues = obj.samplingRate_Hz;
+                case obj.accumulationChannelIndex
+                    getValues = obj.accumulation;
                 otherwise
                     error("instrument_USB6001:UnsupportedChannel", "Unsupported channel index %d.", channelIndex);
             end

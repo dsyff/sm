@@ -448,7 +448,7 @@ classdef instrument_CS165MU < instrumentInterface
                         break;
                     end
                 end
-                pause(0.005);
+                pause(1E-6);
             end
 
             if isempty(imageFrame)
@@ -489,7 +489,7 @@ classdef instrument_CS165MU < instrumentInterface
                             break;
                         end
                     end
-                    pause(0.005);
+                    pause(1E-6);
                 end
             end
 

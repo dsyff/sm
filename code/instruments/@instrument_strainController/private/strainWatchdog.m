@@ -379,7 +379,7 @@ try
 
         % This pause is here to ensure this while loop can be interrupted. This
         % causes negligible slowdown.
-        pause(1E-5);
+        pause(1E-6);
     end
     rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [0, 0]);
     %rack_strain.rackSet(["V_str_o", "V_str_i"], [0, 0]);
