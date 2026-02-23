@@ -638,7 +638,7 @@ classdef measurementEngine < handle
                 end
 
                 assert(datetime("now") - startTime < timeout, "measurementEngine:EngineWorkerTimeout", "Timed out waiting for engine worker rackReady.");
-                pause(0.001);
+                pause(1E-6);
             end
         end
 
@@ -758,7 +758,7 @@ classdef measurementEngine < handle
                     end
                 end
                 assert(datetime("now") - startTime < timeout, "measurementEngine:Timeout", "Timed out waiting for engine reply %s.", expectedType);
-                pause(0.001);
+                pause(1E-6);
             end
         end
 
@@ -1173,7 +1173,7 @@ classdef measurementEngine < handle
                     error("measurementEngine:EngineWorkerFailed", "Engine worker failed during run. State: %s", fut.State);
                 end
 
-                pause(0.01);
+                pause(1E-6);
             end
 
             % If we exited early in turbo mode, drain any remaining snapshots and
@@ -1674,6 +1674,11 @@ classdef measurementEngine < handle
             end
 
             rack = instrumentRack(true);
+            if isempty(spawnOnClientFcn)
+                rack.tryTimes = inf;
+            else
+                rack.tryTimes = 1;
+            end
             assignin("base", "rack", rack);
             if isempty(spawnOnClientFcn)
                 assignin("base", "sm_spawnOnClient", []);
@@ -3033,7 +3038,7 @@ classdef measurementEngine < handle
                         while ~stopped
                             if clientToEngine.QueueLength == 0
                                 assert(datetime("now") < ackTimeout, "measurementEngine:AckTimeout", "Timed out waiting for ack/stop.");
-                                pause(0.001);
+                                pause(1E-6);
                                 continue;
                             end
                             n = clientToEngine.QueueLength;
@@ -3171,7 +3176,7 @@ classdef measurementEngine < handle
             % Serve basic requests.
             while keepAlive
                 if clientToEngine.QueueLength == 0
-                    pause(0.01);
+                    pause(1E-6);
                     continue;
                 end
 
@@ -3371,7 +3376,7 @@ classdef measurementEngine < handle
                         end
                     end
                     assert(datetime("now") - startTime < timeout, "measurementEngine:ParfevalTimeout", "Timed out waiting for parfevalDone.");
-                    pause(0.01);
+                    pause(1E-6);
                 end
             end
 

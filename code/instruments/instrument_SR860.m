@@ -214,7 +214,7 @@ classdef instrument_SR860 < instrumentInterface
                     
                     % Re-send the query command (this is the key insight from legacy code)
                     obj.getWriteChannelHelper(channelIndex);
-                    pause(0.001);
+                    pause(1E-6);
 
                 catch ME
                     attempts = attempts + 1;
@@ -223,7 +223,7 @@ classdef instrument_SR860 < instrumentInterface
                     
                     % Re-send the query command on communication error too
                     obj.getWriteChannelHelper(channelIndex);
-                    pause(0.001);
+                    pause(1E-6);
                 end
             end
             
@@ -270,7 +270,7 @@ classdef instrument_SR860 < instrumentInterface
                     if attempts < maxAttempts
                         % Re-send the SNAP command for retry (using getWriteChannelHelper)
                         obj.getWriteChannelHelper(channelIndex);
-                        pause(0.001);
+                        pause(1E-6);
                     end
                     
                 catch ME
