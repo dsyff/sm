@@ -68,6 +68,7 @@ ST3215HS_green_Serial = "COM4";   % green block (servo 1), green ND (servo 2)
 colorLED_Serial = "COM5";
 USB6001_Device = "Dev1";
 USB6001_numAIChannels = 1;
+USB6001_integrationTime_s = 0;
 
 E4980AL_GPIB = 6; %E4980AL LCR meter for strain controller
 BK889B_Serial = "COM3";
@@ -825,7 +826,8 @@ if colorLED_Use
 end
 
 if USB6001_Use
-    recipe.addInstrument("handle_USB6001", "instrument_USB6001", "USB6001", USB6001_Device, USB6001_numAIChannels);
+    recipe.addInstrument("handle_USB6001", "instrument_USB6001", "USB6001", ...
+        USB6001_Device, USB6001_numAIChannels, USB6001_integrationTime_s);
     for aiIndex = 0:USB6001_numAIChannels-1
         aiChannelName = "AI" + string(aiIndex);
         recipe.addChannel("USB6001", aiChannelName, "USB6001_" + aiChannelName);

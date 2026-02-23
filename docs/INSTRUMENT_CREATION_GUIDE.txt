@@ -386,6 +386,12 @@ USE SWITCH-CASE FOR CHANNEL DISPATCH
           % channel 2 logic
   end
 
+Performance note:
+  - In hot helper paths (`getWriteChannelHelper`, `getReadChannelHelper`,
+    `setWriteChannelHelper`), prefer dispatching directly on `channelIndex`.
+  - Avoid resolving `obj.channelTable.channels(channelIndex)` unless you need
+    a name for diagnostics/errors; repeated string lookup/parsing is slower.
+
 
 HANDLE SCPI INSTRUMENTS CONSISTENTLY
 ------------------------------------
