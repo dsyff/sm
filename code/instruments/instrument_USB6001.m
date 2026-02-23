@@ -14,6 +14,8 @@ classdef instrument_USB6001 < instrumentInterface
         integrationTime_s (1, 1) double = 0;
         samplingRate_Hz (1, 1) double = 2E4;
         acquisitionPending (1, 1) logical = false;
+        pendingInputMask (1, :) logical = false;
+        aiCacheValidMask (1, :) logical = false;
         scansPerAcquisition (1, 1) double = 1;
     end
 
@@ -37,6 +39,8 @@ classdef instrument_USB6001 < instrumentInterface
             obj.requireSetCheck = false;
             obj.numAIChannels = numAIChannels;
             obj.AI_values = NaN(numAIChannels, 1);
+            obj.pendingInputMask = false(1, numAIChannels);
+            obj.aiCacheValidMask = false(1, numAIChannels);
             obj.integrationTime_s = integrationTime_s;
             obj.samplingRate_Hz = min(2E4 / numAIChannels, 5E3);
 
@@ -122,26 +126,40 @@ classdef instrument_USB6001 < instrumentInterface
                 flush(outputDaq);
             end
             obj.AI_values = NaN(obj.numAIChannels, 1);
+            obj.pendingInputMask(:) = false;
+            obj.aiCacheValidMask(:) = false;
+            obj.acquisitionPending = false;
             obj.scansPerAcquisition = 1;
         end
     end
 
     methods (Access = ?instrumentInterface)
         function getWriteChannelHelper(obj, channelIndex)
-            if ~obj.acquisitionPending && (channelIndex <= obj.numAIChannels || channelIndex == obj.aiVectorChannelIndex)
-                if obj.integrationTime_s == 0
-                    return;
-                end
-                obj.scansPerAcquisition = max(1, floor(obj.integrationTime_s * obj.samplingRate_Hz));
-                for inputIndex = 1:numel(obj.inputDaqs)
-                    inputDaq = obj.inputDaqs{inputIndex};
-                    inputDaq.ScansAvailableFcnCount = obj.scansPerAcquisition;
-                    inputDaq.ScansAvailableFcn = @(~, ~) [];
-                    flush(inputDaq);
-                    start(inputDaq, "Duration", obj.integrationTime_s);
-                end
-                obj.acquisitionPending = true;
+            if ~(channelIndex <= obj.numAIChannels || channelIndex == obj.aiVectorChannelIndex)
+                return;
             end
+            if obj.integrationTime_s == 0
+                return;
+            end
+            obj.scansPerAcquisition = max(1, floor(obj.integrationTime_s * obj.samplingRate_Hz));
+            if channelIndex <= obj.numAIChannels
+                inputIndices = channelIndex;
+            else
+                inputIndices = 1:numel(obj.inputDaqs);
+            end
+            for inputIndex = inputIndices
+                obj.aiCacheValidMask(inputIndex) = false;
+                if obj.pendingInputMask(inputIndex)
+                    continue;
+                end
+                inputDaq = obj.inputDaqs{inputIndex};
+                inputDaq.ScansAvailableFcnCount = obj.scansPerAcquisition;
+                inputDaq.ScansAvailableFcn = @(~, ~) [];
+                flush(inputDaq);
+                start(inputDaq, "Duration", obj.integrationTime_s);
+                obj.pendingInputMask(inputIndex) = true;
+            end
+            obj.acquisitionPending = any(obj.pendingInputMask);
         end
 
         function setWriteChannelHelper(obj, channelIndex, setValues)
@@ -201,7 +219,12 @@ classdef instrument_USB6001 < instrumentInterface
         function getValues = getReadChannelHelper(obj, channelIndex)
             if channelIndex <= obj.numAIChannels || channelIndex == obj.aiVectorChannelIndex
                 if obj.integrationTime_s == 0
-                    for inputIndex = 1:obj.numAIChannels
+                    if channelIndex <= obj.numAIChannels
+                        inputIndices = channelIndex;
+                    else
+                        inputIndices = 1:obj.numAIChannels;
+                    end
+                    for inputIndex = inputIndices
                         inputDaq = obj.inputDaqs{inputIndex};
                         if isempty(inputDaq.ScansAvailableFcn)
                             error("instrument_USB6001:MissingScansAvailableFcn", ...
@@ -209,34 +232,41 @@ classdef instrument_USB6001 < instrumentInterface
                         end
                         data = read(inputDaq, 1, "OutputFormat", "Matrix");
                         obj.AI_values(inputIndex) = mean(data, 1).';
+                        obj.aiCacheValidMask(inputIndex) = true;
                     end
                 else
-                    if ~obj.acquisitionPending
-                        error("instrument_USB6001:MissingPendingAcquisition", ...
-                            "Finite integration mode requires getWrite before getRead.");
+                    if channelIndex <= obj.numAIChannels
+                        inputIndices = channelIndex;
+                    else
+                        inputIndices = 1:obj.numAIChannels;
                     end
-                    for inputIndex = 1:obj.numAIChannels
-                        inputDaq = obj.inputDaqs{inputIndex};
-                        if isempty(inputDaq.ScansAvailableFcn)
-                            error("instrument_USB6001:MissingScansAvailableFcn", ...
-                                "ScansAvailableFcn must be configured before reading.");
-                        end
-                        scansRequired = inputDaq.ScansAvailableFcnCount;
-                        scansAvailable = inputDaq.NumScansAvailable;
-                        readDeadline = datetime("now") + seconds(max(obj.integrationTime_s, scansRequired / obj.samplingRate_Hz) + 1);
-                        while scansAvailable < scansRequired && datetime("now") < readDeadline
-                            pause(1E-3);
+                    for inputIndex = inputIndices
+                        if obj.pendingInputMask(inputIndex)
+                            inputDaq = obj.inputDaqs{inputIndex};
+                            if isempty(inputDaq.ScansAvailableFcn)
+                                error("instrument_USB6001:MissingScansAvailableFcn", ...
+                                    "ScansAvailableFcn must be configured before reading.");
+                            end
+                            while logical(inputDaq.Running)
+                                pause(1E-3);
+                            end
                             scansAvailable = inputDaq.NumScansAvailable;
+                            if scansAvailable <= 0
+                                error("instrument_USB6001:NoScansAvailable", ...
+                                    "No scans are available after acquisition completed.");
+                            end
+                            data = read(inputDaq, scansAvailable, "OutputFormat", "Matrix");
+                            obj.AI_values(inputIndex) = mean(data, 1).';
+                            obj.aiCacheValidMask(inputIndex) = true;
+                            obj.pendingInputMask(inputIndex) = false;
+                            continue;
                         end
-                        if scansAvailable < scansRequired
-                            error("instrument_USB6001:InsufficientScansAvailable", ...
-                                "ScansAvailableFcnCount=%d but NumScansAvailable=%d before read.", ...
-                                scansRequired, scansAvailable);
+                        if ~obj.aiCacheValidMask(inputIndex)
+                            error("instrument_USB6001:MissingPendingAcquisition", ...
+                                "No pending or cached acquisition for requested AI channel.");
                         end
-                        data = read(inputDaq, scansAvailable, "OutputFormat", "Matrix");
-                        obj.AI_values(inputIndex) = mean(data, 1).';
                     end
-                    obj.acquisitionPending = false;
+                    obj.acquisitionPending = any(obj.pendingInputMask);
                 end
 
                 if channelIndex <= obj.numAIChannels
