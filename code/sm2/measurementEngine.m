@@ -615,10 +615,7 @@ classdef measurementEngine < handle
                         end
                         if msgType == "rackReady"
                             if isfield(msg, "ok") && ~logical(msg.ok)
-                                if isfield(msg, "error") && ~isempty(msg.error) && isfield(msg.error, "message")
-                                    error("measurementEngine:EngineRackBuildFailed", "%s", msg.error.message);
-                                end
-                                error("measurementEngine:EngineRackBuildFailed", "Engine worker failed to build rack.");
+                                obj.throwRemoteError_(msg);
                             end
                             obj.channelFriendlyNames = msg.channelFriendlyNames(:);
                             obj.channelSizes = msg.channelSizes(:);
@@ -769,7 +766,23 @@ classdef measurementEngine < handle
             if isfield(reply, "error") && ~isempty(reply.error)
                 err = reply.error;
                 if isstruct(err) && isfield(err, "message")
-                    error("measurementEngine:RemoteError", "%s", err.message);
+                    msgText = char(string(err.message));
+                    experimentContext.print("Engine worker error: %s", msgText);
+
+                    idText = "measurementEngine:RemoteError";
+                    if isfield(err, "identifier") && strlength(string(err.identifier)) > 0
+                        idText = char(string(err.identifier));
+                    end
+
+                    if isfield(err, "stack") && ~isempty(err.stack)
+                        errStruct = struct();
+                        errStruct.identifier = idText;
+                        errStruct.message = msgText;
+                        errStruct.stack = err.stack;
+                        error(errStruct);
+                    end
+
+                    error(idText, "%s", msgText);
                 end
             end
             error("measurementEngine:RemoteError", "Remote operation failed.");
