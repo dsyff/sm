@@ -1,8 +1,6 @@
 classdef instrument_strainController < instrumentInterface
     properties (Access = private)
         handle_strainWatchdog   % struct with man2Dog, dog2Man, dogFuture
-        channels string = ["del_d", "T", "Cp", "Q", "C", "d", ...
-            "V_str_o", "V_str_i", "I_str_o", "I_str_i", "activeControl"];
         dogGetTimeout duration = seconds(15);
         dogCheckTimeout duration = seconds(60);
         rack_strainController string = "";
@@ -313,25 +311,64 @@ classdef instrument_strainController < instrumentInterface
         end
 
         function getValues = getReadChannelHelper(obj, channelIndex)
-            channel = obj.channels(channelIndex);
-            val = dogGet(obj.handle_strainWatchdog, channel, obj.dogGetTimeout);
+            switch channelIndex
+                case 1
+                    val = dogGet(obj.handle_strainWatchdog, "del_d", obj.dogGetTimeout);
+                case 2
+                    val = dogGet(obj.handle_strainWatchdog, "T", obj.dogGetTimeout);
+                case 3
+                    val = dogGet(obj.handle_strainWatchdog, "Cp", obj.dogGetTimeout);
+                case 4
+                    val = dogGet(obj.handle_strainWatchdog, "Q", obj.dogGetTimeout);
+                case 5
+                    val = dogGet(obj.handle_strainWatchdog, "C", obj.dogGetTimeout);
+                case 6
+                    val = dogGet(obj.handle_strainWatchdog, "d", obj.dogGetTimeout);
+                case 7
+                    val = dogGet(obj.handle_strainWatchdog, "V_str_o", obj.dogGetTimeout);
+                case 8
+                    val = dogGet(obj.handle_strainWatchdog, "V_str_i", obj.dogGetTimeout);
+                case 9
+                    val = dogGet(obj.handle_strainWatchdog, "I_str_o", obj.dogGetTimeout);
+                case 10
+                    val = dogGet(obj.handle_strainWatchdog, "I_str_i", obj.dogGetTimeout);
+                case 11
+                    val = dogGet(obj.handle_strainWatchdog, "activeControl", obj.dogGetTimeout);
+                otherwise
+                    channel = obj.channelTable.channels(channelIndex);
+                    error("instrument_strainController:UnsupportedChannel", "Unsupported channel %s.", channel);
+            end
             getValues = double(val);
         end
 
         function setWriteChannelHelper(obj, channelIndex, setValues)
-            channel = obj.channels(channelIndex);
-            switch channel
-                case {"del_d", "T", "V_str_o", "V_str_i", "activeControl"}
-                    dogSet(obj.handle_strainWatchdog, channel, setValues);
+            switch channelIndex
+                case 1
+                    dogSet(obj.handle_strainWatchdog, "del_d", setValues);
+                case 2
+                    dogSet(obj.handle_strainWatchdog, "T", setValues);
+                case 7
+                    dogSet(obj.handle_strainWatchdog, "V_str_o", setValues);
+                case 8
+                    dogSet(obj.handle_strainWatchdog, "V_str_i", setValues);
+                case 11
+                    dogSet(obj.handle_strainWatchdog, "activeControl", setValues);
                 otherwise
             end
         end
 
         function TF = setCheckChannelHelper(obj, channelIndex, ~)
-            channel = obj.channels(channelIndex);
-            switch channel
-                case {"del_d", "T", "V_str_o", "V_str_i", "activeControl"}
-                    TF = dogCheck(obj.handle_strainWatchdog, channel, obj.dogCheckTimeout);
+            switch channelIndex
+                case 1
+                    TF = dogCheck(obj.handle_strainWatchdog, "del_d", obj.dogCheckTimeout);
+                case 2
+                    TF = dogCheck(obj.handle_strainWatchdog, "T", obj.dogCheckTimeout);
+                case 7
+                    TF = dogCheck(obj.handle_strainWatchdog, "V_str_o", obj.dogCheckTimeout);
+                case 8
+                    TF = dogCheck(obj.handle_strainWatchdog, "V_str_i", obj.dogCheckTimeout);
+                case 11
+                    TF = dogCheck(obj.handle_strainWatchdog, "activeControl", obj.dogCheckTimeout);
                 otherwise
             end
         end

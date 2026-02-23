@@ -3,6 +3,11 @@ classdef instrument_USB6001 < instrumentInterface
         AI_values (:, 1) double = NaN(1, 1);
         AO_values (2, 1) double = zeros(2, 1);
         numAIChannels (1, 1) double = 1;
+        aiVectorChannelIndex (1, 1) double = 0;
+        ao0ChannelIndex (1, 1) double = 0;
+        ao1ChannelIndex (1, 1) double = 0;
+        integrationChannelIndex (1, 1) double = 0;
+        samplingRateChannelIndex (1, 1) double = 0;
         integrationTime_s (1, 1) double = 0;
         samplingRate_Hz (1, 1) double = 2E4;
         acquisitionPending (1, 1) logical = false;
@@ -10,20 +15,26 @@ classdef instrument_USB6001 < instrumentInterface
     end
 
     methods
-        function obj = instrument_USB6001(address, numAIChannels)
+        function obj = instrument_USB6001(address, numAIChannels, integrationTime_s)
             arguments
                 address (1, 1) string = "Dev1";
                 numAIChannels (1, 1) double {mustBeInteger, mustBePositive} = 1;
+                integrationTime_s (1, 1) double = 0;
             end
             if numAIChannels > 8
                 error("instrument_USB6001:InvalidNumAIChannels", ...
                     "numAIChannels must be between 1 and 8.");
+            end
+            if ~isfinite(integrationTime_s) || integrationTime_s < 0
+                error("instrument_USB6001:InvalidIntegrationTime", ...
+                    "integrationTime_s must be finite and greater than or equal to 0.");
             end
 
             obj@instrumentInterface();
             obj.requireSetCheck = false;
             obj.numAIChannels = numAIChannels;
             obj.AI_values = NaN(numAIChannels, 1);
+            obj.integrationTime_s = integrationTime_s;
             obj.samplingRate_Hz = min(2E4 / numAIChannels, 5E3);
 
             handle = daq("ni");
@@ -45,7 +56,14 @@ classdef instrument_USB6001 < instrumentInterface
             if numAIChannels > 1
                 aiVectorChannelName = "AI" + join(string(0:numAIChannels-1), "");
                 obj.addChannel(aiVectorChannelName, uint64(numAIChannels));
+                obj.aiVectorChannelIndex = numAIChannels + 1;
             end
+
+            obj.ao0ChannelIndex = numAIChannels + double(numAIChannels > 1) + 1;
+            obj.ao1ChannelIndex = obj.ao0ChannelIndex + 1;
+            obj.integrationChannelIndex = obj.ao1ChannelIndex + 1;
+            obj.samplingRateChannelIndex = obj.integrationChannelIndex + 1;
+
             obj.addChannel("AO0");
             obj.addChannel("AO1");
             obj.addChannel("integration_time_s");
@@ -76,38 +94,46 @@ classdef instrument_USB6001 < instrumentInterface
 
     methods (Access = ?instrumentInterface)
         function getWriteChannelHelper(obj, channelIndex)
-            channelName = obj.channelTable.channels(channelIndex);
-            if startsWith(channelName, "AI") && ~obj.acquisitionPending
-                obj.scansPerAcquisition = max(1, ceil(obj.integrationTime_s * obj.samplingRate_Hz));
+            if ~obj.acquisitionPending && (channelIndex <= obj.numAIChannels || channelIndex == obj.aiVectorChannelIndex)
+                if obj.integrationTime_s == 0
+                    obj.scansPerAcquisition = 5;
+                else
+                    obj.scansPerAcquisition = max(1, floor(obj.integrationTime_s * obj.samplingRate_Hz));
+                end
+                obj.communicationHandle.ScansAvailableFcnCount = obj.scansPerAcquisition;
+                obj.communicationHandle.ScansAvailableFcn = @(~, ~) [];
                 flush(obj.communicationHandle);
-                start(obj.communicationHandle, "continuous");
+                if obj.integrationTime_s == 0
+                    start(obj.communicationHandle, "NumScans", obj.scansPerAcquisition);
+                else
+                    start(obj.communicationHandle, "Duration", obj.integrationTime_s);
+                end
                 obj.acquisitionPending = true;
             end
         end
 
         function setWriteChannelHelper(obj, channelIndex, setValues)
-            channelName = obj.channelTable.channels(channelIndex);
-            switch channelName
-                case {"AO0", "AO1"}
+            switch channelIndex
+                case {obj.ao0ChannelIndex, obj.ao1ChannelIndex}
                     if obj.acquisitionPending
                         error("instrument_USB6001:SetDuringAcquisition", ...
                             "Cannot set AO channels while acquisition is pending. Complete the read or call flush().");
                     end
-                    aoIndex = str2double(extractAfter(channelName, "AO")) + 1;
+                    aoIndex = channelIndex - obj.ao0ChannelIndex + 1;
                     obj.AO_values(aoIndex) = setValues(1);
                     write(obj.communicationHandle, obj.AO_values.');
-                case "integration_time_s"
+                case obj.integrationChannelIndex
                     if obj.acquisitionPending
                         error("instrument_USB6001:SetDuringAcquisition", ...
                             "Cannot set integration_time_s while acquisition is pending. Complete the read or call flush().");
                     end
                     value = setValues(1);
-                    if value < 0
+                    if ~isfinite(value) || value < 0
                         error("instrument_USB6001:InvalidIntegrationTime", ...
-                            "integration_time_s must be greater than or equal to 0.");
+                            "integration_time_s must be finite and greater than or equal to 0.");
                     end
                     obj.integrationTime_s = value;
-                case "sampling_rate_Hz"
+                case obj.samplingRateChannelIndex
                     if obj.acquisitionPending
                         error("instrument_USB6001:SetDuringAcquisition", ...
                             "Cannot set sampling_rate_Hz while acquisition is pending. Complete the read or call flush().");
@@ -131,32 +157,45 @@ classdef instrument_USB6001 < instrumentInterface
         end
 
         function getValues = getReadChannelHelper(obj, channelIndex)
-            channelName = obj.channelTable.channels(channelIndex);
-            if startsWith(channelName, "AI")
+            if channelIndex <= obj.numAIChannels || channelIndex == obj.aiVectorChannelIndex
                 if obj.acquisitionPending
-                    data = read(obj.communicationHandle, obj.scansPerAcquisition, "OutputFormat", "Matrix");
-                    stop(obj.communicationHandle);
+                    if isempty(obj.communicationHandle.ScansAvailableFcn)
+                        error("instrument_USB6001:MissingScansAvailableFcn", ...
+                            "ScansAvailableFcn must be configured before reading.");
+                    end
+                    scansRequired = obj.communicationHandle.ScansAvailableFcnCount;
+                    scansAvailable = obj.communicationHandle.NumScansAvailable;
+                    readDeadline = datetime("now") + seconds(max(obj.integrationTime_s, scansRequired / obj.samplingRate_Hz) + 1);
+                    while scansAvailable < scansRequired && datetime("now") < readDeadline
+                        pause(1E-3);
+                        scansAvailable = obj.communicationHandle.NumScansAvailable;
+                    end
+                    if scansAvailable < scansRequired
+                        error("instrument_USB6001:InsufficientScansAvailable", ...
+                            "ScansAvailableFcnCount=%d but NumScansAvailable=%d before read.", ...
+                            scansRequired, scansAvailable);
+                    end
+                    data = read(obj.communicationHandle, scansAvailable, "OutputFormat", "Matrix");
                     obj.acquisitionPending = false;
                     obj.AI_values = mean(data, 1).';
                 end
 
-                if obj.channelTable.channelSizes(channelIndex) == 1
-                    aiIndex = str2double(extractAfter(channelName, "AI")) + 1;
-                    getValues = obj.AI_values(aiIndex);
+                if channelIndex <= obj.numAIChannels
+                    getValues = obj.AI_values(channelIndex);
                 else
                     getValues = obj.AI_values;
                 end
                 return;
             end
 
-            switch channelName
-                case "AO0"
+            switch channelIndex
+                case obj.ao0ChannelIndex
                     getValues = obj.AO_values(1);
-                case "AO1"
+                case obj.ao1ChannelIndex
                     getValues = obj.AO_values(2);
-                case "integration_time_s"
+                case obj.integrationChannelIndex
                     getValues = obj.integrationTime_s;
-                case "sampling_rate_Hz"
+                case obj.samplingRateChannelIndex
                     getValues = obj.samplingRate_Hz;
                 otherwise
                     error("instrument_USB6001:UnsupportedChannel", "Unsupported channel index %d.", channelIndex);

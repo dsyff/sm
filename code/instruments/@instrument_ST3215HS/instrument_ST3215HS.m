@@ -560,16 +560,15 @@ classdef instrument_ST3215HS < instrumentInterface
                     %
                     % channelLastSetValues is intentionally unused here.
                     %#ok<NASGU>
-                    channel = obj.channelTable.channels(channelIndex);
 
                     ticksPerRev = round(360 * obj.ticksPerDegree); % should be 4096
 
-                    aDeg = mod(obj.getChannel(channel), 360);
+                    aDeg = mod(obj.getChannelByIndex(channelIndex), 360);
                     aTick = mod(round(aDeg(1) * obj.ticksPerDegree), ticksPerRev);
                     if obj.setCheckInterReadDelay_s > 0
                         pause(obj.setCheckInterReadDelay_s);
                     end
-                    bDeg = mod(obj.getChannel(channel), 360);
+                    bDeg = mod(obj.getChannelByIndex(channelIndex), 360);
                     bTick = mod(round(bDeg(1) * obj.ticksPerDegree), ticksPerRev);
 
                     % aTick/bTick are expected to be integer-valued (after round),
