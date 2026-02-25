@@ -769,14 +769,12 @@ if ST3215HS_Use
     recipe.addChannel("ST3215HS", "load_1_percent", "ST3215HS_load1_percent");
     % 0 = direct set, 1 = setPositionConsistent
     recipe.addChannel("ST3215HS", "setConsistently_1", "ST3215HS_setConsistently1", [], [], 0, 1);
-    recipe.addStatement("ST3215HS", "handle_ST3215HS.calibrateSoftLimits(1);");
-    recipe.addStatement("ST3215HS", "if handle_ST3215HS.hasServo2");
-    recipe.addStatement("ST3215HS", "  handle_ST3215HS.calibrateSoftLimits(2);");
-    recipe.addStatement("ST3215HS", "end");
+    % recipe.addStatement("ST3215HS", "handle_ST3215HS.calibrateSoftLimits(1, loadThreshold_percent = 6);");
     recipe.addChannel("ST3215HS", "position_2_deg", "ST3215HS_pos2_deg");
     recipe.addChannel("ST3215HS", "load_2_percent", "ST3215HS_load2_percent");
     % 0 = direct set, 1 = setPositionConsistent
     recipe.addChannel("ST3215HS", "setConsistently_2", "ST3215HS_setConsistently2", [], [], 0, 1);
+    % recipe.addStatement("ST3215HS", "handle_ST3215HS.calibrateSoftLimits(2, loadThreshold_percent = 6);");
 end
 
 % Attodry autofocus optics: camera BS + LED BS (beamsplitters)
@@ -788,8 +786,8 @@ if ST3215HS_BS_Use
     recipe.addChannel("ST3215HS_BS", "position_2_deg", "BS_LED_pos_deg");
     recipe.addChannel("ST3215HS_BS", "load_2_percent", "BS_LED_load_percent");
     recipe.addChannel("ST3215HS_BS", "setConsistently_2", "BS_LED_setConsistently", [], [], 0, 1);
-    % recipe.addStatement("ST3215HS_BS", "handle_ST3215HS_BS.calibrateSoftLimits(1);");
-    % recipe.addStatement("ST3215HS_BS", "handle_ST3215HS_BS.calibrateSoftLimits(2);");
+    % recipe.addStatement("ST3215HS_BS", "handle_ST3215HS_BS.calibrateSoftLimits(1, loadThreshold_percent = 6);");
+    % recipe.addStatement("ST3215HS_BS", "handle_ST3215HS_BS.calibrateSoftLimits(2, loadThreshold_percent = 6);");
 end
 
 % Attodry autofocus optics: red beam block + red ND
@@ -801,8 +799,8 @@ if ST3215HS_red_Use
     recipe.addChannel("ST3215HS_red", "position_2_deg", "ND_red_pos_deg");
     recipe.addChannel("ST3215HS_red", "load_2_percent", "ND_red_load_percent");
     recipe.addChannel("ST3215HS_red", "setConsistently_2", "ND_red_setConsistently", [], [], 0, 1);
-    % recipe.addStatement("ST3215HS_red", "handle_ST3215HS_red.calibrateSoftLimits(1);");
-    % recipe.addStatement("ST3215HS_red", "handle_ST3215HS_red.calibrateSoftLimits(2);");
+    % recipe.addStatement("ST3215HS_red", "handle_ST3215HS_red.calibrateSoftLimits(1, loadThreshold_percent = 6);");
+    % recipe.addStatement("ST3215HS_red", "handle_ST3215HS_red.calibrateSoftLimits(2, loadThreshold_percent = 6);");
 end
 
 % Attodry autofocus optics: green beam block + green ND
@@ -814,8 +812,8 @@ if ST3215HS_green_Use
     recipe.addChannel("ST3215HS_green", "position_2_deg", "ND_green_pos_deg");
     recipe.addChannel("ST3215HS_green", "load_2_percent", "ND_green_load_percent");
     recipe.addChannel("ST3215HS_green", "setConsistently_2", "ND_green_setConsistently", [], [], 0, 1);
-    % recipe.addStatement("ST3215HS_green", "handle_ST3215HS_green.calibrateSoftLimits(1);");
-    % recipe.addStatement("ST3215HS_green", "handle_ST3215HS_green.calibrateSoftLimits(2);");
+    % recipe.addStatement("ST3215HS_green", "handle_ST3215HS_green.calibrateSoftLimits(1, loadThreshold_percent = 6);");
+    % recipe.addStatement("ST3215HS_green", "handle_ST3215HS_green.calibrateSoftLimits(2, loadThreshold_percent = 6);");
 end
 
 if colorLED_Use

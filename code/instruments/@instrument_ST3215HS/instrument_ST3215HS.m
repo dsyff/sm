@@ -41,7 +41,7 @@ classdef instrument_ST3215HS < instrumentInterface
 
         % Default threshold used by calibrateSoftLimits().
         % IMPORTANT: This threshold is only meaningful if the servo is powered from 12V.
-        defaultLoadThreshold_percent (1, 1) double {mustBePositive} = 5;
+        defaultLoadThreshold_percent (1, 1) double {mustBePositive} = 6;
 
         % Delay between the two reads used by setCheckChannelHelper() for
         % "settled-ness" detection. A small nonzero delay helps avoid false
@@ -416,12 +416,12 @@ classdef instrument_ST3215HS < instrumentInterface
             %
             % Scans the full servo range in 1-tick increments using setChannel()
             % (and therefore the instrument's settling checks), reading servo load
-            % at each step. When |load| exceeds defaultLoadThreshold_percent, the
+            % at each step. When |load| exceeds loadThreshold_percent, the
             % last safe position is stored as a soft limit.
             %
             % IMPORTANT: This relies on load_*_percent behavior which depends on
-            % supply voltage. Power the servo(s) from 12V, otherwise you may need
-            % to change defaultLoadThreshold_percent before running this.
+            % supply voltage. Power the servo(s) from 12V, otherwise pass a
+            % different loadThreshold_percent when running this.
             %
             % Note: this method temporarily forces requireSetCheck=true to ensure
             % each 1-tick move has actually settled before the load is sampled.
@@ -432,6 +432,7 @@ classdef instrument_ST3215HS < instrumentInterface
                 obj
                 servoNumber (1, 1) double {mustBeInteger, mustBeMember(servoNumber, [1, 2])} = 1
                 NameValueArgs.verbose (1, 1) logical = false;
+                NameValueArgs.loadThreshold_percent (1, 1) double {mustBePositive} = obj.defaultLoadThreshold_percent;
             end
 
             prevRequireSetCheck = obj.requireSetCheck;
@@ -441,7 +442,7 @@ classdef instrument_ST3215HS < instrumentInterface
             obj.bypassConsistentPositionSet_ = true;
             cleanupBypassConsistentSet = onCleanup(@() obj.restoreBypassConsistentPositionSet_(prevBypassConsistentSet)); %#ok<NASGU>
 
-            loadThreshold_percent = obj.defaultLoadThreshold_percent;
+            loadThreshold_percent = NameValueArgs.loadThreshold_percent;
 
             if servoNumber == 1
                 positionChannel = "position_1_deg";
