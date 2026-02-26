@@ -212,6 +212,83 @@ classdef (Sealed) instrumentRack < handle
             obj.lastSetValues{rowIndex, 1} = [];
             obj.lastCheckedValues{rowIndex, 1} = [];
         end
+
+        function info = getRackInfoForEditing(obj)
+            info = obj.channelTable(:, ["instrumentFriendlyNames", "channelFriendlyNames", "channelSizes", "rampRates", "rampThresholds", "softwareMins", "softwareMaxs"]);
+            info.Properties.VariableNames = ["instrumentFriendlyName", "channelFriendlyName", "channelSize", "rampRates", "rampThresholds", "softwareMins", "softwareMaxs"];
+            info.channelSize = double(info.channelSize(:));
+            info.rampRates = cellfun(@(x) double(x(:).'), info.rampRates, UniformOutput = false);
+            info.rampThresholds = cellfun(@(x) double(x(:).'), info.rampThresholds, UniformOutput = false);
+            info.softwareMins = cellfun(@(x) double(x(:).'), info.softwareMins, UniformOutput = false);
+            info.softwareMaxs = cellfun(@(x) double(x(:).'), info.softwareMaxs, UniformOutput = false);
+        end
+
+        function applyRackEditPatch(obj, patch)
+            arguments
+                obj
+                patch (1, 1) instrumentRackEditPatch
+            end
+
+            if patch.isEmpty()
+                return;
+            end
+
+            entries = patch.entries;
+            channelNames = entries.channelFriendlyName(:);
+            channelRowIndices = obj.findChannelIndices(channelNames);
+            numRows = numel(channelRowIndices);
+
+            rampRates = cell(numRows, 1);
+            rampThresholds = cell(numRows, 1);
+            softwareMins = cell(numRows, 1);
+            softwareMaxs = cell(numRows, 1);
+            for i = 1:numRows
+                channelName = channelNames(i);
+                channelSize = double(obj.channelTable.channelSizes(channelRowIndices(i)));
+                rampRates{i} = normalizeValues(entries.rampRates{i}, channelSize, channelName, "rampRates", true);
+                rampThresholds{i} = normalizeValues(entries.rampThresholds{i}, channelSize, channelName, "rampThresholds", true);
+                softwareMins{i} = normalizeValues(entries.softwareMins{i}, channelSize, channelName, "softwareMins", false);
+                softwareMaxs{i} = normalizeValues(entries.softwareMaxs{i}, channelSize, channelName, "softwareMaxs", false);
+                if any(softwareMins{i} >= softwareMaxs{i})
+                    error("instrumentRack:InvalidSoftwareLimits", ...
+                        "Channel %s requires softwareMins < softwareMaxs elementwise.", channelName);
+                end
+            end
+
+            for i = 1:numRows
+                rowIndex = channelRowIndices(i);
+                obj.channelTable.rampRates{rowIndex} = rampRates{i};
+                obj.channelTable.rampThresholds{rowIndex} = rampThresholds{i};
+                obj.channelTable.softwareMins{rowIndex} = softwareMins{i};
+                obj.channelTable.softwareMaxs{rowIndex} = softwareMaxs{i};
+            end
+
+            function valuesOut = normalizeValues(valuesIn, expectedSize, channelName, fieldName, positiveOnly)
+                if ~(isnumeric(valuesIn) && isvector(valuesIn) && isreal(valuesIn))
+                    error("instrumentRack:InvalidRackEditPatch", ...
+                        "Channel %s %s must be a real numeric vector.", channelName, fieldName);
+                end
+                valuesOut = double(valuesIn(:));
+                if isempty(valuesOut)
+                    error("instrumentRack:InvalidRackEditPatch", ...
+                        "Channel %s %s cannot be empty.", channelName, fieldName);
+                end
+                if isscalar(valuesOut)
+                    valuesOut = repmat(valuesOut, expectedSize, 1);
+                elseif numel(valuesOut) ~= expectedSize
+                    error("instrumentRack:InvalidRackEditPatch", ...
+                        "Channel %s %s must be scalar or length %d.", channelName, fieldName, expectedSize);
+                end
+                if any(isnan(valuesOut))
+                    error("instrumentRack:InvalidRackEditPatch", ...
+                        "Channel %s %s cannot contain NaN.", channelName, fieldName);
+                end
+                if positiveOnly && any(valuesOut <= 0)
+                    error("instrumentRack:InvalidRackEditPatch", ...
+                        "Channel %s %s must be strictly positive.", channelName, fieldName);
+                end
+            end
+        end
         
         function values = rackGet(obj, channelFriendlyNames)
             arguments

@@ -39,6 +39,9 @@ function Open(h)
         smrunEnsureGlobals();
 
         smaux.sm=h;
+        if isfield(smaux.sm, "editrack") && ishandle(smaux.sm.editrack)
+            setappdata(smaux.sm.editrack, "smEditRackBaseLabel", erase(string(get(smaux.sm.editrack, "Label")), " (scan active)"));
+        end
         
         % Initialize required fields if they don't exist
         if ~isfield(smaux, 'scans')
@@ -61,6 +64,7 @@ function Open(h)
         smpptAttachMainGui();
         smdatapathAttachMainGui();
         smrunAttachMainGui();
+        smbridgeUpdateEditRackMenuState();
     catch ME
         % Create detailed error message
         errorMsg = sprintf('Error in Open function:\n\n%s\n\nFile: %s\nLine: %d\n\nStack trace:\n', ...
@@ -199,6 +203,9 @@ function SaveScans
     end
 end
 
+function EditRack
+    smeditrack();
+end
 
 
 function SMusers
@@ -448,12 +455,18 @@ end
 
 function Run
     global smaux engine
+    smbridgeAddSharedPaths();
+    smbridgeUpdateEditRackMenuState(true);
+    cleanupEditRackMenu = onCleanup(@() smbridgeUpdateEditRackMenuState(false));
+    drawnow;
     try
         while ~isempty(smaux.smq)
             %grab the next scan in the queue
             scan = smaux.smq{1};
             smaux.smq(1)=[];
             UpdateToGUI;
+            smbridgeUpdateEditRackMenuState(true);
+            drawnow;
             
             if ~isfield(scan,'loops') && isfield(scan,'eval') %to evaluate commands
                 evalLines = scan.eval;
@@ -747,6 +760,7 @@ function UpdateToGUI
         end
         
         % Force pending GUI updates to render before returning.
+        smbridgeUpdateEditRackMenuState();
         drawnow;
     catch ME
         % Create detailed error message
