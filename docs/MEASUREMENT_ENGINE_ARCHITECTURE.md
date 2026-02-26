@@ -101,7 +101,7 @@ Interruptible waits (`startwait`, `waittime`) use the same inline pattern: poll 
 
 ### Stop signal (single-threaded)
 
-In rack mode, `runScanCore_` receives the live figure handle. At each check point it reads `get(figHandle, "CurrentCharacter")` for ESC and checks `figHandle.UserData.stopRequested` (set by the close-request callback).
+In rack mode, `runScanCore_` receives the live figure handle. At each check point it reads `get(figHandle, "CurrentCharacter")` for ESC and checks the engine's `isScanInProgress` flag (set false by the close-request callback).
 
 ### Safe mode protocol
 
@@ -245,7 +245,8 @@ At the end of a run:
 
 ## Where to look in code
 
-- `code/sm2/measurementEngine.m`: orchestration, worker protocol, scan core functions (`runTurboScanCore_`, `runSafeScanCore_`, `runScanCore_`), client loops, saving/PPT.
+- `code/sm2/@measurementEngine/measurementEngine.m`: orchestration, worker protocol entry points, and method declarations.
+- `code/sm2/@measurementEngine/runWorkerCore_.m`, `runScanCore_.m`, `runTurboScanCore_.m`, `runSafeScanCore_.m`, `saveFinal_.m`, `engineWorkerMain_.m`: large engine methods split into separate class-folder files.
 - `code/sm2/measurementScan.m`: scan abstraction + legacy conversion.
 - `code/sm2/instrumentRackRecipe.m`: worker rack construction recipe.
 - `code/sm2/requestWorkerSpawn.m`: generic worker→client spawn helper.
