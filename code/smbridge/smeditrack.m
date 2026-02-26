@@ -103,11 +103,9 @@ function smeditrack(varargin)
     end
 
     function onCellEdit(src, eventData)
-        if isempty(eventData) || ~isfield(eventData, "Indices") || numel(eventData.Indices) < 2
-            return;
-        end
-        row = eventData.Indices(1);
-        col = eventData.Indices(2);
+        idx = eventData.Indices;
+        row = idx(1);
+        col = idx(2);
         if col < 3 || col > 6
             return;
         end
