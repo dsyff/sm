@@ -364,6 +364,54 @@ classdef measurementEngine < handle
             experimentContext.print("Main rack ends.");
         end
 
+        function info = getRackInfoForEditing(obj)
+            if obj.constructionMode == "rack"
+                info = obj.rackLocal.getRackInfoForEditing();
+                return;
+            end
+
+            requestId = obj.nextRequestId_();
+            obj.safeSendToEngine_(struct( ...
+                "type", "rackEditInfo", ...
+                "requestId", requestId));
+
+            reply = obj.waitForEngineReply_(requestId, "rackEditInfoDone", seconds(20));
+            if isfield(reply, "ok") && ~logical(reply.ok)
+                obj.throwRemoteError_(reply);
+            end
+            info = reply.info;
+        end
+
+        function applyRackEditPatch(obj, patch)
+            arguments
+                obj
+                patch (1, 1) instrumentRackEditPatch
+            end
+
+            if obj.isScanInProgress
+                error("measurementEngine:ScanActive", "Cannot apply rack edits while a scan is in progress.");
+            end
+            if patch.isEmpty()
+                return;
+            end
+
+            if obj.constructionMode == "rack"
+                obj.rackLocal.applyRackEditPatch(patch);
+                return;
+            end
+
+            requestId = obj.nextRequestId_();
+            obj.safeSendToEngine_(struct( ...
+                "type", "rackEditPatch", ...
+                "requestId", requestId, ...
+                "patch", patch));
+
+            reply = obj.waitForEngineReply_(requestId, "rackEditPatchDone", seconds(20));
+            if isfield(reply, "ok") && ~logical(reply.ok)
+                obj.throwRemoteError_(reply);
+            end
+        end
+
         function [channelNames, channelSizes] = getChannelMetadata(obj)
             channelNames = obj.channelFriendlyNames;
             channelSizes = obj.channelSizes;
@@ -724,9 +772,17 @@ classdef measurementEngine < handle
             send(obj.clientToEngine, msg);
         end
 
-        function reply = waitForEngineReply_(obj, requestId, expectedType)
+        function reply = waitForEngineReply_(obj, requestId, expectedType, timeout)
+            if nargin < 4 || isempty(timeout)
+                timeout = minutes(5);
+            end
+            if ~isduration(timeout)
+                timeout = seconds(double(timeout));
+            end
+            if ~(isscalar(timeout) && isfinite(seconds(timeout)) && timeout > seconds(0))
+                error("measurementEngine:InvalidTimeout", "waitForEngineReply_ timeout must be a finite, positive duration.");
+            end
             startTime = datetime("now");
-            timeout = minutes(5);
             while true
                 if ~isempty(obj.engineToClientBacklog)
                     for i = 1:numel(obj.engineToClientBacklog)

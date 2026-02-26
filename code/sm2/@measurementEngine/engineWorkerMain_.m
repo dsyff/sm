@@ -204,6 +204,55 @@ function engineWorkerMain_(engineToClient, recipe, workerFprintfQueue, experimen
                 end
                 send(engineToClient, struct("type", "rackDispDone", "requestId", requestId, "ok", ok, "text", text, "error", err));
 
+            case "rackEditInfo"
+                requestId = msg.requestId;
+                if verbose
+                    wlog("recv rackEditInfo " + requestId);
+                end
+                ok = true;
+                err = [];
+                info = table( ...
+                    Size = [0, 7], ...
+                    VariableTypes = ["string", "string", "double", "cell", "cell", "cell", "cell"], ...
+                    VariableNames = ["instrumentFriendlyName", "channelFriendlyName", "channelSize", "rampRates", "rampThresholds", "softwareMins", "softwareMaxs"]);
+                try
+                    info = rack.getRackInfoForEditing();
+                catch ME
+                    ok = false;
+                    err = measurementEngine.serializeException_(ME);
+                end
+                send(engineToClient, struct("type", "rackEditInfoDone", "requestId", requestId, "ok", ok, "info", info, "error", err));
+
+            case "rackEditPatch"
+                requestId = msg.requestId;
+                if verbose
+                    wlog("recv rackEditPatch " + requestId);
+                end
+                ok = true;
+                err = [];
+                try
+                    if isfield(msg, "patch") && isa(msg.patch, "instrumentRackEditPatch")
+                        experimentContext.print("rackEditPatch received (%s): %d row(s).", requestId, msg.patch.numEntries());
+                    else
+                        payloadClass = "missing";
+                        if isfield(msg, "patch")
+                            payloadClass = class(msg.patch);
+                        end
+                        experimentContext.print("rackEditPatch received invalid payload (%s): %s.", requestId, payloadClass);
+                    end
+                    if ~isfield(msg, "patch") || ~isa(msg.patch, "instrumentRackEditPatch")
+                        error("measurementEngine:InvalidRackEditPatch", ...
+                            "rackEditPatch expects a scalar instrumentRackEditPatch payload.");
+                    end
+                    rack.applyRackEditPatch(msg.patch);
+                    experimentContext.print("rackEditPatch applied (%s).", requestId);
+                catch ME
+                    ok = false;
+                    err = measurementEngine.serializeException_(ME);
+                    experimentContext.print("rackEditPatch failed (%s): %s", requestId, ME.message);
+                end
+                send(engineToClient, struct("type", "rackEditPatchDone", "requestId", requestId, "ok", ok, "error", err));
+
             case "rackGet"
                 requestId = msg.requestId;
                 if verbose

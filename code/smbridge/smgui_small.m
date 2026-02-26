@@ -135,6 +135,7 @@ end
             'Label','Edit Rack',...
             'HandleVisibility','Callback',...
             'Callback',@EditRack);
+        setappdata(smaux.smgui.EditRack, "smEditRackBaseLabel", erase(string(get(smaux.smgui.EditRack, "Label")), " (scan active)"));
 
     smaux.smgui.scan_constants_ph = [];
         smaux.smgui.update_consts_pbh = []; %pb to update all the scan constants (run smset)
@@ -364,8 +365,7 @@ function LoadScan(hObject,eventdata)
 end
 
 function EditRack(hObject,eventdata)
-    msgbox("Edit Rack is not implemented in sm1.5. Edit your setup script (e.g., demos/demo.m; debug-only explicit-rack scripts live in tests/).", ...
-        "Not Implemented", "help");
+    smeditrack();
 end
 
 function loopvars_addchan_pbh_Callback(hObject,eventdata,i)
@@ -1020,6 +1020,7 @@ end
 function Run(varargin)
     global smaux smscan engine;
 
+    smbridgeAddSharedPaths();
     syncScanPptFromGUI();
 
     filestring = get(smaux.smgui.filename_eth,'String');
@@ -1048,6 +1049,9 @@ function Run(varargin)
         error("smgui_small:MissingEngine", "measurementEngine not found. Please run smready(...) first.");
     end
 
+    smbridgeUpdateEditRackMenuState(true);
+    cleanupEditRackMenu = onCleanup(@() smbridgeUpdateEditRackMenuState(false));
+    drawnow;
     engine.run(smscan, "", "safe");
 
 end
@@ -1162,6 +1166,7 @@ function Update(varargin)
     smdatapathApplyStateToGui('small');
     registerSmallGuiWithRunState();
     smrunApplyStateToGui('small');
+    smbridgeUpdateEditRackMenuState();
 end
 
 function scaninit(varargin)
