@@ -236,7 +236,7 @@ classdef instrument_strainController < instrumentInterface
                     "No non-empty dataTimetable found in: %s", dataFolder);
             end
 
-            experimentContext.print("Loaded " + fileCount + " file(s).")
+            experimentContext.print("Loaded " + fileCount + " file(s).");
 
             f = figure();
             if plotBranchNum

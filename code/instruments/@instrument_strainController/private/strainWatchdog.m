@@ -366,7 +366,6 @@ try
             end
         else
             if justEndedActiveControl
-                rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [0, 0]);
                 refreshDataTimetablesAndLoopVariables(true);
                 justEndedActiveControl = false;
             end
