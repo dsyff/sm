@@ -173,109 +173,120 @@ classdef instrument_strainController < instrumentInterface
         function rack_strainController = getRack(obj)
             rack_strainController = obj.rack_strainController;
         end
+    end
 
-        function plotLastSession(obj, options)
+    methods (Static)
+        function plotLastSession(options)
             % Plot the most recent watchdog session data saved by the worker.
             arguments
-                obj instrument_strainController
-                options.dataFolder (1,1) string = "dogTimetable";
+                options.dataFolder (1,1) string = "";
                 options.plotBranchNum (1,1) logical = true;
             end
             dataFolder = options.dataFolder;
             plotBranchNum = options.plotBranchNum;
 
-            if dataFolder == "dogTimetable"
-                if strlength(obj.logDir) > 0
-                    dataFolder = fullfile(obj.logDir, "dogTimetable");
-                else
-                    rootPath = experimentContext.getExperimentRootPath();
-                    if strlength(rootPath) == 0
-                        rootPath = string(pwd);
-                    end
-                    dataFolder = fullfile(rootPath, "logs", "strainController", "dogTimetable");
+            if strlength(dataFolder) == 0 || dataFolder == "dogTimetable"
+                rootPath = experimentContext.getExperimentRootPath();
+                if strlength(rootPath) == 0
+                    rootPath = string(pwd);
                 end
+                dataFolder = fullfile(rootPath, "logs", "strainController", "dogTimetable");
             end
 
-            fileTable = struct2table(dir(dataFolder + filesep + "*.mat"));
+            if ~isfolder(dataFolder)
+                error("instrument_strainController:DataFolderNotFound", ...
+                    "Data folder not found: %s", dataFolder);
+            end
+
+            fileTable = struct2table(dir(fullfile(dataFolder, "*.mat")));
+            if isempty(fileTable)
+                error("instrument_strainController:NoSessionFiles", ...
+                    "No .mat files found in: %s", dataFolder);
+            end
             fileTable = sortrows(fileTable, "name", "descend");
 
-            %% combine files
-            if ~isempty(fileTable)
-                fileCount = 1;
-                if height(fileTable) == 1
-                    firstFilename = fileTable.name;
-                else
-                    firstFilename = fileTable.name(1);
+            sessionTimetable = timetable();
+            fileCount = 0;
+            for fileIndex = 1:height(fileTable)
+                filePath = fullfile(dataFolder, fileTable.name(fileIndex));
+                loaded = load(filePath, "dataTimetable");
+                if ~isfield(loaded, "dataTimetable")
+                    error("instrument_strainController:InvalidDataTimetableFile", ...
+                        "Missing dataTimetable in file: %s", filePath);
                 end
-                load(dataFolder + filesep + firstFilename, "dataTimetable");
-                sessionTimetable = rmmissing(dataTimetable);
-                for fileIndex = 2:height(fileTable)
-                    load(dataFolder + filesep + fileTable.name(fileIndex), "dataTimetable");
-                    if sessionTimetable.Time(1) - dataTimetable.Time(end) < minutes(5)
-                        sessionTimetable = [dataTimetable; sessionTimetable];
-                        fileCount = fileCount + 1;
-                    else
-                        break;
-                    end
+                dataTimetable = rmmissing(loaded.dataTimetable);
+                if isempty(dataTimetable)
+                    continue;
                 end
-                experimentContext.print("Loaded " + fileCount + " file(s).")
-                %%
-                if ~isempty(sessionTimetable)
-
-                    f = figure();
-                    if plotBranchNum
-                        t = tiledlayout(f, 4, 1);
-                    else
-                        t = tiledlayout(f, 3, 1);
-                    end
-
-                    ax1 = nexttile(t);
-                    hold(ax1, "on");
-                    y_max = max(max(sessionTimetable.del_d_target * 1E6), max(sessionTimetable.del_d * 1E6));
-                    y_min = min(min(sessionTimetable.del_d_target * 1E6), min(sessionTimetable.del_d * 1E6));
-                    area(ax1, sessionTimetable.Time, (y_max - y_min + 0.15) * (abs(sessionTimetable.del_d - sessionTimetable.del_d_target) < 5E-9) + y_min - 0.075, y_min - 0.075, FaceColor = [0.9, 0.9, 0.9], EdgeColor = "none", ShowBaseLine = false, HandleVisibility = "off");
-                    plot(ax1, sessionTimetable.Time, sessionTimetable.del_d_target * 1E6, "--k", LineWidth = 2);
-                    plot(ax1, sessionTimetable.Time, sessionTimetable.del_d * 1E6, "b", LineWidth = 1);
-                    ylim(ax1, [y_min - 0.1, y_max + 0.1])
-                    ylabel("displacement [\mum]");
-                    legend(["target", "measured"]);
-
-                    ax2 = nexttile(t);
-                    hold(ax2, "on");
-                    plot(ax2, sessionTimetable.Time, sessionTimetable.V_str_o, "r", LineWidth = 1);
-                    plot(ax2, sessionTimetable.Time, sessionTimetable.V_str_i, "b", LineWidth = 1);
-                    [V_str_o_min, V_str_o_max, V_str_i_min, V_str_i_max] = obj.updateStrainVoltageBounds(sessionTimetable.T);
-                    plot(ax2, sessionTimetable.Time, V_str_o_min, "--r", LineWidth = 1, HandleVisibility = "off");
-                    plot(ax2, sessionTimetable.Time, V_str_o_max, "--r", LineWidth = 1, HandleVisibility = "off");
-                    plot(ax2, sessionTimetable.Time, V_str_i_min, "--b", LineWidth = 1, HandleVisibility = "off");
-                    plot(ax2, sessionTimetable.Time, V_str_i_max, "--b", LineWidth = 1, HandleVisibility = "off");
-                    ylabel("strain voltage [V]");
-                    legend(["outer", "inner"]);
-
-                    ax3 = nexttile(t);
-                    hold(ax3, "on");
-                    plot(ax3, sessionTimetable.Time, sessionTimetable.T, "k", LineWidth = 1);
-                    ylabel("temperature [K]");
-
-                    if plotBranchNum
-                        ax4 = nexttile(t);
-                        hold(ax4, "on");
-                        plot(ax4, sessionTimetable.Time, sessionTimetable.branchNum, "k", LineWidth = 1);
-                        ylabel("branch []");
-
-                        linkaxes([ax1, ax2, ax3, ax4], "x");
-                    else
-                        linkaxes([ax1, ax2, ax3], "x");
-                    end
+                if isempty(sessionTimetable)
+                    sessionTimetable = dataTimetable;
+                    fileCount = 1;
+                    continue;
+                end
+                if sessionTimetable.Time(1) - dataTimetable.Time(end) < minutes(5)
+                    sessionTimetable = [dataTimetable; sessionTimetable];
+                    fileCount = fileCount + 1;
                 else
-                    warning("empty dataTimetable");
+                    break;
                 end
             end
 
+            if isempty(sessionTimetable)
+                error("instrument_strainController:EmptySession", ...
+                    "No non-empty dataTimetable found in: %s", dataFolder);
+            end
+
+            experimentContext.print("Loaded " + fileCount + " file(s).")
+
+            f = figure();
+            if plotBranchNum
+                t = tiledlayout(f, 4, 1);
+            else
+                t = tiledlayout(f, 3, 1);
+            end
+
+            ax1 = nexttile(t);
+            hold(ax1, "on");
+            y_max = max(max(sessionTimetable.del_d_target * 1E6), max(sessionTimetable.del_d * 1E6));
+            y_min = min(min(sessionTimetable.del_d_target * 1E6), min(sessionTimetable.del_d * 1E6));
+            area(ax1, sessionTimetable.Time, (y_max - y_min + 0.15) * (abs(sessionTimetable.del_d - sessionTimetable.del_d_target) < 5E-9) + y_min - 0.075, y_min - 0.075, FaceColor = [0.9, 0.9, 0.9], EdgeColor = "none", ShowBaseLine = false, HandleVisibility = "off");
+            plot(ax1, sessionTimetable.Time, sessionTimetable.del_d_target * 1E6, "--k", LineWidth = 2);
+            plot(ax1, sessionTimetable.Time, sessionTimetable.del_d * 1E6, "b", LineWidth = 1);
+            ylim(ax1, [y_min - 0.1, y_max + 0.1])
+            ylabel("displacement [\mum]");
+            legend(["target", "measured"]);
+
+            ax2 = nexttile(t);
+            hold(ax2, "on");
+            plot(ax2, sessionTimetable.Time, sessionTimetable.V_str_o, "r", LineWidth = 1);
+            plot(ax2, sessionTimetable.Time, sessionTimetable.V_str_i, "b", LineWidth = 1);
+            [V_str_o_min, V_str_o_max, V_str_i_min, V_str_i_max] = instrument_strainController.updateStrainVoltageBounds(sessionTimetable.T);
+            plot(ax2, sessionTimetable.Time, V_str_o_min, "--r", LineWidth = 1, HandleVisibility = "off");
+            plot(ax2, sessionTimetable.Time, V_str_o_max, "--r", LineWidth = 1, HandleVisibility = "off");
+            plot(ax2, sessionTimetable.Time, V_str_i_min, "--b", LineWidth = 1, HandleVisibility = "off");
+            plot(ax2, sessionTimetable.Time, V_str_i_max, "--b", LineWidth = 1, HandleVisibility = "off");
+            ylabel("strain voltage [V]");
+            legend(["outer", "inner"]);
+
+            ax3 = nexttile(t);
+            hold(ax3, "on");
+            plot(ax3, sessionTimetable.Time, sessionTimetable.T, "k", LineWidth = 1);
+            ylabel("temperature [K]");
+
+            if plotBranchNum
+                ax4 = nexttile(t);
+                hold(ax4, "on");
+                plot(ax4, sessionTimetable.Time, sessionTimetable.branchNum, "k", LineWidth = 1);
+                ylabel("branch []");
+                linkaxes([ax1, ax2, ax3, ax4], "x");
+            else
+                linkaxes([ax1, ax2, ax3], "x");
+            end
         end
+    end
 
-
-    function [min, max] = strainVoltageBounds(~, T)
+    methods (Static, Access = private)
+        function [min, max] = strainVoltageBounds(T)
 
             min = nan(size(T));
             max = nan(size(T));
@@ -298,10 +309,10 @@ classdef instrument_strainController < instrumentInterface
 
         end
 
-        function [V_str_o_min, V_str_o_max, V_str_i_min, V_str_i_max] = updateStrainVoltageBounds(obj, T)
+        function [V_str_o_min, V_str_o_max, V_str_i_min, V_str_i_max] = updateStrainVoltageBounds(T)
             temperatureSafeMargin = 3;
             voltageBoundFraction = 0.9;
-            [V_min, V_max] = obj.strainVoltageBounds(T + temperatureSafeMargin);
+            [V_min, V_max] = instrument_strainController.strainVoltageBounds(T + temperatureSafeMargin);
 
             % outer voltages are connected so that positive corresponds to
             % stretch
