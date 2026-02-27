@@ -198,17 +198,17 @@ classdef instrument_strainController < instrumentInterface
                     "Data folder not found: %s", dataFolder);
             end
 
-            fileTable = struct2table(dir(fullfile(dataFolder, "*.mat")));
-            if isempty(fileTable)
+            fileInfo = dir(fullfile(dataFolder, "*.mat"));
+            if isempty(fileInfo)
                 error("instrument_strainController:NoSessionFiles", ...
                     "No .mat files found in: %s", dataFolder);
             end
-            fileTable = sortrows(fileTable, "name", "descend");
+            fileNames = sort(string({fileInfo.name}), "descend");
 
             sessionTimetable = timetable();
             fileCount = 0;
-            for fileIndex = 1:height(fileTable)
-                filePath = fullfile(dataFolder, fileTable.name(fileIndex));
+            for fileIndex = 1:numel(fileNames)
+                filePath = fullfile(dataFolder, fileNames(fileIndex));
                 loaded = load(filePath, "dataTimetable");
                 if ~isfield(loaded, "dataTimetable")
                     error("instrument_strainController:InvalidDataTimetableFile", ...
