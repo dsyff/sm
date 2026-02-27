@@ -774,7 +774,7 @@ classdef measurementEngine < handle
 
         function reply = waitForEngineReply_(obj, requestId, expectedType, timeout)
             if nargin < 4 || isempty(timeout)
-                timeout = minutes(5);
+                timeout = hours(3);
             end
             if ~isduration(timeout)
                 timeout = seconds(double(timeout));
