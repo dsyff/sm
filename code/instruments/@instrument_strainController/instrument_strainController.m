@@ -119,6 +119,17 @@ classdef instrument_strainController < instrumentInterface
             obj.stop();
         end
 
+        function flush(obj)
+            if isempty(obj.handle_strainWatchdog)
+                return;
+            end
+            reply = dogQuery(obj.handle_strainWatchdog, "FLUSH", seconds(30));
+            if ~(islogical(reply) && isscalar(reply) && reply)
+                error("instrument_strainController:FlushFailed", ...
+                    "Expected logical true reply for FLUSH. Received:\n%s", formattedDisplayText(reply));
+            end
+        end
+
         function stop(obj)
             if ~isempty(obj.handle_strainWatchdog)
                 try
