@@ -91,7 +91,11 @@ counter_Use = 0;
 clock_Use = 0;
 
 strainController_Use = 0;
-strain_cryostat = "OptiCool"; %OptiCool, Montana2
+strain_cryostat = "Montana2"; %OptiCool, Montana2
+%strain_outerCurrentLimit = 1.6e-7; % A, K2450_A :SOURce:VOLTage:ILIMit
+strain_outerCurrentLimit = 3.2e-7; % A, K2450_A :SOURce:VOLTage:ILIMit
+%strain_innerCurrentLimit = 1e-7; % A, K2450_B :SOURce:VOLTage:ILIMit
+strain_innerCurrentLimit = 2e-7; % A, K2450_B :SOURce:VOLTage:ILIMit
 
 Montana1_Use = 0;
 Montana2_Use = 0;
@@ -200,6 +204,8 @@ if strainController_Use
         address_OptiCool = OptiCool_IP, ...
         cryostat = strain_cryostat, ...
         strainCellNumber = strainCellNumber_default, ...
+        outerCurrentLimit = strain_outerCurrentLimit, ...
+        innerCurrentLimit = strain_innerCurrentLimit, ...
         numeWorkersRequested = 1);
 
     % Strain controller constructor restores tareData from logs (or tares if missing).

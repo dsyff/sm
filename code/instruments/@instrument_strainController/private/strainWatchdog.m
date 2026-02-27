@@ -8,6 +8,8 @@ arguments
     options.address_OptiCool (1, 1) string;
     options.cryostat (1, 1) string {mustBeMember(options.cryostat, ["Montana2", "OptiCool"])};
     options.strainCellNumber (1, 1) uint8 {mustBeInteger, mustBePositive};
+    options.outerCurrentLimit (1, 1) double {mustBePositive} = 1.6e-7;
+    options.innerCurrentLimit (1, 1) double {mustBePositive} = 1e-7;
     options.experimentRootPath {mustBeTextScalar} = ""
 end
 %% settings
@@ -25,6 +27,8 @@ overloadTolerance = 5E-10; %m tolerance for progress detection. allows a small p
 overloadHold = seconds(5); %time watchdog waits before declaring overload
 del_d_tolerance = 5E-9; %m tolerance for determining if del_d target is reached
 V_tolerance = 5E-3; %V tolerance for determining if voltage target is reached
+outerCurrentRange = 10^(floor(log10(options.outerCurrentLimit)) + 1); %A smallest 1E-x strictly above outerCurrentLimit
+innerCurrentRange = 10^(floor(log10(options.innerCurrentLimit)) + 1); %A smallest 1E-x strictly above innerCurrentLimit
 
 %% pass back man2dog message channel
 % man2dog commands will only be executed after initilizations are done.
@@ -118,8 +122,8 @@ writeline(h, ":SOURce:VOLTage:READ:BACK ON");
 writeline(h, ":SENSe:CURRent:AZERo:STATe OFF");
 writeline(h, ":SENSe:CURRent:AVERage:STATe OFF");
 writeline(h, ":SOURce:DELay 0");
-writeline(h, ":SENSe:CURRent:RANGe 1e-6"); %sets the sense current range
-writeline(h, ":SOURce:VOLTage:ILIMit 1.6e-7"); %sets a current limit protector
+writeline(h, sprintf(":SENSe:CURRent:RANGe %g", outerCurrentRange)); %sets sense current range from outerCurrentLimit
+writeline(h, sprintf(":SOURce:VOLTage:ILIMit %g", options.outerCurrentLimit)); %sets a current limit protector
 
 writeline(h, ":SOURce:VOLTage:RANGe 200"); %sets the source voltage range
 %writeline(h, ":SOURce:VOLTage:RANGe:AUTO ON"); %use auto range for voltage
@@ -146,8 +150,8 @@ writeline(h, ":SOURce:VOLTage:READ:BACK ON");
 writeline(h, ":SENSe:CURRent:AZERo:STATe OFF");
 writeline(h, ":SENSe:CURRent:AVERage:STATe OFF");
 writeline(h, ":SOURce:DELay 0");
-writeline(h, ":SENSe:CURRent:RANGe 1e-6"); %sets the sense current range
-writeline(h, ":SOURce:VOLTage:ILIMit 1e-7"); %sets a current limit protector
+writeline(h, sprintf(":SENSe:CURRent:RANGe %g", innerCurrentRange)); %sets sense current range from innerCurrentLimit
+writeline(h, sprintf(":SOURce:VOLTage:ILIMit %g", options.innerCurrentLimit)); %sets a current limit protector
 
 writeline(h, ":SOURce:VOLTage:RANGe 200"); %sets the source voltage range
 %writeline(h, ":SOURce:VOLTage:RANGe:AUTO ON"); %use auto range for voltage
