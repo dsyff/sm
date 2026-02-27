@@ -10,4 +10,4 @@
 - In demo scripts, keep instrument sections in the same order across address declarations, `_Use` flags, and `if ..._Use` instrument blocks (`addInstrument` / `addChannel`).
 - Remember to set email address to "" in all demo files before staging changes for security.
 - Prefer datetime/duration classes over `now`/datenum/tic/toc.
-- For terminal/status output in worker-capable code (especially `code/sm2` and instrument code), use `experimentContext.print(...)` instead of direct `fprintf(...)`/`disp(...)`. `experimentContext.print` handles local vs worker routing and preserves worker message forwarding to client via DataQueue.
+- In `code/sm2` and `code/instruments`, always use `experimentContext.print(...)` for terminal/status output instead of base MATLAB `fprintf(...)`/`disp(...)` (except inside `experimentContext` internals). This keeps logs worker-safe via the engine DataQueue. Utility/demo scripts may use local `fprintf(...)`/`disp(...)` when worker routing is not required.

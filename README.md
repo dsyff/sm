@@ -31,7 +31,7 @@
 - **Close Button (X)**: Clicking the close “X” will not close the scan figure immediately; it pauses the scan and asks for confirmation.
 - **Avoid Nested rackGet**: The rack rejects new batch gets while hardware channels are active; virtual instruments run after that lock is released, so call the rack only from `virtualGetChannelRead` if you need derived reads
 - **Worker Engine (safe/turbo)**: when constructed from an `instrumentRackRecipe`, measurements run on a worker engine process by default. Use `singleThreaded=true` to materialize the recipe on the client instead. The scan GUI “Run” uses safe mode; the queue GUI “Run” uses turbo mode.
-- **Worker-Safe Logging**: Use `experimentContext.print(...)` for status output in worker-capable code (`code/sm2` and instrument code) instead of direct `disp(...)` or `fprintf(...)`.
+- **Worker-Safe Logging (Required)**: In `code/sm2` and `code/instruments`, always use `experimentContext.print(...)` for terminal/status output. Do not use base MATLAB `fprintf(...)`/`disp(...)` there for status logging; worker-to-client log routing depends on `experimentContext.print(...)`. (Demo/utility scripts can use local printing when worker routing is irrelevant.)
 
 ## 📘 CANONICAL GUIDES
 - `docs/INSTRUMENT_SETUP_GUIDE.txt` (setup workflow, rack usage)
