@@ -162,7 +162,7 @@ rack_strain.addChannel("K2450_B", "V_source", "V_str_i");
 rack_strain.addChannel("K2450_B", "I_measure", "I_str_i");
 rack_strain.addChannel("K2450_B", "VI", "VI_str_i");
 %% create cleanup object that tries to ramp down voltages if strainWatchdog was not closed gracefully
-cleanupObj = onCleanup(@() rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [0, 0]));
+%cleanupObj = onCleanup(@() rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [0, 0]));
 %%
 rootPath = string(options.experimentRootPath);
 if strlength(rootPath) == 0
