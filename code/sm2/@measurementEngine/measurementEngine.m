@@ -287,22 +287,52 @@ classdef measurementEngine < handle
 
             channelNames = channelNames(:);
             values = values(:);
+            operationTimeout = hours(3);
 
             if obj.constructionMode == "rack"
-                obj.rackLocal.rackSet(channelNames, values);
+                obj.rackLocal.rackSetWrite(channelNames, values);
+                startTime = datetime("now");
+                while ~obj.rackLocal.rackSetCheck(channelNames)
+                    assert(datetime("now") - startTime < operationTimeout, ...
+                        "measurementEngine:Timeout", ...
+                        "Timed out waiting for rackSetCheck.");
+                    pause(1E-6);
+                end
                 return;
             end
 
             requestId = obj.nextRequestId_();
             obj.safeSendToEngine_(struct( ...
-                "type", "rackSet", ...
+                "type", "rackSetWrite", ...
                 "requestId", requestId, ...
                 "channelNames", channelNames, ...
                 "values", values));
 
-            reply = obj.waitForEngineReply_(requestId, "rackSetDone");
+            reply = obj.waitForEngineReply_(requestId, "rackSetWriteDone");
             if isfield(reply, "ok") && ~reply.ok
                 obj.throwRemoteError_(reply);
+            end
+
+            startTime = datetime("now");
+            while true
+                requestId = obj.nextRequestId_();
+                obj.safeSendToEngine_(struct( ...
+                    "type", "rackSetCheck", ...
+                    "requestId", requestId, ...
+                    "channelNames", channelNames));
+
+                reply = obj.waitForEngineReply_(requestId, "rackSetCheckDone");
+                if isfield(reply, "ok") && ~reply.ok
+                    obj.throwRemoteError_(reply);
+                end
+                if logical(reply.TF)
+                    break;
+                end
+
+                assert(datetime("now") - startTime < operationTimeout, ...
+                    "measurementEngine:Timeout", ...
+                    "Timed out waiting for rackSetCheck.");
+                pause(1E-6);
             end
         end
 

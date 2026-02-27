@@ -269,6 +269,37 @@ function engineWorkerMain_(engineToClient, recipe, workerFprintfQueue, experimen
                 end
                 send(engineToClient, struct("type", "rackGetDone", "requestId", requestId, "ok", ok, "values", values, "error", err));
 
+            case "rackSetWrite"
+                requestId = msg.requestId;
+                if verbose
+                    wlog("recv rackSetWrite " + requestId);
+                end
+                ok = true;
+                err = [];
+                try
+                    rack.rackSetWrite(string(msg.channelNames), double(msg.values));
+                catch ME
+                    ok = false;
+                    err = measurementEngine.serializeException_(ME);
+                end
+                send(engineToClient, struct("type", "rackSetWriteDone", "requestId", requestId, "ok", ok, "error", err));
+
+            case "rackSetCheck"
+                requestId = msg.requestId;
+                if verbose
+                    wlog("recv rackSetCheck " + requestId);
+                end
+                ok = true;
+                err = [];
+                TF = false;
+                try
+                    TF = logical(rack.rackSetCheck(string(msg.channelNames)));
+                catch ME
+                    ok = false;
+                    err = measurementEngine.serializeException_(ME);
+                end
+                send(engineToClient, struct("type", "rackSetCheckDone", "requestId", requestId, "ok", ok, "TF", TF, "error", err));
+
             case "rackSet"
                 requestId = msg.requestId;
                 if verbose
