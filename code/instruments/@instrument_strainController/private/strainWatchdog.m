@@ -407,6 +407,7 @@ end
         parameterVariables.d_0 = d_0;
         tareData.d_0 = d_0;
         tareData.values = values;
+        experimentContext.print("strainWatchdog tare: performed new tare (d_0 = " + compose("%.9e", d_0) + " m).");
     end
 
     function getValue = directGet(channel)
@@ -573,6 +574,9 @@ end
                         dogError("cannot set %s while activeControl is on.", command, command.channel);
                     else
                         parameterVariables.(command.channel) = command.value;
+                        if command.channel == "d_0"
+                            experimentContext.print("strainWatchdog tare: loaded tareData (d_0 = " + compose("%.9e", command.value) + " m).");
+                        end
                     end
                 case "CHECK"
                     dogError("cannot check %s.", command, command.channel);
