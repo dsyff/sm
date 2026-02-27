@@ -215,6 +215,10 @@ if strainController_Use
     recipe.addChannel("strain", "I_str_o", "I_str_o");
     recipe.addChannel("strain", "I_str_i", "I_str_i");
     recipe.addChannel("strain", "activeControl", "activeControl");
+
+    % use instrument_strainController.plotLastSession() to view last
+    % active control session
+
 end
 
 if Montana1_Use
