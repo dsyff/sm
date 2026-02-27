@@ -190,9 +190,6 @@ end
 %% get current target temperature
 alwaysControlVariableSetValues.T = handle_cryostat.getCurrentTargetTemperature();
 
-%% set del_d target
-activeControlVariableSetValues.del_d = 0;
-
 %% start infinite loop
 % without try/catch, matlab sometimtes fails to handle error here correctly
 % and instead restarts the worker with no warning
@@ -600,6 +597,7 @@ end
                         if command.value
                             % will throw error for unset variables
                             assertReadyForActiveControl(command);
+                            activeControlVariableSetValues.del_d = directGet("del_d");
                             logParameterVariables();
                         else
                             justEndedActiveControl = true;
@@ -763,9 +761,6 @@ end
             if isnan(parameterVariables.(channel))
                 dogError("channel %s has not been set.", command, channel);
             end
-        end
-        if isnan(activeControlVariableSetValues.del_d)
-            dogError("channel del_d has not been set.", command);
         end
         if isnan(alwaysControlVariableSetValues.T)
             dogError("channel T has not been set.", command);
