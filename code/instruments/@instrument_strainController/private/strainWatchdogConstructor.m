@@ -18,6 +18,16 @@ assert(~isMATLABReleaseOlderThan("R2022a"), "Matlab version is too old");
 dog2Man = parallel.pool.PollableDataQueue;
 dogFuture = [];
 spawnFcn = options.spawnFcn;
+if isempty(spawnFcn)
+    spawnOnClient = [];
+    try
+        spawnOnClient = evalin("base", "sm_spawnOnClient");
+    catch
+    end
+    if isa(spawnOnClient, "function_handle")
+        spawnFcn = @(fcn, nOut, varargin) spawnOnClient("strainWatchdog", fcn, nOut, varargin{:});
+    end
+end
 
 rootPath = string(options.experimentRootPath);
 if strlength(rootPath) == 0

@@ -168,9 +168,21 @@ classdef measurementEngine < handle
 
             if options.singleThreaded
                 obj.constructionMode = "rack";
-                obj.rackLocal = measurementEngine.buildRackFromRecipe_(recipe);
+                nInstrumentWorkers = recipe.totalWorkersRequired();
+                if nInstrumentWorkers > 0
+                    obj.recreatePool_(nInstrumentWorkers);
+                    obj.workerFprintfListener = [];
+                    obj.workerFprintfQueue = parallel.pool.DataQueue;
+                    obj.workerFprintfListener = afterEach(obj.workerFprintfQueue, @(payload) obj.onWorkerFprintf_(payload));
+                    spawnOnClientFcn = @(requestedBy, fcn, nOut, varargin) obj.spawnOnClientLocal_(requestedBy, fcn, nOut, varargin{:});
+                else
+                    obj.pool = gcp("nocreate");
+                    obj.workerFprintfListener = [];
+                    obj.workerFprintfQueue = parallel.pool.DataQueue.empty(0, 1);
+                    spawnOnClientFcn = [];
+                end
+                obj.rackLocal = measurementEngine.buildRackFromRecipe_(recipe, spawnOnClientFcn);
                 obj.recipe = instrumentRackRecipe.empty(0, 1);
-                obj.ensurePoolForLocalRack_();
                 return;
             end
 
@@ -732,6 +744,26 @@ classdef measurementEngine < handle
                     obj.handleParfevalRequest_(msg);
                 otherwise
                     % Unhandled messages are ignored here; run loops will poll directly.
+            end
+        end
+
+        function spawnOnClientLocal_(obj, requestedBy, fcn, nOut, varargin)
+            requestedBy = string(requestedBy);
+            if strlength(requestedBy) == 0
+                requestedBy = "instrument";
+            end
+            if isempty(obj.workerFprintfQueue) || ~isa(obj.workerFprintfQueue, "parallel.pool.DataQueue")
+                error("measurementEngine:MissingFprintfQueue", "Instrument worker relay queue is not initialized.");
+            end
+
+            fut = obj.parfevalOnClient(@measurementEngine.workerTaskMain_, nOut, ...
+                obj.workerFprintfQueue, requestedBy, fcn, varargin{:});
+            if ~isempty(obj.spawnedFutures)
+                obj.spawnedFutures(end).requestedBy = requestedBy;
+            end
+            if ~isempty(fut) && isprop(fut, "State") && matches(string(fut.State), "queued")
+                error("measurementEngine:ParfevalQueued", ...
+                    "Worker spawn request was queued. Increase numeWorkersRequested in the recipe (pool size) and restart the engine.");
             end
         end
 
