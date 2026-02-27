@@ -656,6 +656,9 @@ end
                 refreshDataTimetablesAndLoopVariables(true);
             end
             keepAlive = false;
+        elseif command == "FLUSH"
+            rack_strain.flush();
+            send(dog2Man, true);
         elseif command == "*IDN?"
             send(dog2Man, "strainWatchdog 202412 Thomas");
         elseif command == "ERROR"
