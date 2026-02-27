@@ -207,6 +207,21 @@ Client                          clientToEngine PDQ              Worker
   |<--- runDone ----------------------|<----- send --------------|
 ```
 
+## experimentContext (shared context + printing)
+
+`experimentContext` provides process-local context and a worker-safe printing API:
+
+- `getExperimentRootPath()` returns the current experiment root path. In normal flows this path is set by `measurementEngine` via `setExperimentRootPath(...)`.
+- `print(...)` is the required status-print API:
+  - `print(message)`
+  - `print(format, ...)`
+  - `print(fileId, format, ...)`
+- On the client (or single-threaded runs), `print(...)` emits text locally.
+- On an engine worker, `print(...)` relays stdout/stderr-style messages through the configured `parallel.pool.DataQueue` (`relayWorkerFprintf`) so logs appear on the client.
+- Worker calls with non-stdout/stderr file IDs still pass through to MATLAB `fprintf(...)` for that file handle.
+
+Rule for core runtime code: in `code/sm2` and `code/instruments`, use `experimentContext.print(...)` for terminal/status output; do not use direct `fprintf(...)`/`disp(...)` for status logging.
+
 ## Client vs worker execution helpers
 
 - **Client eval (Queue GUI statements)**: Queue statements are evaluated on the client via `evalin("base", ...)` (not via `smeval`).

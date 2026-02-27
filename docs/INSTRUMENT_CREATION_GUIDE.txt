@@ -281,7 +281,7 @@ In recipe mode, instrument constructors run on the engine worker. Workers cannot
 spawn workers directly, so any background instrument worker(s) must be started
 on the client.
 
-For status/diagnostic output in worker-capable code, use:
+For status/diagnostic output in worker-capable code, always use:
   experimentContext.print(...)
 instead of direct fprintf/disp. experimentContext.print routes worker messages
 to the client terminal via the shared DataQueue, while local calls print
