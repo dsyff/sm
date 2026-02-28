@@ -89,6 +89,7 @@ function [data, plotData, stopped] = runTurboScanCore_(rack, scanObj, clientToEn
     lastTempSaveTic = [];
 
     % Set constants.
+    stopped = false;
     rack.flush();
     if enableLog
         msg = "runTurboScanCore_ start name=" + scanObj.name + " loops=" + nloops;
@@ -101,7 +102,8 @@ function [data, plotData, stopped] = runTurboScanCore_(rack, scanObj, clientToEn
         m = [consts.set] == 1;
         if any(m)
             sc = string({consts(m).setchan}); if isrow(sc), sc = sc.'; end
-            rack.rackSet(sc, double([consts(m).val]).');
+            stopped = rackSetWithStop(sc, double([consts(m).val]).', stopped);
+            if stopped, return; end
         end
     end
 
@@ -110,7 +112,6 @@ function [data, plotData, stopped] = runTurboScanCore_(rack, scanObj, clientToEn
     lastSnapTic = tic;
 
     % --- Main measurement loop ---
-    stopped = false;
     count = ones(1, nloops);
     totpoints = prod(npoints);
     didLogSet = false;
@@ -165,7 +166,7 @@ function [data, plotData, stopped] = runTurboScanCore_(rack, scanObj, clientToEn
                         experimentContext.print(msg);
                         logFcn(msg);
                     end
-                    rack.rackSet(batchSetChans, batchSetVals);
+                    stopped = rackSetWithStop(batchSetChans, batchSetVals, stopped);
                     batchSetChans = string.empty(0, 1);
                     batchSetVals = double.empty(0, 1);
                 end
@@ -221,9 +222,10 @@ function [data, plotData, stopped] = runTurboScanCore_(rack, scanObj, clientToEn
                     experimentContext.print(msg);
                     logFcn(msg);
                 end
-                rack.rackSet(batchSetChans, batchSetVals);
+                stopped = rackSetWithStop(batchSetChans, batchSetVals, stopped);
                 batchSetChans = string.empty(0, 1);
                 batchSetVals = double.empty(0, 1);
+                if stopped, break; end
 
                 % Interruptible startwait
                 if count(li) == 1 && startwait_s(li) > 0
@@ -262,7 +264,7 @@ function [data, plotData, stopped] = runTurboScanCore_(rack, scanObj, clientToEn
                 experimentContext.print(msg);
                 logFcn(msg);
             end
-            rack.rackSet(batchSetChans, batchSetVals);
+            stopped = rackSetWithStop(batchSetChans, batchSetVals, stopped);
         end
         if stopped, break; end
 
@@ -378,5 +380,19 @@ function [data, plotData, stopped] = runTurboScanCore_(rack, scanObj, clientToEn
 
     % Final snapshot.
     send(engineToClient, struct("type", "turboSnapshot", "requestId", requestId, "count", count, "plotData", {plotData}));
+
+    function stoppedOut = rackSetWithStop(channelNames, values, stoppedIn)
+        rack.rackSetWrite(channelNames, values);
+        stoppedOut = stoppedIn;
+        while ~stoppedOut && ~rack.rackSetCheck(channelNames)
+            if clientToEngine.QueueLength > 0
+                ctl = poll(clientToEngine);
+                if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
+                    stoppedOut = true;
+                end
+            end
+            pause(1E-6);
+        end
+    end
 end
 
