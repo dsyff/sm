@@ -54,8 +54,8 @@ classdef instrument_strainController < instrumentInterface
             );
             obj.handle_strainWatchdog = handle;
 
-            dogSet(obj.handle_strainWatchdog, "V_str_o", 0);
-            dogSet(obj.handle_strainWatchdog, "V_str_i", 0);
+            %dogSet(obj.handle_strainWatchdog, "V_str_o", 0);
+            %dogSet(obj.handle_strainWatchdog, "V_str_i", 0);
             dogSet(obj.handle_strainWatchdog, "frequency", 100E3);
 
             if options.cryostat == "OptiCool"
