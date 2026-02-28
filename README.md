@@ -18,10 +18,11 @@
 	- Optionally: `payload = smload(___, 'includeRaw', true)` adds `payload.raw`
 
 ## 🔑 KEY CONCEPTS:
-- **Batch Optimization**: getWrite/getRead separation and smart ordering for performance
-	- Prefer batched rack calls when possible: `rackGet(["ch1","ch2"])` and `rackSetWrite(["ch1","ch2"], [v1; v2])`
-	- Write pacing is instrument-level: use `writeCommandInterval` and (for backlog-friendly gating) `writeCommandIntervalMinWrites`
-- **Vector Channels**: Multi-element channels that save instrument read time (e.g., XY, XTheta, YTheta, RTheta) supported in smgui and instruments (get only, no vector setting). Vector channels are plotted and saved as scalar channels with `_#` appended (e.g., `XY_1` is X and `XY_2` is Y).
+- **Batch Optimization (Pipeline Design)**: A major source of scan speed is coordinated design across `measurementEngine`, `instrumentRack`, and instrument classes. The engine precomputes scan metadata, `instrumentRack` caches/compiles channel plans and batches physical access by instrument, and instrument classes split `getWriteChannelHelper`/`getReadChannelHelper` so query writes are dispatched first and reads are collected after parallel settle time. Most users can rely on normal scan definitions without manual batching logic.
+- **Vector Channels**: Rack batching can issue at most one physical channel per instrument in each batch step, so multiple scalar channels from the same instrument still require multiple instrument transactions. When an instrument supports vector reads (e.g., `XY`, `XTheta`, `YTheta`, `RTheta`), one request returns multiple values, which can cut communication overhead by large factors. Vector channels are get-only (no vector setting), and they are plotted/saved as scalar channels with `_#` appended (e.g., `XY_1`, `XY_2`).
+- **Worker Engine (safe/turbo)**: Turbo mode uses a multi-process pipeline (client GUI + worker engine process) and asynchronous snapshot updates to achieve extremely fast scan speed. When constructed from an `instrumentRackRecipe`, measurements run on a worker engine by default; use `singleThreaded=true` to materialize the recipe on the client for local debugging. The scan GUI "Run" uses safe mode, while the queue GUI "Run" uses turbo mode.
+- **Class-First Design**: The new codebase uses classes extensively for cleaner structure. Instrument classes inherit `instrumentInterface`, so most plumbing is already handled; simple instruments should require minimal code (typically just constructor/channel definitions plus small get/set helper methods).
+- **Slack Notifications**: Scan-complete notifications can be sent to Slack. Set `recipe.slack_notification_account_email` to your Slack account email to send a private DM notification; leave it empty to send to the configured group channel. Notifications are sent only for fully non-interrupted scans launched from the queue GUI.
 - **GUI Split**: `smgui_small` edits a single scan; `sm`/`sm_Callback` manage the scans library + queue. Rack menu items in the scan GUI are placeholders.
 - **Loading Data**: `smload` returns a `payload` struct with named channel arrays in `.channels` and set axes in `.setchannels`.
 - **Data Compatibility**: Same file format as legacy system - existing analysis code works unchanged
@@ -30,7 +31,6 @@
 - **Scan Stop (Escape)**: Use the Escape key to stop a scan. Plot updates are blocking, so you can stop immediately if something is wrong.
 - **Close Button (X)**: Clicking the close “X” will not close the scan figure immediately; it pauses the scan and asks for confirmation.
 - **Avoid Nested rackGet**: The rack rejects new batch gets while hardware channels are active; virtual instruments run after that lock is released, so call the rack only from `virtualGetChannelRead` if you need derived reads
-- **Worker Engine (safe/turbo)**: when constructed from an `instrumentRackRecipe`, measurements run on a worker engine process by default. Use `singleThreaded=true` to materialize the recipe on the client instead. The scan GUI “Run” uses safe mode; the queue GUI “Run” uses turbo mode.
 - **Worker-Safe Logging (Required)**: In `code/sm2` and `code/instruments`, always use `experimentContext.print(...)` for terminal/status output. Do not use base MATLAB `fprintf(...)`/`disp(...)` there for status logging; worker-to-client log routing depends on `experimentContext.print(...)`. (Demo/utility scripts can use local printing when worker routing is irrelevant.)
 
 ## 📘 CANONICAL GUIDES
