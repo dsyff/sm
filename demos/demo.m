@@ -941,7 +941,7 @@ end
 
 if virtual_nonlinear_T_Use
     recipe.addVirtualInstrument("handle_virtual_nonlinear_T", "virtualInstrument_nonlinear_T", "virtual_nonlinear_T", "virtual_nonlinear_T", ...
-        tSetChannelName = virtual_nonlinear_T_TargetChannel, tMin = 4, tMax = 200);
+        tSetChannelName = "T", tMin = 4, tMax = 200);
     recipe.addChannel("virtual_nonlinear_T", "nonlinear_T", "T_normalized", [], [], 0, 1);
 end
 
