@@ -308,7 +308,11 @@ function engineWorkerMain_(engineToClient, recipe, workerFprintfQueue, experimen
                 ok = true;
                 err = [];
                 try
-                    rack.rackSet(string(msg.channelNames), double(msg.values));
+                    channelNames = string(msg.channelNames);
+                    rack.rackSetWrite(channelNames, double(msg.values));
+                    while ~rack.rackSetCheck(channelNames)
+                        pause(1E-6);
+                    end
                 catch ME
                     ok = false;
                     err = measurementEngine.serializeException_(ME);
