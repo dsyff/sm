@@ -130,6 +130,10 @@ end
             'HandleVisibility','Callback',...
             'Accelerator','s',...
             'Callback',@SaveScan);
+        smaux.smgui.ClearScan = uimenu('Parent',smaux.smgui.FileMenu,...
+            'Label','Clear Scan',...
+            'HandleVisibility','Callback',...
+            'Callback',@ClearScan);
         smaux.smgui.EditRack = uimenu('Parent',smaux.smgui.FileMenu,...
             'Separator','on',...
             'Label','Edit Rack',...
@@ -361,6 +365,26 @@ function LoadScan(hObject,eventdata)
             smscan.consts(i).set=1;
         end
     end
+    scaninit;
+end
+
+function ClearScan(hObject,eventdata)
+    global smscan
+    smscan = struct();
+    smscan.loops(1).npoints = 101;
+    smscan.loops(1).rng = [0 1];
+    smscan.loops(1).getchan = {};
+    smscan.loops(1).setchan = {};
+    smscan.loops(1).setchanranges = {};
+    smscan.loops(1).ramptime = [];
+    smscan.loops(1).numchans = 0;
+    smscan.loops(1).waittime = 0;
+    smscan.data = [];
+    smscan.consts = struct('setchan', {}, 'val', {}, 'set', {});
+    smscan.saveloop = 2;
+    smscan.disp = [];
+    smscan.comments = '';
+    smscan.name = '';
     scaninit;
 end
 
