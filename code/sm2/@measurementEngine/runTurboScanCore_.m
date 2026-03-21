@@ -96,7 +96,7 @@ function [data, plotData, stopped] = runTurboScanCore_(rack, scanObj, clientToEn
         experimentContext.print(msg);
         logFcn(msg);
     end
-    if ~isempty(scanObj.consts)
+    if ~scanObj.constsPrepared && ~isempty(scanObj.consts)
         consts = scanObj.consts;
         if ~isfield(consts, "set"), [consts.set] = deal(1); end
         m = [consts.set] == 1;

@@ -481,6 +481,7 @@ classdef measurementEngine < handle
                 error("measurementEngine:InvalidScan", "scan must be a struct or measurementScan.");
             end
 
+            scanObj.constsPrepared = false;
             obj.logClient_("run() entered mode=" + mode + " name=" + scanObj.name + " loops=" + numel(scanObj.loops));
             autoRun = false;
             runToUse = NaN;
@@ -522,6 +523,7 @@ classdef measurementEngine < handle
             end
 
             obj.logClient_("run() target file=" + filename);
+            scanObj = obj.prepareScanConstants_(scanObj);
 
             if obj.constructionMode == "rack"
                 [dataOut, scanForSave] = obj.runLocal_(scanObj, filename);
@@ -924,6 +926,44 @@ classdef measurementEngine < handle
             idx = find(obj.channelFriendlyNames == channelFriendlyName, 1);
             assert(~isempty(idx), "measurementEngine:UnknownChannel", "Unknown channel %s.", channelFriendlyName);
             chanSize = double(obj.channelSizes(idx));
+        end
+
+        function scanObj = prepareScanConstants_(obj, scanObj)
+            if isempty(scanObj.consts)
+                return;
+            end
+
+            consts = scanObj.consts;
+            if ~isfield(consts, "set")
+                [consts.set] = deal(1);
+            end
+
+            getMask = [consts.set] == 0;
+            scanObj.consts = consts;
+            if ~any(getMask)
+                return;
+            end
+
+            setMask = ~getMask;
+            if any(setMask)
+                setchans = string({consts(setMask).setchan});
+                if isrow(setchans)
+                    setchans = setchans.';
+                end
+                obj.rackSet(setchans, double([consts(setMask).val]).');
+            end
+
+            getchans = string({consts(getMask).setchan});
+            if isrow(getchans)
+                getchans = getchans.';
+            end
+            newvals = double(obj.rackGet(getchans));
+            getIdx = find(getMask);
+            for k = 1:numel(getIdx)
+                consts(getIdx(k)).val = newvals(k);
+            end
+            scanObj.consts = consts;
+            scanObj.constsPrepared = true;
         end
 
         function [dataOut, scanForSave] = runLocal_(obj, scanObj, filename)

@@ -17,6 +17,9 @@ classdef measurementScan
         % Legacy-style constants struct array with fields:
         %   setchan (char/string), val (double), set (logical/double)
         consts (1, :) struct = struct("setchan", {}, "val", {}, "set", {})
+        % Internal run-time flag: true when run() already applied set
+        % constants and refreshed get constants for this scan instance.
+        constsPrepared (1, 1) logical = false
 
         % Loop definitions (struct array). Required fields:
         %   npoints (double)
@@ -301,4 +304,3 @@ classdef measurementScan
         end
     end
 end
-
