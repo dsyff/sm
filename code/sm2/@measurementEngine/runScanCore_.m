@@ -29,7 +29,7 @@ function [data, stopped] = runScanCore_(rack, scanObj, onRead, figHandle, snapsh
         logFcn("runScanCore_ start name=" + scanObj.name + " loops=" + numel(scanObj.loops));
     end
 
-    if ~isempty(scanObj.consts)
+    if ~scanObj.constsPrepared && ~isempty(scanObj.consts)
         consts = scanObj.consts;
         if ~isfield(consts, "set")
             [consts.set] = deal(1);

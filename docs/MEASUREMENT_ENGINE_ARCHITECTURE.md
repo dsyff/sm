@@ -146,6 +146,11 @@ Both scan functions periodically send `struct("type", "tempData", "requestId", .
 
 Legacy scan structs are converted via `measurementScan.fromLegacy(...)`.
 
+If a scan includes any legacy "get constants" entries (`consts(k).set == 0`),
+`measurementEngine.run(...)` refreshes them once at run start (after applying
+any checked set constants) so the saved MAT/PPT metadata reflects run-start
+constant values.
+
 ### `instrumentRackRecipe`
 
 `instrumentRackRecipe` is a serializable "build plan" for constructing a rack on a worker:

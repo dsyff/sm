@@ -225,15 +225,23 @@ end
 
 function Enqueue
     global smaux smscan;
-    scan_index=get(smaux.sm.scans_lbh,'Value');
-    if isempty(scan_index)
+    if ~isfield(smaux,'scans') || isempty(smaux.scans)
         return;
     end
+    scan_index=get(smaux.sm.scans_lbh,'Value');
+    if isempty(scan_index)
+        scan_index = 1;
+    end
+    scan_index = min(max(1, scan_index(1)), length(smaux.scans));
     scan = smaux.scans{scan_index};
-    queue_index=get(smaux.sm.queue_lbh,'Value');
-    if ~isfield(smaux,'smq')
+    if ~isfield(smaux,'smq') || isempty(smaux.smq)
         smaux.smq{1}=scan;
     else
+        queue_index=get(smaux.sm.queue_lbh,'Value');
+        if isempty(queue_index)
+            queue_index = 1;
+        end
+        queue_index = min(max(1, queue_index(1)), length(smaux.smq));
         smaux.smq=[smaux.smq(1:queue_index) scan smaux.smq(queue_index+1:end)];
     end
     UpdateToGUI;
@@ -242,13 +250,14 @@ end
 function EditScan
     global smaux smscan;
     try
-        queue_index=get(smaux.sm.queue_lbh,'Value');
-        if isempty(queue_index) || queue_index == 0
+        if ~isfield(smaux,'smq') || isempty(smaux.smq)
             return;
         end
-        if queue_index > length(smaux.smq)
-            queue_index = length(smaux.smq);
+        queue_index=get(smaux.sm.queue_lbh,'Value');
+        if isempty(queue_index)
+            queue_index = 1;
         end
+        queue_index = min(max(1, queue_index(1)), length(smaux.smq));
         if ~isfield(smaux.smq{queue_index},'loops') && isfield(smaux.smq{queue_index},'eval')
             set(smaux.sm.qtxt_eth,'String',smaux.smq{queue_index}.eval);
             smaux.smq(queue_index)=[];
@@ -275,10 +284,14 @@ end
 function EditScan2
     global smaux smscan;
     try
-        scan_index=get(smaux.sm.scans_lbh,'Value');
-        if isempty(scan_index)
+        if ~isfield(smaux,'scans') || isempty(smaux.scans)
             return;
         end
+        scan_index=get(smaux.sm.scans_lbh,'Value');
+        if isempty(scan_index)
+            scan_index = 1;
+        end
+        scan_index = min(max(1, scan_index(1)), length(smaux.scans));
         smscan = smaux.scans{scan_index};
         smgui_small;
     catch ME
@@ -311,10 +324,14 @@ function TXTenqueue
     scan.eval = get(smaux.sm.qtxt_eth,'String');
     set(smaux.sm.qtxt_eth,'String','');
     scan.name = ['EVAL(' scan.eval(1,:) '...)'];
-    queue_index=get(smaux.sm.queue_lbh,'Value');
-    if ~isfield(smaux,'smq')
+    if ~isfield(smaux,'smq') || isempty(smaux.smq)
         smaux.smq{1}=scan;
     else
+        queue_index=get(smaux.sm.queue_lbh,'Value');
+        if isempty(queue_index)
+            queue_index = 1;
+        end
+        queue_index = min(max(1, queue_index(1)), length(smaux.smq));
         smaux.smq=[smaux.smq(1:queue_index) scan smaux.smq(queue_index+1:end)];
     end
     UpdateToGUI;
@@ -537,31 +554,35 @@ end
 
 function QueueKey(eventdata)
     global smaux
-    if strcmp(eventdata.Key,'delete')
+    if strcmp(eventdata.Key,'delete') && isfield(smaux,'smq') && ~isempty(smaux.smq)
         queue_index=get(smaux.sm.queue_lbh,'Value');
-        if queue_index>0
-            smaux.smq(queue_index) = [];
-            if queue_index > length(smaux.smq) && ~isempty(smaux.smq)
-                queue_index = length(smaux.smq);
-                set(smaux.sm.queue_lbh,'Value',queue_index);
-            end
-            UpdateToGUI;
+        if isempty(queue_index)
+            queue_index = 1;
         end
+        queue_index = min(max(1, queue_index(1)), length(smaux.smq));
+        smaux.smq(queue_index) = [];
+        if queue_index > length(smaux.smq) && ~isempty(smaux.smq)
+            queue_index = length(smaux.smq);
+            set(smaux.sm.queue_lbh,'Value',queue_index);
+        end
+        UpdateToGUI;
     end
 end
 
 function ScansKey(eventdata)
     global smaux
-    if strcmp(eventdata.Key,'delete')
+    if strcmp(eventdata.Key,'delete') && isfield(smaux,'scans') && ~isempty(smaux.scans)
         scan_index=get(smaux.sm.scans_lbh,'Value');
-        if scan_index>0
-            smaux.scans(scan_index) = [];
-            if scan_index > length(smaux.scans) && ~isempty(smaux.scans)
-                scan_index = length(smaux.scans);
-                set(smaux.sm.scans_lbh,'Value',scan_index);
-            end
-            UpdateToGUI;
+        if isempty(scan_index)
+            scan_index = 1;
         end
+        scan_index = min(max(1, scan_index(1)), length(smaux.scans));
+        smaux.scans(scan_index) = [];
+        if scan_index > length(smaux.scans) && ~isempty(smaux.scans)
+            scan_index = length(smaux.scans);
+            set(smaux.sm.scans_lbh,'Value',scan_index);
+        end
+        UpdateToGUI;
     end
 end
 
@@ -640,10 +661,6 @@ function UpdateToGUI
     try
         %populates available scans
         scannames = {};
-        scan_index=get(smaux.sm.scans_lbh,'Value');
-        if isempty(scan_index)
-            scan_index = 0;
-        end
         if isfield(smaux,'scans') && iscell(smaux.scans)
             scannames = cell(1, length(smaux.scans));
             for i=1:length(smaux.scans)
@@ -655,24 +672,10 @@ function UpdateToGUI
         else
             smaux.scans = {};
         end
-        set(smaux.sm.scans_lbh,'String',scannames);
-        if scan_index>length(smaux.scans) || (scan_index==0 && ~isempty(smaux.scans))
-            set(smaux.sm.scans_lbh,'Value',length(smaux.scans));
-        end
+        refreshSingleSelectListbox(smaux.sm.scans_lbh, scannames);
         
         %populates queue list box
         qnames = {};
-        
-        queue_index=get(smaux.sm.queue_lbh,'Value');
-        if isempty(queue_index) && ~isempty(get(smaux.sm.queue_lbh,'String'))
-            queue_index = 1;
-            set(smaux.sm.queue_lbh,'Value',queue_index);
-        end
-        queue_index=get(smaux.sm.queue_lbh,'Value');
-        if isempty(queue_index)
-            queue_index = 0;
-        end
-        
         if isfield(smaux,'smq') && iscell(smaux.smq)
             qnames = cell(1, length(smaux.smq));
             for i=1:length(smaux.smq)
@@ -685,10 +688,7 @@ function UpdateToGUI
         else
             smaux.smq={};
         end
-        set(smaux.sm.queue_lbh,'String',qnames);
-        if queue_index>length(smaux.smq) || (queue_index==0 && ~isempty(smaux.smq))
-            set(smaux.sm.queue_lbh,'Value',length(smaux.smq));
-        end
+        refreshSingleSelectListbox(smaux.sm.queue_lbh, qnames);
         
         %populate data path sth
         rootPath = string(pwd);
@@ -775,6 +775,35 @@ function UpdateToGUI
         % Show error dialog
         errordlg(errorMsg, 'UpdateToGUI Error', 'modal');
     end
+end
+
+function refreshSingleSelectListbox(handle, items)
+    currentStrings = get(handle, 'String');
+    currentValue = get(handle, 'Value');
+    currentTop = get(handle, 'ListboxTop');
+    if isempty(currentValue)
+        currentValue = 1;
+    end
+    if isempty(currentTop)
+        currentTop = 1;
+    end
+    if isempty(items)
+        items = {''};
+        targetValue = 1;
+        targetTop = 1;
+    else
+        targetValue = min(max(1, currentValue(1)), length(items));
+        targetTop = min(max(1, currentTop(1)), length(items));
+    end
+    if ~isempty(currentStrings)
+        % GUIDE listboxes are single-select, so selection/top must be valid
+        % before shrinking the String list.
+        set(handle, 'Value', 1);
+        set(handle, 'ListboxTop', 1);
+    end
+    set(handle, 'String', items);
+    set(handle, 'Value', targetValue);
+    set(handle, 'ListboxTop', targetTop);
 end
 
 
