@@ -285,7 +285,7 @@ if SR860_1_Use
     % recipe.addChannel("SR860_1", "sync_filter", SR860_1_keyword + "_sync");
     % recipe.addChannel("SR860_1", "XY", SR860_1_keyword + "_XY");
     recipe.addChannel("SR860_1", "XTheta", SR860_1_keyword + "_XTheta");
-    % recipe.addChannel("SR860_1", "YTheta", SR860_1_keyword + "_YTheta");
+    recipe.addChannel("SR860_1", "YTheta", SR860_1_keyword + "_YTheta");
     % recipe.addChannel("SR860_1", "RTheta", SR860_1_keyword + "_RTheta");
     % recipe.addChannel("SR860_1", "dc_offset", SR860_1_keyword + "_dc_offset");
 end
@@ -321,7 +321,7 @@ if SR830_1_Use
     % recipe.addChannel("SR830_1", "sync_filter", SR830_1_keyword + "_sync");
     % recipe.addChannel("SR830_1", "XY", SR830_1_keyword + "_XY");
     recipe.addChannel("SR830_1", "XTheta", SR830_1_keyword + "_XTheta");
-    % recipe.addChannel("SR830_1", "YTheta", SR830_1_keyword + "_YTheta");
+    recipe.addChannel("SR830_1", "YTheta", SR830_1_keyword + "_YTheta");
     % recipe.addChannel("SR830_1", "RTheta", SR830_1_keyword + "_RTheta");
 end
 
@@ -354,7 +354,7 @@ if SR860_2_Use
     % recipe.addChannel("SR860_2", "sync_filter", SR860_2_keyword + "_sync");
     % recipe.addChannel("SR860_2", "XY", SR860_2_keyword + "_XY");
     recipe.addChannel("SR860_2", "XTheta", SR860_2_keyword + "_XTheta");
-    % recipe.addChannel("SR860_2", "YTheta", SR860_2_keyword + "_YTheta");
+    recipe.addChannel("SR860_2", "YTheta", SR860_2_keyword + "_YTheta");
     % recipe.addChannel("SR860_2", "RTheta", SR860_2_keyword + "_RTheta");
     % recipe.addChannel("SR860_2", "dc_offset", SR860_2_keyword + "_dc_offset");
 end
@@ -390,7 +390,7 @@ if SR830_2_Use
     % recipe.addChannel("SR830_2", "sync_filter", SR830_2_keyword + "_sync");
     % recipe.addChannel("SR830_2", "XY", SR830_2_keyword + "_XY");
     recipe.addChannel("SR830_2", "XTheta", SR830_2_keyword + "_XTheta");
-    % recipe.addChannel("SR830_2", "YTheta", SR830_2_keyword + "_YTheta");
+    recipe.addChannel("SR830_2", "YTheta", SR830_2_keyword + "_YTheta");
     % recipe.addChannel("SR830_2", "RTheta", SR830_2_keyword + "_RTheta");
 end
 
@@ -423,7 +423,7 @@ if SR860_3_Use
     % recipe.addChannel("SR860_3", "sync_filter", SR860_3_keyword + "_sync");
     % recipe.addChannel("SR860_3", "XY", SR860_3_keyword + "_XY");
     recipe.addChannel("SR860_3", "XTheta", SR860_3_keyword + "_XTheta");
-    % recipe.addChannel("SR860_3", "YTheta", SR860_3_keyword + "_YTheta");
+    recipe.addChannel("SR860_3", "YTheta", SR860_3_keyword + "_YTheta");
     % recipe.addChannel("SR860_3", "RTheta", SR860_3_keyword + "_RTheta");
     % recipe.addChannel("SR860_3", "dc_offset", SR860_3_keyword + "_dc_offset");
 end
@@ -459,7 +459,7 @@ if SR830_3_Use
     % recipe.addChannel("SR830_3", "sync_filter", SR830_3_keyword + "_sync");
     % recipe.addChannel("SR830_3", "XY", SR830_3_keyword + "_XY");
     recipe.addChannel("SR830_3", "XTheta", SR830_3_keyword + "_XTheta");
-    % recipe.addChannel("SR830_3", "YTheta", SR830_3_keyword + "_YTheta");
+    recipe.addChannel("SR830_3", "YTheta", SR830_3_keyword + "_YTheta");
     % recipe.addChannel("SR830_3", "RTheta", SR830_3_keyword + "_RTheta");
 end
 
@@ -492,7 +492,7 @@ if SR860_4_Use
     % recipe.addChannel("SR860_4", "sync_filter", SR860_4_keyword + "_sync");
     % recipe.addChannel("SR860_4", "XY", SR860_4_keyword + "_XY");
     recipe.addChannel("SR860_4", "XTheta", SR860_4_keyword + "_XTheta");
-    % recipe.addChannel("SR860_4", "YTheta", SR860_4_keyword + "_YTheta");
+    recipe.addChannel("SR860_4", "YTheta", SR860_4_keyword + "_YTheta");
     % recipe.addChannel("SR860_4", "RTheta", SR860_4_keyword + "_RTheta");
     % recipe.addChannel("SR860_4", "dc_offset", SR860_4_keyword + "_dc_offset");
 end
@@ -528,7 +528,7 @@ if SR830_4_Use
     % recipe.addChannel("SR830_4", "sync_filter", SR830_4_keyword + "_sync");
     % recipe.addChannel("SR830_4", "XY", SR830_4_keyword + "_XY");
     recipe.addChannel("SR830_4", "XTheta", SR830_4_keyword + "_XTheta");
-    % recipe.addChannel("SR830_4", "YTheta", SR830_4_keyword + "_YTheta");
+    recipe.addChannel("SR830_4", "YTheta", SR830_4_keyword + "_YTheta");
     % recipe.addChannel("SR830_4", "RTheta", SR830_4_keyword + "_RTheta");
 end
 
@@ -561,7 +561,7 @@ if SR860_5_Use
     % recipe.addChannel("SR860_5", "sync_filter", SR860_5_keyword + "_sync");
     % recipe.addChannel("SR860_5", "XY", SR860_5_keyword + "_XY");
     recipe.addChannel("SR860_5", "XTheta", SR860_5_keyword + "_XTheta");
-    % recipe.addChannel("SR860_5", "YTheta", SR860_5_keyword + "_YTheta");
+    recipe.addChannel("SR860_5", "YTheta", SR860_5_keyword + "_YTheta");
     % recipe.addChannel("SR860_5", "RTheta", SR860_5_keyword + "_RTheta");
     % recipe.addChannel("SR860_5", "dc_offset", SR860_5_keyword + "_dc_offset");
 end
@@ -597,7 +597,7 @@ if SR830_5_Use
     % recipe.addChannel("SR830_5", "sync_filter", SR830_5_keyword + "_sync");
     % recipe.addChannel("SR830_5", "XY", SR830_5_keyword + "_XY");
     recipe.addChannel("SR830_5", "XTheta", SR830_5_keyword + "_XTheta");
-    % recipe.addChannel("SR830_5", "YTheta", SR830_5_keyword + "_YTheta");
+    recipe.addChannel("SR830_5", "YTheta", SR830_5_keyword + "_YTheta");
     % recipe.addChannel("SR830_5", "RTheta", SR830_5_keyword + "_RTheta");
 end
 
@@ -630,7 +630,7 @@ if SR860_6_Use
     % recipe.addChannel("SR860_6", "sync_filter", SR860_6_keyword + "_sync");
     % recipe.addChannel("SR860_6", "XY", SR860_6_keyword + "_XY");
     recipe.addChannel("SR860_6", "XTheta", SR860_6_keyword + "_XTheta");
-    % recipe.addChannel("SR860_6", "YTheta", SR860_6_keyword + "_YTheta");
+    recipe.addChannel("SR860_6", "YTheta", SR860_6_keyword + "_YTheta");
     % recipe.addChannel("SR860_6", "RTheta", SR860_6_keyword + "_RTheta");
     % recipe.addChannel("SR860_6", "dc_offset", SR860_6_keyword + "_dc_offset");
 end
@@ -666,7 +666,7 @@ if SR830_6_Use
     % recipe.addChannel("SR830_6", "sync_filter", SR830_6_keyword + "_sync");
     % recipe.addChannel("SR830_6", "XY", SR830_6_keyword + "_XY");
     recipe.addChannel("SR830_6", "XTheta", SR830_6_keyword + "_XTheta");
-    % recipe.addChannel("SR830_6", "YTheta", SR830_6_keyword + "_YTheta");
+    recipe.addChannel("SR830_6", "YTheta", SR830_6_keyword + "_YTheta");
     % recipe.addChannel("SR830_6", "RTheta", SR830_6_keyword + "_RTheta");
 end
 
