@@ -240,7 +240,7 @@ KEY DIFFERENCES from physical instruments:
   - Constructor takes masterRack instead of address
   - getWriteChannelHelper is sealed (does nothing)
   - Use obj.getMasterRack() to access other channels
-  - requireSetCheck is automatically set to false
+  - requireSetCheck inherits the instrumentInterface default (true); set it explicitly in the constructor if you want different behavior
 
 
 ================================================================================

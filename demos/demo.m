@@ -37,6 +37,8 @@ SR860_4_GPIB = 10; % use same GPIB as SR830_4
 SR830_4_GPIB = SR860_4_GPIB; %vxx3
 SR860_5_GPIB = 11; % use same GPIB as SR830_5
 SR830_5_GPIB = SR860_5_GPIB; %vxx4
+SR860_6_GPIB = 12; % use same GPIB as SR830_6
+SR830_6_GPIB = SR860_6_GPIB; %vxx5
 
 K2450_A_GPIB = 17; %vbg/strain cell outer
 K2450_B_GPIB = 18; %vtg/strain cell inner
@@ -107,22 +109,31 @@ SR860_1_Use = 0;
 SR860_1_keyword = "Ixx";
 SR830_1_Use = 0;
 SR830_1_keyword = "Ixx";
+
 SR860_2_Use = 0;
 SR860_2_keyword = "Vxx1";
 SR830_2_Use = 0;
 SR830_2_keyword = "Vxx1";
+
 SR860_3_Use = 0;
 SR860_3_keyword = "Vxx2";
 SR830_3_Use = 0;
 SR830_3_keyword = "Vxx2";
+
 SR860_4_Use = 0;
 SR860_4_keyword = "Vxx3";
 SR830_4_Use = 0;
 SR830_4_keyword = "Vxx3";
+
 SR860_5_Use = 0;
 SR860_5_keyword = "Vxx4";
 SR830_5_Use = 0;
 SR830_5_keyword = "Vxx4";
+
+SR860_6_Use = 0;
+SR860_6_keyword = "Vxx5";
+SR830_6_Use = 0;
+SR830_6_keyword = "Vxx5";
 
 K2450_A_Use = 0;
 K2450_A_keyword = "bg";
@@ -590,6 +601,75 @@ if SR830_5_Use
     % recipe.addChannel("SR830_5", "RTheta", SR830_5_keyword + "_RTheta");
 end
 
+if SR860_6_Use
+    recipe.addInstrument("handle_SR860_6", "instrument_SR860", "SR860_6", gpibAddress(SR860_6_GPIB, adaptorIndex));
+    recipe.addStatement("SR860_6", "handle_SR860_6.requireSetCheck = false;");
+    % Optional SR860 frontend settings (commented by default):
+    % recipe.addStatement("SR860_6", "h = handle_SR860_6.communicationHandle;");
+    % recipe.addStatement("SR860_6", "writeline(h, ""isrc 1"");"); % Input source: 0=A, 1=A-B
+    % recipe.addStatement("SR860_6", "writeline(h, ""ivmd 0"");"); % Input source: 0=voltage, 1=current
+    % recipe.addStatement("SR860_6", "writeline(h, ""ignd 1"");"); % Input grounding: 0=float, 1=ground
+    % recipe.addStatement("SR860_6", "writeline(h, ""icpl 0"");"); % Input coupling: 0=AC, 1=DC
+    % Optional SR860 channels (commented by default):
+    % recipe.addChannel("SR860_6", "X", SR860_6_keyword + "_X");
+    % recipe.addChannel("SR860_6", "Y", SR860_6_keyword + "_Y");
+    % recipe.addChannel("SR860_6", "R", SR860_6_keyword + "_R");
+    % recipe.addChannel("SR860_6", "Theta", SR860_6_keyword + "_Theta");
+    % recipe.addChannel("SR860_6", "frequency", SR860_6_keyword + "_Freq");
+    % recipe.addChannel("SR860_6", "amplitude", SR860_6_keyword + "_V_exc");
+    % recipe.addChannel("SR860_6", "aux_in_0", "SR860_6_aux_in_0");
+    % recipe.addChannel("SR860_6", "aux_in_1", "SR860_6_aux_in_1");
+    % recipe.addChannel("SR860_6", "aux_in_2", "SR860_6_aux_in_2");
+    % recipe.addChannel("SR860_6", "aux_in_3", "SR860_6_aux_in_3");
+    % recipe.addChannel("SR860_6", "aux_out_0", "SR860_6_aux_out_0");
+    % recipe.addChannel("SR860_6", "aux_out_1", "SR860_6_aux_out_1");
+    % recipe.addChannel("SR860_6", "aux_out_2", "SR860_6_aux_out_2");
+    % recipe.addChannel("SR860_6", "aux_out_3", "SR860_6_aux_out_3");
+    recipe.addChannel("SR860_6", "sensitivity", SR860_6_keyword + "_Sens");
+    % recipe.addChannel("SR860_6", "time_constant", SR860_6_keyword + "_tau");
+    % recipe.addChannel("SR860_6", "sync_filter", SR860_6_keyword + "_sync");
+    % recipe.addChannel("SR860_6", "XY", SR860_6_keyword + "_XY");
+    recipe.addChannel("SR860_6", "XTheta", SR860_6_keyword + "_XTheta");
+    % recipe.addChannel("SR860_6", "YTheta", SR860_6_keyword + "_YTheta");
+    % recipe.addChannel("SR860_6", "RTheta", SR860_6_keyword + "_RTheta");
+    % recipe.addChannel("SR860_6", "dc_offset", SR860_6_keyword + "_dc_offset");
+end
+
+if SR830_6_Use
+    recipe.addInstrument("handle_SR830_6", "instrument_SR830", "SR830_6", gpibAddress(SR830_6_GPIB, adaptorIndex));
+    recipe.addStatement("SR830_6", "handle_SR830_6.requireSetCheck = false;");
+    % Optional SR830 frontend settings (commented by default):
+    % recipe.addStatement("SR830_6", "h = handle_SR830_6.communicationHandle;");
+    % recipe.addStatement("SR830_6", "writeline(h, ""isrc 1"");"); % Input source: 0=A, 1=A-B, 2=I(1MOhm), 3=I(100MOhm)
+    % recipe.addStatement("SR830_6", "writeline(h, ""ignd 1"");"); % Input grounding: 0=float, 1=ground
+    % recipe.addStatement("SR830_6", "writeline(h, ""icpl 0"");"); % Input coupling: 0=AC, 1=DC
+    % recipe.addStatement("SR830_6", "writeline(h, ""ilin 0"");"); % Input line notch filter: 0=none, 1=line, 2=2xline, 3=both
+    % recipe.addStatement("SR830_6", "writeline(h, ""rmod 0"");"); % Reserve mode: 0=high, 1=normal, 2=low
+    % recipe.addStatement("SR830_6", "writeline(h, ""slp 0"");"); % Output filter slope: 0=6dB, 1=12dB, 2=18dB, 3=24dB
+    % Optional SR830 channels (commented by default):
+    % recipe.addChannel("SR830_6", "X", SR830_6_keyword + "_X");
+    % recipe.addChannel("SR830_6", "Y", SR830_6_keyword + "_Y");
+    % recipe.addChannel("SR830_6", "R", SR830_6_keyword + "_R");
+    % recipe.addChannel("SR830_6", "Theta", SR830_6_keyword + "_Theta");
+    % recipe.addChannel("SR830_6", "frequency", SR830_6_keyword + "_Freq");
+    % recipe.addChannel("SR830_6", "amplitude", SR830_6_keyword + "_V_exc");
+    % recipe.addChannel("SR830_6", "aux_in_1", "SR830_6_aux_in_1");
+    % recipe.addChannel("SR830_6", "aux_in_2", "SR830_6_aux_in_2");
+    % recipe.addChannel("SR830_6", "aux_in_3", "SR830_6_aux_in_3");
+    % recipe.addChannel("SR830_6", "aux_in_4", "SR830_6_aux_in_4");
+    % recipe.addChannel("SR830_6", "aux_out_1", "SR830_6_aux_out_1");
+    % recipe.addChannel("SR830_6", "aux_out_2", "SR830_6_aux_out_2");
+    % recipe.addChannel("SR830_6", "aux_out_3", "SR830_6_aux_out_3");
+    % recipe.addChannel("SR830_6", "aux_out_4", "SR830_6_aux_out_4");
+    recipe.addChannel("SR830_6", "sensitivity", SR830_6_keyword + "_Sens");
+    % recipe.addChannel("SR830_6", "time_constant", SR830_6_keyword + "_tau");
+    % recipe.addChannel("SR830_6", "sync_filter", SR830_6_keyword + "_sync");
+    % recipe.addChannel("SR830_6", "XY", SR830_6_keyword + "_XY");
+    recipe.addChannel("SR830_6", "XTheta", SR830_6_keyword + "_XTheta");
+    % recipe.addChannel("SR830_6", "YTheta", SR830_6_keyword + "_YTheta");
+    % recipe.addChannel("SR830_6", "RTheta", SR830_6_keyword + "_RTheta");
+end
+
 if K2450_A_Use && ~strainController_Use
     recipe.addInstrument("handle_K2450_A", "instrument_K2450", "K2450_A", gpibAddress(K2450_A_GPIB, adaptorIndex));
     recipe.addStatement("K2450_A", "handle_K2450_A.requireSetCheck = false;");
@@ -601,7 +681,7 @@ if K2450_A_Use && ~strainController_Use
     recipe.addStatement("K2450_A", "writeline(h, ':SENSe:CURRent:RANGe 1e-7');");
     recipe.addStatement("K2450_A", "writeline(h, ':SOURce:VOLTage:ILIMit 1e-7');");
     recipe.addStatement("K2450_A", "writeline(h, ':SOURce:VOLTage:RANGe 20');");
-    recipe.addStatement("K2450_A", "writeline(h, ':SENSe:CURRent:NPLCycles 0.5');");
+    recipe.addStatement("K2450_A", "writeline(h, ':SENSe:CURRent:NPLCycles 1');");
     recipe.addStatement("K2450_A", "writeline(h, ':OUTPut ON');");
     recipe.addStatement("K2450_A", "pause(2);");
     recipe.addChannel("K2450_A", "V_source", "V_" + K2450_A_keyword, 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
@@ -620,7 +700,7 @@ if K2450_B_Use && ~strainController_Use
     recipe.addStatement("K2450_B", "writeline(h, ':SENSe:CURRent:RANGe 1e-7');");
     recipe.addStatement("K2450_B", "writeline(h, ':SOURce:VOLTage:ILIMit 1e-7');");
     recipe.addStatement("K2450_B", "writeline(h, ':SOURce:VOLTage:RANGe 20');");
-    recipe.addStatement("K2450_B", "writeline(h, ':SENSe:CURRent:NPLCycles 0.5');");
+    recipe.addStatement("K2450_B", "writeline(h, ':SENSe:CURRent:NPLCycles 1');");
     recipe.addStatement("K2450_B", "writeline(h, ':OUTPut ON');");
     recipe.addStatement("K2450_B", "pause(2);");
     recipe.addChannel("K2450_B", "V_source", "V_" + K2450_B_keyword, 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
@@ -639,7 +719,7 @@ if K2450_C_Use
     recipe.addStatement("K2450_C", "writeline(h, ':SENSe:CURRent:RANGe 1e-7');");
     recipe.addStatement("K2450_C", "writeline(h, ':SOURce:VOLTage:ILIMit 1e-7');");
     recipe.addStatement("K2450_C", "writeline(h, ':SOURce:VOLTage:RANGe 20');");
-    recipe.addStatement("K2450_C", "writeline(h, ':SENSe:CURRent:NPLCycles 0.5');");
+    recipe.addStatement("K2450_C", "writeline(h, ':SENSe:CURRent:NPLCycles 1');");
     recipe.addStatement("K2450_C", "writeline(h, ':OUTPut ON');");
     recipe.addStatement("K2450_C", "pause(2);");
     recipe.addChannel("K2450_C", "V_source", "V_" + K2450_C_keyword, 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
@@ -657,7 +737,7 @@ if K2400_A_Use
     recipe.addStatement("K2400_A", "writeline(h, ':SENSe:CURRent:RANGe 1e-7');");
     recipe.addStatement("K2400_A", "writeline(h, ':SENSe:CURRent:PROTection 1e-7');");
     recipe.addStatement("K2400_A", "writeline(h, ':SOURce:VOLTage:RANGe 20');");
-    recipe.addStatement("K2400_A", "writeline(h, ':CURRent:NPLCycles 0.5');");
+    recipe.addStatement("K2400_A", "writeline(h, ':CURRent:NPLCycles 1');");
     recipe.addStatement("K2400_A", "writeline(h, ':OUTPut ON');");
     recipe.addStatement("K2400_A", "pause(2);");
     recipe.addChannel("K2400_A", "V_source", "V_" + K2400_A_keyword, 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
@@ -675,7 +755,7 @@ if K2400_B_Use
     recipe.addStatement("K2400_B", "writeline(h, ':SENSe:CURRent:RANGe 1e-7');");
     recipe.addStatement("K2400_B", "writeline(h, ':SENSe:CURRent:PROTection 1e-7');");
     recipe.addStatement("K2400_B", "writeline(h, ':SOURce:VOLTage:RANGe 20');");
-    recipe.addStatement("K2400_B", "writeline(h, ':CURRent:NPLCycles 0.5');");
+    recipe.addStatement("K2400_B", "writeline(h, ':CURRent:NPLCycles 1');");
     recipe.addStatement("K2400_B", "writeline(h, ':OUTPut ON');");
     recipe.addStatement("K2400_B", "pause(2);");
     recipe.addChannel("K2400_B", "V_source", "V_" + K2400_B_keyword, 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
@@ -693,7 +773,7 @@ if K2400_C_Use
     recipe.addStatement("K2400_C", "writeline(h, ':SENSe:CURRent:RANGe 1e-7');");
     recipe.addStatement("K2400_C", "writeline(h, ':SENSe:CURRent:PROTection 1e-7');");
     recipe.addStatement("K2400_C", "writeline(h, ':SOURce:VOLTage:RANGe 20');");
-    recipe.addStatement("K2400_C", "writeline(h, ':CURRent:NPLCycles 0.5');");
+    recipe.addStatement("K2400_C", "writeline(h, ':CURRent:NPLCycles 1');");
     recipe.addStatement("K2400_C", "writeline(h, ':OUTPut ON');");
     recipe.addStatement("K2400_C", "pause(2);");
     recipe.addChannel("K2400_C", "V_source", "V_" + K2400_C_keyword, 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
@@ -936,6 +1016,7 @@ end
 if virtual_hysteresis_Use
     recipe.addVirtualInstrument("handle_virtual_hysteresis", "virtualInstrument_hysteresis", "virtual_hysteresis1", "virtual_hysteresis1", ...
         setChannelName = "V_tg", min = -5, max = 5);
+    recipe.addStatement("virtual_hysteresis1", "handle_virtual_hysteresis.requireSetCheck = true;");
     recipe.addChannel("virtual_hysteresis1", "hysteresis", "hys_V_tg", [], [], 0, 1);
 end
 
@@ -955,6 +1036,7 @@ if virtual_nE_Use
         vTg_n0E0 = -1, ...
         vBg_n0ENot0 = 2, ...
         vTg_n0ENot0 = -2);
+    recipe.addStatement("virtual_nE", "handle_virtual_nE.requireSetCheck = true;");
     recipe.addChannel("virtual_nE", "n", "n_normalized", [], [], 0, 1);
     recipe.addChannel("virtual_nE", "E", "E_normalized", [], [], 0, 1);
     recipe.addChannel("virtual_nE", "nE_within_bounds", "nE_within_bounds");
