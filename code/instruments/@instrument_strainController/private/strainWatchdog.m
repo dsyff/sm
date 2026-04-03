@@ -10,7 +10,6 @@ arguments
     options.strainCellNumber (1, 1) uint8 {mustBeInteger, mustBePositive};
     options.outerCurrentLimit (1, 1) double {mustBePositive} = 1.6e-7;
     options.innerCurrentLimit (1, 1) double {mustBePositive} = 1e-7;
-    options.experimentRootPath {mustBeTextScalar} = ""
 end
 %% settings
 % If last sampling is older than staleTime ago, and if activeControl is on,
@@ -168,10 +167,7 @@ rack_strain.addChannel("K2450_B", "VI", "VI_str_i");
 %% create cleanup object that tries to ramp down voltages if strainWatchdog was not closed gracefully
 %cleanupObj = onCleanup(@() rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [0, 0]));
 %%
-rootPath = string(options.experimentRootPath);
-if strlength(rootPath) == 0
-    rootPath = experimentContext.getExperimentRootPath();
-end
+rootPath = experimentContext.getExperimentRootPath();
 if strlength(rootPath) == 0
     rootPath = string(pwd);
 end
