@@ -359,7 +359,7 @@ function engineWorkerMain_(engineToClient, recipe, workerFprintfQueue, experimen
                         end
                         if isfield(msg2, "state") && msg2.state == "queued"
                             error("measurementEngine:ParfevalQueued", ...
-                                "Worker spawn request was queued. Increase numeWorkersRequested in the recipe (pool size) and restart the engine.");
+                                "Worker spawn request was queued. Increase numWorkersRequested in the recipe (pool size) and restart the engine.");
                         end
                         return;
                     end

@@ -60,7 +60,7 @@ function rack = buildRackFromRecipe_(recipe, spawnOnClientFcn)
             nv = {nv};
         end
         inst = feval(className, ctorArgs{:}, nv{:});
-        inst.validateWorkersRequestedFromRecipe(double(step.numeWorkersRequested));
+        inst.validateWorkersRequestedFromRecipe(double(step.numWorkersRequested));
         assignin("base", char(step.handleVar), inst);
         rack.addInstrument(inst, step.friendlyName);
 
@@ -105,7 +105,7 @@ function rack = buildRackFromRecipe_(recipe, spawnOnClientFcn)
         end
 
         inst = feval(className, ctorArgs{1}, rack, ctorArgs{2:end}, nv{:});
-        inst.validateWorkersRequestedFromRecipe(double(step.numeWorkersRequested));
+        inst.validateWorkersRequestedFromRecipe(double(step.numWorkersRequested));
         assignin("base", char(step.handleVar), inst);
         rack.addInstrument(inst, step.friendlyName);
 

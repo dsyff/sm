@@ -1,9 +1,9 @@
 function requestWorkerSpawn(varargin)
 %REQUESTWORKERSPAWN Request the client to spawn a pool worker task.
 %
-% Intended for code running on the measurement engine worker. The engine
-% installs a function handle named "sm_spawnOnClient" in the worker base
-% workspace; this helper calls it.
+% Intended for recipe-build/runtime code running under measurementEngine.
+% The engine installs a function handle named "sm_spawnOnClient" in the
+% active base workspace; this helper calls it.
 %
 % Usage:
 %   requestWorkerSpawn(@fcn, nOut, arg1, arg2, ...)
@@ -38,19 +38,15 @@ if ~(isscalar(nOut) && isfinite(nOut) && nOut >= 0 && mod(nOut, 1) == 0)
     error("requestWorkerSpawn:InvalidNOut", "nOut must be a nonnegative integer.");
 end
 
-if isempty(getCurrentTask())
-    error("requestWorkerSpawn:NotOnWorker", "requestWorkerSpawn can only be called from a worker task.");
-end
-
 spawnOnClient = [];
 try
     spawnOnClient = evalin("base", "sm_spawnOnClient");
 catch
 end
 if isempty(spawnOnClient) || ~isa(spawnOnClient, "function_handle")
-    error("requestWorkerSpawn:Unavailable", "sm_spawnOnClient is not available in the worker base workspace.");
+    error("requestWorkerSpawn:Unavailable", ...
+        "requestWorkerSpawn requires measurementEngine recipe context; sm_spawnOnClient is not available in the base workspace.");
 end
 
 spawnOnClient(requestedBy, fcn, nOut, args{:});
 end
-
