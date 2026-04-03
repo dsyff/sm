@@ -290,11 +290,11 @@ directly.
 Two pieces are required:
   1) Pool sizing (EXPLICIT in the recipe):
      - When adding an instrument to an `instrumentRackRecipe`, pass the reserved
-       name-value `numeWorkersRequested = N` so the engine can allocate
-       (1 engine worker + sum(numeWorkersRequested)) processes.
+       name-value `numWorkersRequested = N` so the engine can allocate
+       (1 engine worker + sum(numWorkersRequested)) processes.
 
      Example:
-       recipe.addInstrument("h", "instrument_myInst", "myInst", ..., numeWorkersRequested = 2);
+       recipe.addInstrument("h", "instrument_myInst", "myInst", ..., numWorkersRequested = 2);
 
   2) Spawning the worker(s) from engine-worker code:
      - Call `requestWorkerSpawn(...)` from the worker to request the client to start a

@@ -39,7 +39,7 @@ engine = measurementEngine(recipe, singleThreaded = true);
 
 In recipe mode, the engine:
 
-- creates a process pool sized to \(1 + \sum \texttt{numeWorkersRequested}\)
+- creates a process pool sized to \(1 + \sum \texttt{numWorkersRequested}\)
 - starts the engine worker via `parfeval`
 - builds the rack on the engine worker
 - publishes channel metadata back to the client (friendly names + sizes)
@@ -165,13 +165,13 @@ constant values.
 
 Recipe mode cannot inspect instrument objects on the client, so **pool sizing is explicit**:
 
-- Pass `numeWorkersRequested = N` (reserved name-value) to `addInstrument(...)` / `addVirtualInstrument(...)`.
+- Pass `numWorkersRequested = N` (reserved name-value) to `addInstrument(...)` / `addVirtualInstrument(...)`.
 - Default is `0`.
 
 Example:
 
 ```matlab
-recipe.addInstrument("h", "instrument_myInst", "myInst", ..., numeWorkersRequested = 2);
+recipe.addInstrument("h", "instrument_myInst", "myInst", ..., numWorkersRequested = 2);
 ```
 
 ## Worker communication
@@ -252,7 +252,7 @@ Example (from engine worker code):
 requestWorkerSpawn("myInst", @myWorkerMain, 0, arg1, arg2);
 ```
 
-If the request is **queued** (pool too small), the engine throws a clear error instructing you to increase `numeWorkersRequested` and restart the engine.
+If the request is **queued** (pool too small), the engine throws a clear error instructing you to increase `numWorkersRequested` and restart the engine.
 
 ## Data saving
 

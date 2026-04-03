@@ -13,7 +13,7 @@ classdef instrumentRackRecipe < handle
             "friendlyName", {}, ...
             "positionalArgs", {}, ...
             "nameValuePairs", {}, ...
-            "numeWorkersRequested", {});
+            "numWorkersRequested", {});
 
         virtualInstrumentSteps (1, :) struct = struct( ...
             "handleVar", {}, ...
@@ -21,7 +21,7 @@ classdef instrumentRackRecipe < handle
             "friendlyName", {}, ...
             "positionalArgs", {}, ...
             "nameValuePairs", {}, ...
-            "numeWorkersRequested", {});
+            "numWorkersRequested", {});
 
         channelSteps (1, :) struct = struct( ...
             "instrumentFriendlyName", {}, ...
@@ -60,29 +60,33 @@ classdef instrumentRackRecipe < handle
             [positionalArgs, nameValuePairs] = instrumentRackRecipe.splitArgs_(varargin);
 
             % Extract recipe-specific name-values (and remove them from instrument constructor nvpairs).
-            numeWorkersRequested = [];
+            numWorkersRequested = [];
             if ~isempty(nameValuePairs)
                 keys = string(nameValuePairs(1:2:end));
                 if any(strcmpi(keys, "numWorkersRequired"))
                     error("instrumentRackRecipe:WorkersKeyRenamed", ...
-                        "Recipe key numWorkersRequired has been renamed to numeWorkersRequested.");
+                        "Recipe key numWorkersRequired has been renamed to numWorkersRequested.");
                 end
-                isWorkersKey = strcmpi(keys, "numeWorkersRequested");
+                if any(strcmpi(keys, "numeWorkersRequested"))
+                    error("instrumentRackRecipe:WorkersKeyRenamed", ...
+                        "Recipe key numeWorkersRequested has been renamed to numWorkersRequested.");
+                end
+                isWorkersKey = strcmpi(keys, "numWorkersRequested");
                 if any(isWorkersKey)
                     if nnz(isWorkersKey) > 1
-                        error("instrumentRackRecipe:DuplicateWorkersRequested", "numeWorkersRequested provided more than once.");
+                        error("instrumentRackRecipe:DuplicateWorkersRequested", "numWorkersRequested provided more than once.");
                     end
                     idx = find(isWorkersKey, 1, "first");
-                    numeWorkersRequested = double(nameValuePairs{2*idx});
+                    numWorkersRequested = double(nameValuePairs{2*idx});
                     nameValuePairs(2*idx-1:2*idx) = [];
                 end
             end
 
-            if isempty(numeWorkersRequested)
-                numeWorkersRequested = 0;
+            if isempty(numWorkersRequested)
+                numWorkersRequested = 0;
             end
-            if ~(isscalar(numeWorkersRequested) && isfinite(numeWorkersRequested) && numeWorkersRequested >= 0 && mod(numeWorkersRequested, 1) == 0)
-                error("instrumentRackRecipe:InvalidWorkersRequested", "numeWorkersRequested must be a nonnegative integer. Received: %s", formattedDisplayText(numeWorkersRequested));
+            if ~(isscalar(numWorkersRequested) && isfinite(numWorkersRequested) && numWorkersRequested >= 0 && mod(numWorkersRequested, 1) == 0)
+                error("instrumentRackRecipe:InvalidWorkersRequested", "numWorkersRequested must be a nonnegative integer. Received: %s", formattedDisplayText(numWorkersRequested));
             end
 
             step = struct();
@@ -91,7 +95,7 @@ classdef instrumentRackRecipe < handle
             step.friendlyName = friendlyName;
             step.positionalArgs = positionalArgs;
             step.nameValuePairs = nameValuePairs;
-            step.numeWorkersRequested = numeWorkersRequested;
+            step.numWorkersRequested = numWorkersRequested;
             obj.instrumentSteps(end+1) = step;
         end
 
@@ -119,28 +123,32 @@ classdef instrumentRackRecipe < handle
                 positionalArgs = {friendlyName};
             end
 
-            numeWorkersRequested = [];
+            numWorkersRequested = [];
             if ~isempty(nameValuePairs)
                 keys = string(nameValuePairs(1:2:end));
                 if any(strcmpi(keys, "numWorkersRequired"))
                     error("instrumentRackRecipe:WorkersKeyRenamed", ...
-                        "Recipe key numWorkersRequired has been renamed to numeWorkersRequested.");
+                        "Recipe key numWorkersRequired has been renamed to numWorkersRequested.");
                 end
-                isWorkersKey = strcmpi(keys, "numeWorkersRequested");
+                if any(strcmpi(keys, "numeWorkersRequested"))
+                    error("instrumentRackRecipe:WorkersKeyRenamed", ...
+                        "Recipe key numeWorkersRequested has been renamed to numWorkersRequested.");
+                end
+                isWorkersKey = strcmpi(keys, "numWorkersRequested");
                 if any(isWorkersKey)
                     if nnz(isWorkersKey) > 1
-                        error("instrumentRackRecipe:DuplicateWorkersRequested", "numeWorkersRequested provided more than once.");
+                        error("instrumentRackRecipe:DuplicateWorkersRequested", "numWorkersRequested provided more than once.");
                     end
                     idx = find(isWorkersKey, 1, "first");
-                    numeWorkersRequested = double(nameValuePairs{2*idx});
+                    numWorkersRequested = double(nameValuePairs{2*idx});
                     nameValuePairs(2*idx-1:2*idx) = [];
                 end
             end
-            if isempty(numeWorkersRequested)
-                numeWorkersRequested = 0;
+            if isempty(numWorkersRequested)
+                numWorkersRequested = 0;
             end
-            if ~(isscalar(numeWorkersRequested) && isfinite(numeWorkersRequested) && numeWorkersRequested >= 0 && mod(numeWorkersRequested, 1) == 0)
-                error("instrumentRackRecipe:InvalidWorkersRequested", "numeWorkersRequested must be a nonnegative integer. Received: %s", formattedDisplayText(numeWorkersRequested));
+            if ~(isscalar(numWorkersRequested) && isfinite(numWorkersRequested) && numWorkersRequested >= 0 && mod(numWorkersRequested, 1) == 0)
+                error("instrumentRackRecipe:InvalidWorkersRequested", "numWorkersRequested must be a nonnegative integer. Received: %s", formattedDisplayText(numWorkersRequested));
             end
 
             step = struct();
@@ -149,7 +157,7 @@ classdef instrumentRackRecipe < handle
             step.friendlyName = friendlyName;
             step.positionalArgs = positionalArgs;
             step.nameValuePairs = nameValuePairs;
-            step.numeWorkersRequested = numeWorkersRequested;
+            step.numWorkersRequested = numWorkersRequested;
             obj.virtualInstrumentSteps(end+1) = step;
         end
 
@@ -192,10 +200,10 @@ classdef instrumentRackRecipe < handle
             % Total *instrument* workers required (excluding the engine worker).
             n = 0;
             for k = 1:numel(obj.instrumentSteps)
-                n = n + double(obj.instrumentSteps(k).numeWorkersRequested);
+                n = n + double(obj.instrumentSteps(k).numWorkersRequested);
             end
             for k = 1:numel(obj.virtualInstrumentSteps)
-                n = n + double(obj.virtualInstrumentSteps(k).numeWorkersRequested);
+                n = n + double(obj.virtualInstrumentSteps(k).numWorkersRequested);
             end
         end
     end

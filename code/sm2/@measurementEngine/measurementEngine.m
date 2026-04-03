@@ -765,7 +765,7 @@ classdef measurementEngine < handle
             end
             if ~isempty(fut) && isprop(fut, "State") && matches(string(fut.State), "queued")
                 error("measurementEngine:ParfevalQueued", ...
-                    "Worker spawn request was queued. Increase numeWorkersRequested in the recipe (pool size) and restart the engine.");
+                    "Worker spawn request was queued. Increase numWorkersRequested in the recipe (pool size) and restart the engine.");
             end
         end
 
@@ -1447,6 +1447,10 @@ classdef measurementEngine < handle
             requestedBy = string(requestedBy);
             if strlength(requestedBy) == 0
                 requestedBy = "instrument";
+            end
+            rootPath = experimentContext.getExperimentRootPath();
+            if strlength(rootPath) > 0
+                experimentContext.setExperimentRootPath(rootPath);
             end
             experimentContext.setFprintfRelay(workerFprintfQueue, requestedBy);
 

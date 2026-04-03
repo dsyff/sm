@@ -95,16 +95,16 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
     end
 
     methods (Access = ?measurementEngine, Sealed)
-        function validateWorkersRequestedFromRecipe(obj, numeWorkersRequested)
+        function validateWorkersRequestedFromRecipe(obj, numWorkersRequested)
             arguments
                 obj
-                numeWorkersRequested (1, 1) double {mustBeNonnegative, mustBeInteger}
+                numWorkersRequested (1, 1) double {mustBeNonnegative, mustBeInteger}
             end
 
-            if double(obj.numWorkersRequired) ~= double(numeWorkersRequested)
+            if double(obj.numWorkersRequired) ~= double(numWorkersRequested)
                 error("instrumentInterface:WorkersRequestedMismatch", ...
-                    "%s declares numWorkersRequired=%d but recipe requested numeWorkersRequested=%d.", ...
-                    class(obj), double(obj.numWorkersRequired), double(numeWorkersRequested));
+                    "%s declares numWorkersRequired=%d but recipe requested numWorkersRequested=%d.", ...
+                    class(obj), double(obj.numWorkersRequired), double(numWorkersRequested));
             end
         end
     end
