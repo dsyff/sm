@@ -324,7 +324,7 @@ function engineWorkerMain_(engineToClient, recipe, workerFprintfQueue, experimen
         end
     end
 
-    function spawnOnClient(requestedBy, fcn, nOut, varargin)
+    function fut = spawnOnClient(requestedBy, fcn, nOut, varargin)
         if nargin < 1 || strlength(string(requestedBy)) == 0
             requestedBy = string(func2str(fcn));
         else
@@ -342,6 +342,7 @@ function engineWorkerMain_(engineToClient, recipe, workerFprintfQueue, experimen
             "fcn", fcn, ...
             "nOut", nOut, ...
             "args", {varargin}));
+        fut = [];
 
         startTime = datetime("now");
         timeout = minutes(2);
