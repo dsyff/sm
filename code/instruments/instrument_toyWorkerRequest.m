@@ -18,7 +18,7 @@ classdef instrument_toyWorkerRequest < instrumentInterface
             obj.numWorkersRequired = 1;
             obj.addChannel("value");
 
-            obj.handle_toyWorker = requestInstrumentWorker("toyWorkerRequest_worker", ...
+            obj.handle_toyWorker = instrumentWorker("toyWorkerRequest_worker", ...
                 @instrument_toyWorkerRequest.workerMain_, obj.address);
         end
 
@@ -27,7 +27,7 @@ classdef instrument_toyWorkerRequest < instrumentInterface
                 return;
             end
             try
-                instrument_toyWorkerRequest.workerSend_(obj.handle_toyWorker, "STOP");
+                obj.handle_toyWorker.instSendToInstWorker("STOP");
             catch
             end
             obj.handle_toyWorker = [];
@@ -43,8 +43,8 @@ classdef instrument_toyWorkerRequest < instrumentInterface
             if channelIndex ~= 1
                 error("instrument_toyWorkerRequest:UnsupportedChannel", "Unsupported channel index %d.", channelIndex);
             end
-            reply = instrument_toyWorkerRequest.workerQuery_(obj.handle_toyWorker, ...
-                struct("action", "SET", "value", setValues(1)), obj.workerTimeout);
+            reply = obj.handle_toyWorker.instQueryInstWorker( ...
+                struct("channel", "value", "action", "SET", "value", setValues(1)), obj.workerTimeout);
             if ~(islogical(reply) && isscalar(reply) && reply)
                 error("instrument_toyWorkerRequest:InvalidSetReply", ...
                     "Expected logical true reply. Received:\n%s", formattedDisplayText(reply));
@@ -55,97 +55,62 @@ classdef instrument_toyWorkerRequest < instrumentInterface
             if channelIndex ~= 1
                 error("instrument_toyWorkerRequest:UnsupportedChannel", "Unsupported channel index %d.", channelIndex);
             end
-            getValues = double(instrument_toyWorkerRequest.workerQuery_( ...
-                obj.handle_toyWorker, struct("action", "GET"), obj.workerTimeout));
+            getValues = double(obj.handle_toyWorker.instQueryInstWorker( ...
+                struct("channel", "value", "action", "GET"), obj.workerTimeout));
         end
     end
 
     methods (Static, Access = private)
-        function workerMain_(workerToInstrument, address)
-            instrumentToWorker = parallel.pool.PollableDataQueue;
-            send(workerToInstrument, instrumentToWorker);
+        function workerMain_(instWorker, address)
             experimentContext.print("[toyWorkerRequest worker] spawned for %s", address);
+            stopCommandIndex = instWorker.instWorkerRegisterStringCommands("STOP");
+            valueChannelIndex = instWorker.instWorkerRegisterChannels("value");
+            getActionIndex = instWorker.instWorkerActionIndex("GET");
+            setActionIndex = instWorker.instWorkerActionIndex("SET");
+            stringCommandKindIndex = uint32(1);
+            channelCommandKindIndex = uint32(2);
             storedValue = 0;
             keepAlive = true;
             while keepAlive
-                if instrumentToWorker.QueueLength == 0
-                    pause(1E-6);
-                    continue;
-                end
-                command = poll(instrumentToWorker);
                 try
-                    if isstruct(command)
-                        if ~isfield(command, "action")
-                            error("instrument_toyWorkerRequest:InvalidCommand", ...
-                                "Worker command struct must include action.");
-                        end
-                        switch string(command.action)
-                            case "GET"
-                                send(workerToInstrument, storedValue);
-                            case "SET"
-                                if ~(isfield(command, "value") && isnumeric(command.value) && isscalar(command.value))
+                    command = instWorker.instWorkerPollFromInst();
+                    switch command.kindIndex
+                        case stringCommandKindIndex
+                            switch command.stringCommandIndex
+                                case stopCommandIndex
+                                    keepAlive = false;
+                                otherwise
                                     error("instrument_toyWorkerRequest:InvalidCommand", ...
-                                        "SET command must include a numeric scalar value.");
-                                end
-                                storedValue = double(command.value);
-                                send(workerToInstrument, true);
-                            otherwise
-                                error("instrument_toyWorkerRequest:InvalidCommand", ...
-                                    "Unsupported worker action %s.", string(command.action));
-                        end
-                    elseif (isstring(command) && isscalar(command)) || ischar(command)
-                        switch string(command)
-                            case "STOP"
-                                keepAlive = false;
-                            otherwise
-                                error("instrument_toyWorkerRequest:InvalidCommand", ...
-                                    "Unsupported worker string command %s.", string(command));
-                        end
-                    else
-                        error("instrument_toyWorkerRequest:InvalidCommand", ...
-                            "Worker command must be a struct or string.");
+                                        "Unsupported worker string command %s.", command.stringCommand);
+                            end
+                        case channelCommandKindIndex
+                            switch command.channelIndex
+                                case valueChannelIndex
+                                    switch command.actionIndex
+                                        case getActionIndex
+                                            instWorker.instWorkerSendToInst(storedValue);
+                                        case setActionIndex
+                                            if ~(isnumeric(command.value) && isscalar(command.value))
+                                                error("instrument_toyWorkerRequest:InvalidCommand", ...
+                                                    "SET command must include a numeric scalar value.");
+                                            end
+                                            storedValue = double(command.value);
+                                            instWorker.instWorkerSendToInst(true);
+                                        otherwise
+                                            error("instrument_toyWorkerRequest:InvalidCommand", ...
+                                                "Unsupported worker action %s.", command.action);
+                                    end
+                                otherwise
+                                    error("instrument_toyWorkerRequest:InvalidCommand", ...
+                                        "Unsupported worker channel %s.", command.channel);
+                            end
+                        otherwise
+                            error("instrument_toyWorkerRequest:InvalidCommand", ...
+                                "Unsupported worker command kind %d.", double(command.kindIndex));
                     end
                 catch ME
-                    send(workerToInstrument, ME);
+                    instWorker.instWorkerSendExceptionToInst(ME);
                 end
-            end
-        end
-
-        function reply = workerQuery_(handle_toyWorker, command, timeout)
-            instrument_toyWorkerRequest.workerFlush_(handle_toyWorker);
-            send(handle_toyWorker.instrumentToWorker, command);
-            startTime = datetime("now");
-            while handle_toyWorker.workerToInstrument.QueueLength == 0
-                assert(datetime("now") - startTime < timeout, ...
-                    "instrument_toyWorkerRequest:WorkerTimeout", ...
-                    "Toy worker did not respond in time.");
-                pause(1E-6);
-            end
-            reply = poll(handle_toyWorker.workerToInstrument);
-            if isempty(reply)
-                error("instrument_toyWorkerRequest:EmptyReply", "Empty reply received from toy worker.");
-            end
-            if isa(reply, "MException")
-                rethrow(reply);
-            end
-        end
-
-        function workerSend_(handle_toyWorker, command)
-            instrument_toyWorkerRequest.workerFlush_(handle_toyWorker);
-            send(handle_toyWorker.instrumentToWorker, command);
-        end
-
-        function workerFlush_(handle_toyWorker)
-            while handle_toyWorker.workerToInstrument.QueueLength > 0
-                reply = poll(handle_toyWorker.workerToInstrument);
-                if isempty(reply)
-                    error("instrument_toyWorkerRequest:EmptyReply", "Empty reply received from toy worker.");
-                end
-                if isa(reply, "MException")
-                    rethrow(reply);
-                end
-                error("instrument_toyWorkerRequest:UnexpectedReply", ...
-                    "Unexpected queued worker reply:\n%s", formattedDisplayText(reply));
             end
         end
     end

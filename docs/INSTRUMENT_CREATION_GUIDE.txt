@@ -296,12 +296,63 @@ Two pieces are required:
      Example:
        recipe.addInstrument("h", "instrument_myInst", "myInst", ..., numWorkersRequested = 2);
 
-  2) Spawning the worker(s) from engine-worker code:
-     - Call `requestWorkerSpawn(...)` from the worker to request the client to start a
-       `parfeval` task on the shared pool.
+  2) Declaring the requirement in the instrument class:
+     - In the constructor, set:
+         obj.numWorkersRequired = N;
+       This must match the recipe's `numWorkersRequested = N`.
 
-     Example (from worker-side code):
-       requestWorkerSpawn("myInst", @myWorkerMain, 0, arg1, arg2);
+  3) Starting a dedicated instrument worker (RECOMMENDED PATTERN):
+     - In the instrument constructor, call:
+         handle_worker = instrumentWorker("myInst_worker", @myWorkerMain, requiredArg1, requiredArg2, ...);
+     - `instrumentWorker(...)` constructs the worker session object directly.
+     - Store that object directly on the instrument (for example in a private
+       property and/or `communicationHandle`).
+     - Use its methods for IPC:
+         handle_worker.instQueryInstWorker(command, timeout)
+         handle_worker.instSendToInstWorker(command)
+         handle_worker.instFlushFromInstWorker()
+
+     Minimal constructor example:
+       obj.numWorkersRequired = 1;
+       obj.handle_worker = instrumentWorker("myInst_worker", @myWorkerMain, obj.address);
+       obj.communicationHandle = obj.handle_worker;
+
+  4) Worker entry-point contract:
+     - The worker function's first input must be `instWorker`.
+     - `instWorker` is an `instrumentWorkerRuntime` object created by the
+       generic worker bootstrap wrapper.
+     - The bootstrap owns queue creation and the initial handshake.
+     - Worker code should use only the runtime API:
+         instWorker.instWorkerPollFromInst(...)
+         instWorker.instWorkerSendToInst(...)
+         instWorker.instWorkerSendExceptionToInst(...)
+
+     Minimal worker skeleton:
+       function myWorkerMain(instWorker, requiredArg1)
+           keepAlive = true;
+           while keepAlive
+               command = instWorker.instWorkerPollFromInst();
+               switch command.kindIndex
+                   case uint32(1)
+                       keepAlive = false;
+                   otherwise
+                       instWorker.instWorkerSendToInst(command.rawCommand);
+               end
+           end
+       end
+
+  5) Argument-passing rule:
+     - Pass only required, instrument-specific inputs directly to the worker.
+     - Do not pass generic runtime context when `experimentContext` can provide it
+       on the worker side (for example experiment root path / worker-safe logging).
+     - Prefer explicit required arguments over base-workspace lookups.
+
+  6) Low-level spawn helper:
+     - `requestWorkerSpawn(...)` is the lower-level primitive used by
+       the `instrumentWorker` constructor.
+     - For normal instrument-owned request/reply workers, prefer
+       `instrumentWorker(...)` instead of open-coding queue setup or handshake
+       logic.
 
 
 ================================================================================

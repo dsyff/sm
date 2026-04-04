@@ -236,21 +236,51 @@ Rule for core runtime code: in `code/sm2` and `code/instruments`, use `experimen
 
 Workers cannot spawn workers. If an instrument needs additional background worker(s) (monitor loops, streaming acquisition, etc.), worker-side code must request the client to start them.
 
-### Generic spawn API
+### Recommended instrument-worker API
 
-In recipe mode, the engine worker installs a function handle in the worker base workspace:
+In recipe mode, the engine worker installs a client-spawn hook in `experimentContext`.
 
-- `sm_spawnOnClient` (engine internal)
+Normal instrument code should call:
 
-Worker-side code should call:
+- `instrumentWorker(...)` (public session constructor)
 
-- `requestWorkerSpawn(...)` (public helper)
+`instrumentWorker(...)`:
 
-Example (from engine worker code):
+- creates the worker↔instrument PDQ pair
+- requests the client-side pool spawn
+- waits for the initial handshake
+- returns an `instrumentWorker` object with:
+  - `instQueryInstWorker(command, timeout)`
+  - `instSendToInstWorker(command)`
+  - `instFlushFromInstWorker()`
+  - queue handles and `workerFuture`
+
+Recommended constructor pattern:
 
 ```matlab
-requestWorkerSpawn("myInst", @myWorkerMain, 0, arg1, arg2);
+obj.numWorkersRequired = 1;
+obj.handle_worker = instrumentWorker("myInst_worker", @myWorkerMain, requiredArg1, requiredArg2);
+obj.communicationHandle = obj.handle_worker;
 ```
+
+Worker entry-point contract:
+
+```matlab
+function myWorkerMain(instWorker, requiredArg1)
+    % instWorker is an instrumentWorkerRuntime created by the generic
+    % worker bootstrap wrapper.
+    command = instWorker.instWorkerPollFromInst();
+    instWorker.instWorkerSendToInst(command.rawCommand);
+end
+```
+
+Only pass required, instrument-specific inputs directly. Generic runtime context should come from `experimentContext` on the worker when available.
+
+### Low-level spawn primitive
+
+`requestWorkerSpawn(...)` remains the lower-level worker→client spawn helper used internally by the `instrumentWorker` constructor.
+
+Use it only when you deliberately need a custom spawn pattern that is not the normal instrument-owned request/reply worker model.
 
 If the request is **queued** (pool too small), the engine throws a clear error instructing you to increase `numWorkersRequested` and restart the engine.
 
@@ -269,5 +299,6 @@ At the end of a run:
 - `code/sm2/@measurementEngine/runWorkerCore_.m`, `runScanCore_.m`, `runTurboScanCore_.m`, `runSafeScanCore_.m`, `saveFinal_.m`, `engineWorkerMain_.m`: large engine methods split into separate class-folder files.
 - `code/sm2/measurementScan.m`: scan abstraction + legacy conversion.
 - `code/sm2/instrumentRackRecipe.m`: worker rack construction recipe.
-- `code/sm2/requestWorkerSpawn.m`: generic worker→client spawn helper.
+- `code/sm2/instrumentWorker.m`: shared request/reply session object for instrument-owned workers.
+- `code/sm2/requestWorkerSpawn.m`: lower-level worker→client spawn helper.
 - `code/smbridge/*`: legacy GUI integration layer.
