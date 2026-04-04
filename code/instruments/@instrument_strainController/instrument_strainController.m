@@ -1,6 +1,6 @@
 classdef instrument_strainController < instrumentInterface
     properties (Access = private)
-        handle_strainWatchdog   % struct with man2Dog, dog2Man, dogFuture
+        handle_strainWatchdog
         dogGetTimeout duration = seconds(15);
         dogCheckTimeout duration = seconds(60);
         rack_strainController string = "";
@@ -38,7 +38,7 @@ classdef instrument_strainController < instrumentInterface
                 mkdir(obj.logDir);
             end
 
-            workerHandle = requestInstrumentWorker("strainWatchdog", @strainWatchdog, ...
+            obj.handle_strainWatchdog = instrumentWorker("strainWatchdog", @strainWatchdog, ...
                 address_E4980AL = options.address_E4980AL, ...
                 address_K2450_A = options.address_K2450_A, ...
                 address_K2450_B = options.address_K2450_B, ...
@@ -49,11 +49,6 @@ classdef instrument_strainController < instrumentInterface
                 outerCurrentLimit = options.outerCurrentLimit, ...
                 innerCurrentLimit = options.innerCurrentLimit ...
             );
-            handle = struct( ...
-                "man2Dog", workerHandle.instrumentToWorker, ...
-                "dog2Man", workerHandle.workerToInstrument, ...
-                "dogFuture", []);
-            obj.handle_strainWatchdog = handle;
 
             %dogSet(obj.handle_strainWatchdog, "V_str_o", 0);
             %dogSet(obj.handle_strainWatchdog, "V_str_i", 0);
@@ -100,7 +95,7 @@ classdef instrument_strainController < instrumentInterface
             end
 
             obj.address = address;
-            obj.communicationHandle = handle;
+            obj.communicationHandle = obj.handle_strainWatchdog;
 
             obj.addChannel("del_d", setTolerances = 5e-9);
             obj.addChannel("T", setTolerances = 0.1);
