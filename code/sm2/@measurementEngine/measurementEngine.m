@@ -749,7 +749,7 @@ classdef measurementEngine < handle
             end
         end
 
-        function spawnOnClientLocal_(obj, requestedBy, fcn, nOut, varargin)
+        function fut = spawnOnClientLocal_(obj, requestedBy, fcn, nOut, varargin)
             requestedBy = string(requestedBy);
             if strlength(requestedBy) == 0
                 requestedBy = "instrument";

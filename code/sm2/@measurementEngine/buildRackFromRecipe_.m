@@ -10,11 +10,7 @@ function rack = buildRackFromRecipe_(recipe, spawnOnClientFcn)
         rack.tryTimes = 1;
     end
     assignin("base", "rack", rack);
-    if isempty(spawnOnClientFcn)
-        assignin("base", "sm_spawnOnClient", []);
-    else
-        assignin("base", "sm_spawnOnClient", spawnOnClientFcn);
-    end
+    experimentContext.setSpawnOnClient(spawnOnClientFcn);
 
     virtualSteps = struct([]);
     if isprop(recipe, "virtualInstrumentSteps")

@@ -9,6 +9,25 @@ classdef experimentContext
             rootPath = experimentContext.rootStore_();
         end
 
+        function future = runSpawnOnClient(requestedBy, fcn, nOut, varargin)
+            arguments
+                requestedBy {mustBeTextScalar}
+                fcn (1, 1) function_handle
+                nOut (1, 1) double {mustBeNonnegative, mustBeInteger}
+            end
+            arguments (Repeating)
+                varargin
+            end
+
+            spawnOnClient = experimentContext.spawnOnClientStore_();
+            if isempty(spawnOnClient) || ~isa(spawnOnClient, "function_handle")
+                error("experimentContext:MissingSpawnOnClient", ...
+                    "Client worker spawn hook is not configured. requestWorkerSpawn requires measurementEngine recipe context.");
+            end
+
+            future = spawnOnClient(string(requestedBy), fcn, double(nOut), varargin{:});
+        end
+
         function nChars = print(varargin)
             if nargin < 1
                 error("experimentContext:PrintInvalidUsage", "print requires a message or format string.");
@@ -101,6 +120,19 @@ classdef experimentContext
 
             experimentContext.fprintfRelayStore_(dataQueue, string(header));
         end
+
+        function setSpawnOnClient(spawnOnClient)
+            arguments
+                spawnOnClient = []
+            end
+
+            if ~isempty(spawnOnClient) && ~isa(spawnOnClient, "function_handle")
+                error("experimentContext:InvalidSpawnOnClient", ...
+                    "setSpawnOnClient expects a function_handle or [].");
+            end
+
+            experimentContext.spawnOnClientStore_(spawnOnClient);
+        end
     end
 
     methods (Static, Access = private)
@@ -159,6 +191,19 @@ classdef experimentContext
             end
             header = storedHeader;
         end
+
+        function spawnOnClient = spawnOnClientStore_(newValue)
+            persistent stored
+
+            if nargin >= 1
+                stored = newValue;
+            end
+
+            if isempty(stored)
+                spawnOnClient = [];
+            else
+                spawnOnClient = stored;
+            end
+        end
     end
 end
-

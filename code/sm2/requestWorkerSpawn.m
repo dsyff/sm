@@ -1,9 +1,9 @@
-function requestWorkerSpawn(varargin)
+function future = requestWorkerSpawn(varargin)
 %REQUESTWORKERSPAWN Request the client to spawn a pool worker task.
 %
 % Intended for recipe-build/runtime code running under measurementEngine.
-% The engine installs a function handle named "sm_spawnOnClient" in the
-% active base workspace; this helper calls it.
+% The engine installs a spawn hook into experimentContext; this helper
+% calls that hook.
 %
 % Usage:
 %   requestWorkerSpawn(@fcn, nOut, arg1, arg2, ...)
@@ -38,15 +38,5 @@ if ~(isscalar(nOut) && isfinite(nOut) && nOut >= 0 && mod(nOut, 1) == 0)
     error("requestWorkerSpawn:InvalidNOut", "nOut must be a nonnegative integer.");
 end
 
-spawnOnClient = [];
-try
-    spawnOnClient = evalin("base", "sm_spawnOnClient");
-catch
-end
-if isempty(spawnOnClient) || ~isa(spawnOnClient, "function_handle")
-    error("requestWorkerSpawn:Unavailable", ...
-        "requestWorkerSpawn requires measurementEngine recipe context; sm_spawnOnClient is not available in the base workspace.");
-end
-
-spawnOnClient(requestedBy, fcn, nOut, args{:});
+future = experimentContext.runSpawnOnClient(requestedBy, fcn, nOut, args{:});
 end
