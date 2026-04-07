@@ -992,8 +992,8 @@ function setplotchoices(varargin)
         if any(~valid_disp_mask)
             smscan.disp = smscan.disp(valid_disp_mask);
         end
-        newoneDvals = sort(newoneDvals);
-        newtwoDvals = sort(newtwoDvals);
+        newoneDvals = unique(sort(newoneDvals));
+        newtwoDvals = unique(sort(newtwoDvals));
         maxOneD = numel(plotchoicesAll.string);
         maxTwoD = numel(plotchoices2d.string);
         if maxOneD == 0
@@ -1006,6 +1006,25 @@ function setplotchoices(varargin)
         else
             newtwoDvals = newtwoDvals(newtwoDvals >= 1 & newtwoDvals <= maxTwoD);
         end
+        dispEntries = struct('loop', {}, 'channel', {}, 'dim', {}, 'name', {});
+        entryIndex = 0;
+        for i = 1:length(newoneDvals)
+            chanIdx = newoneDvals(i);
+            entryIndex = entryIndex + 1;
+            dispEntries(entryIndex).loop = plotchoicesAll.loop(chanIdx);
+            dispEntries(entryIndex).channel = chanIdx;
+            dispEntries(entryIndex).dim = 1;
+            dispEntries(entryIndex).name = string(plotchoicesAll.string{chanIdx});
+        end
+        for i = 1:length(newtwoDvals)
+            local_idx = newtwoDvals(i);
+            entryIndex = entryIndex + 1;
+            dispEntries(entryIndex).loop = plotchoices2d.loop(local_idx) + 1;
+            dispEntries(entryIndex).channel = plotchoices2d.full_index(local_idx);
+            dispEntries(entryIndex).dim = 2;
+            dispEntries(entryIndex).name = string(plotchoices2d.string{local_idx});
+        end
+        smscan.disp = dispEntries;
         set(smaux.smgui.oneDplot_lbh,'Val',newoneDvals);
         set(smaux.smgui.twoDplot_lbh,'Val',newtwoDvals);
 end
