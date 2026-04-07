@@ -1,8 +1,9 @@
 function scanOut = smscanSanitizeForBridge(scanIn)
 %SMSCANSANITIZEFORBRIDGE Filter a scan against the currently available channels.
-% - Drops getchan entries that no longer exist (vector names).
+% - Accepts GUI-style vector getchan names and saved scalar-expanded getchan lists.
+% - Drops getchan entries that no longer exist.
 % - Drops setchan entries that no longer exist (pure scalar names).
-% - Drops disp entries whose selected plotted scalar channel name no longer exists.
+% - Rebuilds disp entries whose selected plotted scalar channel names still exist.
 % - Silent: returns [] when input is invalid.
 
 global bridge
@@ -22,6 +23,10 @@ end
 
 vectorNames = string(bridge.getVectorChannelNames());
 pureScalarNames = string(bridge.getPureScalarChannelNames());
+vectorSizes = zeros(1, numel(vectorNames));
+for vectorIdx = 1:numel(vectorNames)
+    vectorSizes(vectorIdx) = bridge.getChannelSize(vectorNames(vectorIdx));
+end
 
 for loopIdx = 1:numel(scanOut.loops)
     loopDef = scanOut.loops(loopIdx);
@@ -29,8 +34,42 @@ for loopIdx = 1:numel(scanOut.loops)
     if isfield(loopDef, "getchan")
         getNames = string(loopDef.getchan);
         getNames = getNames(:).';
-        keepGet = ismember(getNames, vectorNames);
-        scanOut.loops(loopIdx).getchan = cellstr(getNames(keepGet).');
+        normalizedGet = strings(0, 1);
+        nameIdx = 1;
+        while nameIdx <= numel(getNames)
+            chanName = getNames(nameIdx);
+            if any(vectorNames == chanName)
+                normalizedGet(end+1, 1) = chanName; %#ok<AGROW>
+                nameIdx = nameIdx + 1;
+                continue;
+            end
+
+            matchedSavedVector = false;
+            for vectorIdx = 1:numel(vectorNames)
+                chanSize = vectorSizes(vectorIdx);
+                if chanSize <= 1 || chanName ~= vectorNames(vectorIdx) + "_1"
+                    continue;
+                end
+                expectedNames = strings(1, chanSize);
+                for vecIdx = 1:chanSize
+                    expectedNames(vecIdx) = vectorNames(vectorIdx) + "_" + vecIdx;
+                end
+                lastIdx = nameIdx + chanSize - 1;
+                if lastIdx <= numel(getNames) && isequal(getNames(nameIdx:lastIdx), expectedNames)
+                    normalizedGet(end+1, 1) = vectorNames(vectorIdx); %#ok<AGROW>
+                    nameIdx = lastIdx + 1;
+                else
+                    nameIdx = nameIdx + 1;
+                end
+                matchedSavedVector = true;
+                break;
+            end
+            if ~matchedSavedVector
+                nameIdx = nameIdx + 1;
+            end
+        end
+        keepGet = ismember(normalizedGet, vectorNames);
+        scanOut.loops(loopIdx).getchan = cellstr(normalizedGet(keepGet).');
     end
 
     if isfield(loopDef, "setchan")
@@ -95,7 +134,34 @@ for loopIdx = 1:numel(scanOut.loops)
     end
 end
 
-validMask = true(1, numel(scanOut.disp));
+plotLoops = zeros(1, totalPlotNames);
+plotNameIdx = 1;
+for loopIdx = 1:numel(scanOut.loops)
+    loopDef = scanOut.loops(loopIdx);
+    if ~isfield(loopDef, "getchan") || isempty(loopDef.getchan)
+        continue;
+    end
+    loopGetNames = string(loopDef.getchan);
+    loopGetNames = loopGetNames(:).';
+    for nameIdx = 1:numel(loopGetNames)
+        chanName = loopGetNames(nameIdx);
+        chanSize = bridge.getChannelSize(chanName);
+        for vecIdx = 1:max(1, chanSize)
+            plotLoops(plotNameIdx) = loopIdx;
+            plotNameIdx = plotNameIdx + 1;
+        end
+    end
+end
+
+mask2d = plotLoops < numel(scanOut.loops);
+twoDFullIndex = find(mask2d);
+fullTo2D = zeros(1, numel(plotNames));
+if ~isempty(twoDFullIndex)
+    fullTo2D(twoDFullIndex) = 1:numel(twoDFullIndex);
+end
+
+oneDvals = [];
+twoDvals = [];
 for dispIdx = 1:numel(scanOut.disp)
     dispName = "";
     if isfield(scanOut.disp, "name")
@@ -107,14 +173,42 @@ for dispIdx = 1:numel(scanOut.disp)
             dispName = plotNames(channel_idx);
         end
     end
-    if strlength(dispName) == 0 || ~any(plotNames == dispName)
-        validMask(dispIdx) = false;
+    if strlength(dispName) == 0
         continue;
     end
-    scanOut.disp(dispIdx).name = dispName;
-    scanOut.disp(dispIdx).channel = find(plotNames == dispName, 1);
+    channel_idx = find(plotNames == dispName, 1);
+    if isempty(channel_idx)
+        continue;
+    end
+    if isfield(scanOut.disp(dispIdx), "dim") && scanOut.disp(dispIdx).dim == 2
+        mappedIdx = fullTo2D(channel_idx);
+        if mappedIdx > 0
+            twoDvals(end+1) = mappedIdx; %#ok<AGROW>
+        end
+    else
+        oneDvals(end+1) = channel_idx; %#ok<AGROW>
+    end
 end
 
-scanOut.disp = scanOut.disp(validMask);
+oneDvals = unique(sort(oneDvals));
+twoDvals = unique(sort(twoDvals));
+dispOut = struct("loop", {}, "channel", {}, "dim", {}, "name", {});
+entryIdx = 0;
+for idx = oneDvals
+    entryIdx = entryIdx + 1;
+    dispOut(entryIdx).loop = plotLoops(idx);
+    dispOut(entryIdx).channel = idx;
+    dispOut(entryIdx).dim = 1;
+    dispOut(entryIdx).name = plotNames(idx);
+end
+for localIdx = twoDvals
+    fullIdx = twoDFullIndex(localIdx);
+    entryIdx = entryIdx + 1;
+    dispOut(entryIdx).loop = plotLoops(fullIdx) + 1;
+    dispOut(entryIdx).channel = fullIdx;
+    dispOut(entryIdx).dim = 2;
+    dispOut(entryIdx).name = plotNames(fullIdx);
 end
 
+scanOut.disp = dispOut;
+end
