@@ -198,6 +198,7 @@ end
 
 if clock_Use
     recipe.addInstrument("handle_clock", "instrument_clock", "clock", "clock");
+    recipe.addStatement("clock", "handle_clock.requireSetCheck = true;");
     recipe.addChannel("clock", "timeStamp", "time");
 end
 
@@ -221,6 +222,7 @@ if strainController_Use
         outerCurrentLimit = strain_outerCurrentLimit, ...
         innerCurrentLimit = strain_innerCurrentLimit, ...
         numWorkersRequested = 1);
+    recipe.addStatement("strain", "handle_strainController.requireSetCheck = true;");
 
     % Strain controller constructor restores tareData from logs (or tares if missing).
 
@@ -243,16 +245,19 @@ end
 
 if Montana1_Use
     recipe.addInstrument("handle_Montana1", "instrument_Montana1", "Montana1", Montana1_IP);
+    recipe.addStatement("Montana1", "handle_Montana1.requireSetCheck = true;");
     recipe.addChannel("Montana1", "T", "T");
 end
 
 if Montana2_Use && ~strainController_Use
     recipe.addInstrument("handle_Montana2", "instrument_Montana2", "Montana2", Montana2_IP);
+    recipe.addStatement("Montana2", "handle_Montana2.requireSetCheck = true;");
     recipe.addChannel("Montana2", "T", "T");
 end
 
 if OptiCool_Use
     recipe.addInstrument("handle_OptiCool", "instrument_OptiCool", "OptiCool", OptiCool_IP);
+    recipe.addStatement("OptiCool", "handle_OptiCool.requireSetCheck = true;");
     if ~strainController_Use
         recipe.addChannel("OptiCool", "T", "T");
     end
@@ -793,6 +798,7 @@ end
 
 if HP34401A_A_Use
     recipe.addInstrument("handle_HP34401A_A", "instrument_HP34401A", "HP34401A_A", gpibAddress(HP34401A_A_GPIB, adaptorIndex));
+    recipe.addStatement("HP34401A_A", "handle_HP34401A_A.requireSetCheck = true;");
     recipe.addStatement("HP34401A_A", "h = handle_HP34401A_A.communicationHandle;");
     recipe.addStatement("HP34401A_A", "writeline(h, ':CONF:VOLT:DC');");
     recipe.addStatement("HP34401A_A", "writeline(h, ':VOLT:DC:NPLC 0.5');");
@@ -802,6 +808,7 @@ end
 
 if HP34401A_B_Use
     recipe.addInstrument("handle_HP34401A_B", "instrument_HP34401A", "HP34401A_B", gpibAddress(HP34401A_B_GPIB, adaptorIndex));
+    recipe.addStatement("HP34401A_B", "handle_HP34401A_B.requireSetCheck = true;");
     recipe.addStatement("HP34401A_B", "h = handle_HP34401A_B.communicationHandle;");
     recipe.addStatement("HP34401A_B", "writeline(h, ':CONF:VOLT:DC');");
     recipe.addStatement("HP34401A_B", "writeline(h, ':VOLT:DC:NPLC 0.5');");
@@ -811,6 +818,7 @@ end
 
 if K10CR1_Use
     recipe.addInstrument("handle_K10CR1", "instrument_K10CR1", "K10CR1", K10CR1_Serial);
+    recipe.addStatement("K10CR1", "handle_K10CR1.requireSetCheck = true;");
     recipe.addChannel("K10CR1", "position_deg", "K10CR1_position_deg");
 end
 
@@ -829,6 +837,7 @@ end
 
 if Andor_Use
     recipe.addInstrument("handle_AndorSpectrometer", "instrument_AndorSpectrometer", "AndorSpectrometer", "AndorSpectrometer");
+    recipe.addStatement("AndorSpectrometer", "handle_AndorSpectrometer.requireSetCheck = true;");
     recipe.addStatement("AndorSpectrometer", "handle_AndorSpectrometer.minTimeBetweenAcquisitions_s = 300;");
     recipe.addStatement("AndorSpectrometer", "rack.batchGetTimeout = minutes(10);");
     recipe.addChannel("AndorSpectrometer", "temperature_C", "CCD_T_C");
@@ -845,6 +854,7 @@ end
 
 if attoDRY2100_Use
     recipe.addInstrument("handle_attoDRY2100", "instrument_attoDRY2100", "attoDRY2100", attoDRY2100_Address);
+    recipe.addStatement("attoDRY2100", "handle_attoDRY2100.requireSetCheck = true;");
     recipe.addChannel("attoDRY2100", "T", "T");
     recipe.addChannel("attoDRY2100", "B", "B");
     recipe.addChannel("attoDRY2100", "driven", "driven");
@@ -865,6 +875,7 @@ end
 
 if ST3215HS_Use
     recipe.addInstrument("handle_ST3215HS", "instrument_ST3215HS", "ST3215HS", ST3215HS_Serial, servoId_1 = 12, servoId_2 = 13);
+    recipe.addStatement("ST3215HS", "handle_ST3215HS.requireSetCheck = true;");
     recipe.addChannel("ST3215HS", "position_1_deg", "ST3215HS_pos1_deg");
     recipe.addChannel("ST3215HS", "load_1_percent", "ST3215HS_load1_percent");
     % 0 = direct set, 1 = setPositionConsistent
@@ -880,6 +891,7 @@ end
 % Attodry autofocus optics: camera BS + LED BS (beamsplitters)
 if ST3215HS_BS_Use
     recipe.addInstrument("handle_ST3215HS_BS", "instrument_ST3215HS", "ST3215HS_BS", ST3215HS_BS_Serial, servoId_1 = 10, servoId_2 = 11);
+    recipe.addStatement("ST3215HS_BS", "handle_ST3215HS_BS.requireSetCheck = true;");
     recipe.addChannel("ST3215HS_BS", "position_1_deg", "BS_camera_pos_deg");
     recipe.addChannel("ST3215HS_BS", "load_1_percent", "BS_camera_load_percent");
     recipe.addChannel("ST3215HS_BS", "setConsistently_1", "BS_camera_setConsistently", [], [], 0, 1);
@@ -893,6 +905,7 @@ end
 % Attodry autofocus optics: red beam block + red ND
 if ST3215HS_red_Use
     recipe.addInstrument("handle_ST3215HS_red", "instrument_ST3215HS", "ST3215HS_red", ST3215HS_red_Serial, servoId_1 = 20, servoId_2 = 21);
+    recipe.addStatement("ST3215HS_red", "handle_ST3215HS_red.requireSetCheck = true;");
     recipe.addChannel("ST3215HS_red", "position_1_deg", "block_red_pos_deg");
     recipe.addChannel("ST3215HS_red", "load_1_percent", "block_red_load_percent");
     recipe.addChannel("ST3215HS_red", "setConsistently_1", "block_red_setConsistently", [], [], 0, 1);
@@ -906,6 +919,7 @@ end
 % Attodry autofocus optics: green beam block + green ND
 if ST3215HS_green_Use
     recipe.addInstrument("handle_ST3215HS_green", "instrument_ST3215HS", "ST3215HS_green", ST3215HS_green_Serial, servoId_1 = 22, servoId_2 = 23);
+    recipe.addStatement("ST3215HS_green", "handle_ST3215HS_green.requireSetCheck = true;");
     recipe.addChannel("ST3215HS_green", "position_1_deg", "block_green_pos_deg");
     recipe.addChannel("ST3215HS_green", "load_1_percent", "block_green_load_percent");
     recipe.addChannel("ST3215HS_green", "setConsistently_1", "block_green_setConsistently", [], [], 0, 1);
@@ -918,6 +932,7 @@ end
 
 if colorLED_Use
     recipe.addInstrument("handle_colorLED", "instrument_colorLED", "colorLED", colorLED_Serial);
+    recipe.addStatement("colorLED", "handle_colorLED.requireSetCheck = false;");
     recipe.addChannel("colorLED", "R", "colorLED_R", [], [], 0, 1);
     recipe.addChannel("colorLED", "G", "colorLED_G", [], [], 0, 1);
     recipe.addChannel("colorLED", "B", "colorLED_B", [], [], 0, 1);
@@ -927,6 +942,7 @@ end
 if USB6001_Use
     recipe.addInstrument("handle_USB6001", "instrument_USB6001", "USB6001", ...
         USB6001_Device, USB6001_numAIChannels, USB6001_accumulations, USB6001_samplingRate_Hz);
+    recipe.addStatement("USB6001", "handle_USB6001.requireSetCheck = false;");
     for aiIndex = 0:USB6001_numAIChannels-1
         aiChannelName = "AI" + string(aiIndex);
         recipe.addChannel("USB6001", aiChannelName, "USB6001_" + aiChannelName);
@@ -943,6 +959,7 @@ end
 
 if E4980AL_Use
     recipe.addInstrument("handle_E4980AL", "instrument_E4980AL", "E4980AL", gpibAddress(E4980AL_GPIB, adaptorIndex_strain));
+    recipe.addStatement("E4980AL", "handle_E4980AL.requireSetCheck = true;");
     recipe.addChannel("E4980AL", "Cp", "E4980_Cp");
     recipe.addChannel("E4980AL", "Q", "E4980_Q");
     recipe.addChannel("E4980AL", "CpQ", "E4980_CpQ");
@@ -950,6 +967,7 @@ end
 
 if BK889B_Use
     recipe.addInstrument("handle_BK889B", "instrument_BK889B", "BK889B", BK889B_Serial);
+    recipe.addStatement("BK889B", "handle_BK889B.requireSetCheck = true;");
     recipe.addChannel("BK889B", "Cp", "BK_Cp");
     recipe.addChannel("BK889B", "Q", "BK_Q");
     recipe.addChannel("BK889B", "CpQ", "BK_CpQ");
@@ -957,6 +975,7 @@ end
 
 if MFLI_Use
     recipe.addInstrument("handle_MFLI", "instrument_MFLI", "MFLI", MFLI_Address);
+    recipe.addStatement("MFLI", "handle_MFLI.requireSetCheck = true;");
     for i = 1:4
         recipe.addChannel("MFLI", "amplitude_" + string(i), "A" + string(i), [], [], -2, 2);
         recipe.addChannel("MFLI", "phase_" + string(i), "Th" + string(i));
@@ -1020,6 +1039,7 @@ end
 if virtual_del_V_Use
     recipe.addVirtualInstrument("handle_virtual_del_V", "virtualInstrument_del_V", "virtual_delta", "virtual_delta", ...
         vGetChannelName = "V_WSe2", vSetChannelName = "V_tg");
+    recipe.addStatement("virtual_delta", "handle_virtual_del_V.requireSetCheck = true;");
     recipe.addChannel("virtual_delta", "del_V", "del_V", [], [], -10, 10);
 end
 
@@ -1033,6 +1053,7 @@ end
 if virtual_nonlinear_T_Use
     recipe.addVirtualInstrument("handle_virtual_nonlinear_T", "virtualInstrument_nonlinear_T", "virtual_nonlinear_T", "virtual_nonlinear_T", ...
         tSetChannelName = "T", tMin = 4, tMax = 200);
+    recipe.addStatement("virtual_nonlinear_T", "handle_virtual_nonlinear_T.requireSetCheck = true;");
     recipe.addChannel("virtual_nonlinear_T", "nonlinear_T", "T_normalized", [], [], 0, 1);
 end
 
@@ -1071,6 +1092,7 @@ if virtual_attodryAutofocus_Use
         ANC300_voltage_x_ChannelName = "ANC300_Vx", ...
         ANC300_voltage_y_ChannelName = "ANC300_Vy", ...
         ANC300_voltage_z_ChannelName = "ANC300_Vz");
+    recipe.addStatement("attodryAutofocus", "handle_virtual_attodryAutofocus.requireSetCheck = true;");
     recipe.addChannel("attodryAutofocus", "T", "attodry_T", [], [], 0, 400);
     recipe.addChannel("attodryAutofocus", "B", "attodry_B", [], [], -1, 1);
     recipe.addChannel("attodryAutofocus", "color", "attodry_color", [], [], 0, 1);
