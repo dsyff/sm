@@ -26,6 +26,8 @@ sminit; % shared setup script keeps demo logic concise
 Montana1_IP = "136.167.55.127";
 Montana2_IP = "136.167.55.165";
 OptiCool_IP = "127.0.0.1";
+MPMS3_IP = "136.167.49.54";
+MPMS3_Port = uint16(11000);
 
 SR860_1_GPIB = 7; % use same GPIB as SR830_1
 SR830_1_GPIB = SR860_1_GPIB; %sd
@@ -102,6 +104,7 @@ strain_innerCurrentLimit = 2e-7; % A, K2450_B :SOURce:VOLTage:ILIMit
 Montana1_Use = 0;
 Montana2_Use = 0;
 OptiCool_Use = 0;
+MPMS3_Use = 0;
 attoDRY2100_Use = 0;
 ANC300_Use = 0; % nano positioner for attoDRY2100
 
@@ -254,6 +257,13 @@ if OptiCool_Use
         recipe.addChannel("OptiCool", "T", "T");
     end
     recipe.addChannel("OptiCool", "B", "B");
+end
+
+if MPMS3_Use
+    recipe.addInstrument("handle_MPMS3", "instrument_MPMS3", "MPMS3", MPMS3_IP, MPMS3_Port);
+    recipe.addStatement("MPMS3", "handle_MPMS3.requireSetCheck = true;");
+    recipe.addChannel("MPMS3", "T", "T");
+    recipe.addChannel("MPMS3", "B", "B");
 end
 
 if SR860_1_Use
