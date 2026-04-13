@@ -22,12 +22,11 @@ classdef instrument_MPMS3 < instrumentInterface
                 error("instrument_MPMS3:ClassLookupFailed", ...
                     "Unable to locate instrument_MPMS3.m via which(class(obj)).");
             end
-            repoRoot = fileparts(fileparts(fileparts(classFile)));
-            assemblyPath = fullfile(repoRoot, "legacy", "legacy sm complete", ...
-                "SpecialMeasure", "QMInstruments", "MPMS3", "QDInstrument.dll");
+            instDir = fileparts(classFile);
+            assemblyPath = fullfile(instDir, "QDInstrument.dll");
             if ~isfile(assemblyPath)
                 error("instrument_MPMS3:MissingAssembly", ...
-                    "QDInstrument.dll not found at %s.", assemblyPath);
+                    "QDInstrument.dll not found in the instrument_MPMS3 class folder at %s.", assemblyPath);
             end
 
             assemblyFile = NET.addAssembly(assemblyPath);

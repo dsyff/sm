@@ -468,8 +468,11 @@ CACHE EXPENSIVE COMPUTATIONS
 KEEP VENDOR SDK/API FILES WITH THE CLASS + USE RUNTIME ABSOLUTE PATHS
 --------------------------------------------------------------------
 If an instrument requires vendor SDK files (e.g. C header files, DLLs, .NET
-assemblies, config files), keep them inside the instrument class folder for
-organization, e.g.:
+assemblies, config files), copy the required dependencies into the instrument
+class folder whenever licensing and packaging allow it. Prefer shipping the
+exact files the class needs instead of relying on a second repo location or an
+external machine-specific path. Keep them inside the instrument class folder
+for organization, e.g.:
   - code/instruments/@instrument_AndorSpectrometer/atspectrograph.h
   - code/instruments/@instrument_CS165MU/dlls/*.dll
 
