@@ -5,6 +5,8 @@ classdef instrument_MPMS3 < instrumentInterface
         fieldApproach
         temperatureApproach
         fieldMode
+        temperatureRate (1, 1) double = 20
+        fieldRate (1, 1) double = 150
         readValues
     end
 
@@ -61,6 +63,8 @@ classdef instrument_MPMS3 < instrumentInterface
 
             obj.addChannel("T");
             obj.addChannel("B");
+            obj.addChannel("temperature_rate");
+            obj.addChannel("field_rate");
         end
     end
 
@@ -72,12 +76,16 @@ classdef instrument_MPMS3 < instrumentInterface
                     [~, obj.readValues, obj.temperatureStatus] = handle.GetTemperature(0, obj.temperatureStatus);
                 case 2
                     [~, obj.readValues, obj.fieldStatus] = handle.GetField(0, obj.fieldStatus);
+                case 3
+                    obj.readValues = obj.temperatureRate;
+                case 4
+                    obj.readValues = obj.fieldRate;
             end
         end
 
         function getValues = getReadChannelHelper(obj, channelIndex)
             switch channelIndex
-                case {1, 2}
+                case {1, 2, 3, 4}
                     getValues = obj.readValues;
             end
         end
@@ -86,13 +94,25 @@ classdef instrument_MPMS3 < instrumentInterface
             handle = obj.communicationHandle;
             switch channelIndex
                 case 1
-                    handle.SetTemperature(setValues, 20, obj.temperatureApproach);
+                    handle.SetTemperature(setValues, obj.temperatureRate, obj.temperatureApproach);
                 case 2
-                    handle.SetField(setValues, 150, obj.fieldApproach, obj.fieldMode);
+                    handle.SetField(setValues, obj.fieldRate, obj.fieldApproach, obj.fieldMode);
+                case 3
+                    if ~isfinite(setValues) || setValues <= 0
+                        error("instrument_MPMS3:InvalidTemperatureRate", ...
+                            "temperature_rate must be positive and finite.");
+                    end
+                    obj.temperatureRate = setValues;
+                case 4
+                    if ~isfinite(setValues) || setValues <= 0
+                        error("instrument_MPMS3:InvalidFieldRate", ...
+                            "field_rate must be positive and finite.");
+                    end
+                    obj.fieldRate = setValues;
             end
         end
 
-        function TF = setCheckChannelHelper(obj, channelIndex, ~)
+        function TF = setCheckChannelHelper(obj, channelIndex, channelLastSetValues)
             handle = obj.communicationHandle;
             switch channelIndex
                 case 1
@@ -101,6 +121,10 @@ classdef instrument_MPMS3 < instrumentInterface
                 case 2
                     [~, ~, obj.fieldStatus] = handle.GetField(0, obj.fieldStatus);
                     TF = (string(obj.fieldStatus) == "StablePersistent");
+                case 3
+                    TF = (obj.temperatureRate == channelLastSetValues);
+                case 4
+                    TF = (obj.fieldRate == channelLastSetValues);
             end
         end
     end
