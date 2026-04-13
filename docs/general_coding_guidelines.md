@@ -6,6 +6,7 @@
 - Avoid fixed pacing pauses in rack/engine hot paths; prefer per-instrument pacing via `instrumentInterface.writeCommandInterval`.
 - In MATLAB, always prefer double quotes and strings unless a function explicitly requires char arrays.
 - Prefer `Name = value` format over `"Name", value` pairs.
+- For instrument SDK/API dependencies, prefer copying the required files into the instrument class folder whenever practical instead of relying on external machine-specific paths.
 - Remember to set `_Use` flags to 0 in the main demo `demo.m` before staging new changes.
 - In demo scripts, keep instrument sections in the same order across address declarations, `_Use` flags, and `if ..._Use` instrument blocks (`addInstrument` / `addChannel`).
 - Remember to set email address to "" in all demo files before staging changes for security.
