@@ -70,16 +70,6 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, clientToEngine, engin
         experimentContext.print(msg);
         logFcn(msg);
     end
-    if ~scanObj.constsPrepared && ~isempty(scanObj.consts)
-        consts = scanObj.consts;
-        if ~isfield(consts, "set"), [consts.set] = deal(1); end
-        m = [consts.set] == 1;
-        if any(m)
-            sc = string({consts(m).setchan}); if isrow(sc), sc = sc.'; end
-            stopped = rackSetWithStop(sc, double([consts(m).val]).', stopped);
-            if stopped, return; end
-        end
-    end
 
     % --- Main loop ---
     count = ones(1, nloops);

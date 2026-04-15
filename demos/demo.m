@@ -269,6 +269,8 @@ if MPMS3_Use
     recipe.addStatement("MPMS3", "handle_MPMS3.requireSetCheck = true;");
     recipe.addChannel("MPMS3", "T", "T");
     recipe.addChannel("MPMS3", "B", "B");
+    recipe.addChannel("MPMS3", "temperature_rate", "T_rate");
+    recipe.addChannel("MPMS3", "field_rate", "B_rate");
 end
 
 if SR860_1_Use

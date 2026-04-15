@@ -19,7 +19,6 @@ function [data, stopped] = runScanCore_(rack, scanObj, onRead, figHandle, snapsh
     enableLog = ~isempty(logFcn) && isa(logFcn, "function_handle");
     didLogFirstSet = false;
     didLogFirstGet = false;
-    didLogFirstConstSet = false;
 
     % Stop via figure handle ESC key + scan-progress callback.
     stopped = false;
@@ -27,26 +26,6 @@ function [data, stopped] = runScanCore_(rack, scanObj, onRead, figHandle, snapsh
     rack.flush();
     if enableLog
         logFcn("runScanCore_ start name=" + scanObj.name + " loops=" + numel(scanObj.loops));
-    end
-
-    if ~scanObj.constsPrepared && ~isempty(scanObj.consts)
-        consts = scanObj.consts;
-        if ~isfield(consts, "set")
-            [consts.set] = deal(1);
-        end
-        setMask = [consts.set] == 1;
-        if any(setMask)
-            setchans = string({consts(setMask).setchan});
-            if isrow(setchans)
-                setchans = setchans.';
-            end
-            setvals = double([consts(setMask).val]).';
-            if enableLog && ~didLogFirstConstSet
-                didLogFirstConstSet = true; %#ok<NASGU>
-                logFcn("runScanCore_ const rackSet n=" + numel(setchans));
-            end
-            rack.rackSet(setchans, setvals);
-        end
     end
 
     meta = measurementEngine.computeScanMeta_(scanObj);
