@@ -523,7 +523,6 @@ classdef measurementEngine < handle
             end
 
             obj.logClient_("run() target file=" + filename);
-            scanObj = obj.prepareScanConstants_(scanObj);
 
             if obj.constructionMode == "rack"
                 [dataOut, scanForSave] = obj.runLocal_(scanObj, filename);
@@ -938,13 +937,7 @@ classdef measurementEngine < handle
                 [consts.set] = deal(1);
             end
 
-            getMask = [consts.set] == 0;
-            scanObj.consts = consts;
-            if ~any(getMask)
-                return;
-            end
-
-            setMask = ~getMask;
+            setMask = [consts.set] ~= 0;
             if any(setMask)
                 setchans = string({consts(setMask).setchan});
                 if isrow(setchans)
@@ -953,14 +946,17 @@ classdef measurementEngine < handle
                 obj.rackSet(setchans, double([consts(setMask).val]).');
             end
 
+            getMask = ~setMask;
             getchans = string({consts(getMask).setchan});
-            if isrow(getchans)
-                getchans = getchans.';
-            end
-            newvals = double(obj.rackGet(getchans));
-            getIdx = find(getMask);
-            for k = 1:numel(getIdx)
-                consts(getIdx(k)).val = newvals(k);
+            if any(getMask)
+                if isrow(getchans)
+                    getchans = getchans.';
+                end
+                newvals = double(obj.rackGet(getchans));
+                getIdx = find(getMask);
+                for k = 1:numel(getIdx)
+                    consts(getIdx(k)).val = newvals(k);
+                end
             end
             scanObj.consts = consts;
             scanObj.constsPrepared = true;
@@ -1060,6 +1056,8 @@ classdef measurementEngine < handle
             scanStart = datetime("now");
             scanForSave.startTime = scanStart;
             try
+                scanObj = obj.prepareScanConstants_(scanObj);
+                scanForSave.consts = scanObj.consts;
                 [dataOut, stopped] = measurementEngine.runScanCore_(rack, scanObj, @onRead, figHandle, duration.empty, [], @onTemp, [], @() obj.isScanInProgress);
             catch ME
                 obj.isScanInProgress = false;
