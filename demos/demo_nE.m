@@ -23,7 +23,7 @@ sminit; % shared setup script keeps demo logic concise
 
 %% instrument rack (recipe, built on worker engine)
 recipe = instrumentRackRecipe();
-recipe.slack_notification_account_email = "";
+recipe.slack_notification_account_email = "dingsi@bc.edu";
 
 recipe.addInstrument("handle_blg", "instrument_toyBLG", "blg_test", "blg_test", ...
     h_bg = 30e-9, ...
@@ -56,10 +56,11 @@ recipe.addVirtualInstrument("handle_virtual_nE", "virtualInstrument_nE", "virtua
     vBg_n0ENot0 = -1.6807, ...
     vTg_n0ENot0 = 0.0560);
 
+recipe.addStatement("virtual_nE", "handle_virtual_nE.requireSetCheck = false;");
 recipe.addChannel("virtual_nE", "n", "n", [], [], 0, 1);
 recipe.addChannel("virtual_nE", "E", "E", [], [], 0, 1);
 recipe.addChannel("virtual_nE", "nE_within_bounds", "nE_within_bounds");
-recipe.addChannel("virtual_nE", "skipOutOfBounds", "skipOutOfBounds", [], [], 0, 1);
+recipe.addChannel("virtual_nE", "nFast0EFast1", "nFast0EFast1", [], [], 0, 1);
 
 %% wrap up setup
 %smready(recipe, singleThreaded = true); % Debug: run recipe on client instead of engine worker.

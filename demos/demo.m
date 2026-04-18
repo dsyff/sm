@@ -1069,11 +1069,11 @@ if virtual_nE_Use
         vTg_n0E0 = -1, ...
         vBg_n0ENot0 = 2, ...
         vTg_n0ENot0 = -2);
-    recipe.addStatement("virtual_nE", "handle_virtual_nE.requireSetCheck = true;");
+    recipe.addStatement("virtual_nE", "handle_virtual_nE.requireSetCheck = false;");
     recipe.addChannel("virtual_nE", "n", "n_normalized", [], [], 0, 1);
     recipe.addChannel("virtual_nE", "E", "E_normalized", [], [], 0, 1);
     recipe.addChannel("virtual_nE", "nE_within_bounds", "nE_within_bounds");
-    recipe.addChannel("virtual_nE", "skipOutOfBounds", "skipOutOfBounds", [], [], 0, 1);
+    recipe.addChannel("virtual_nE", "nFast0EFast1", "nFast0EFast1", [], [], 0, 1);
 end
 
 if virtual_attodryAutofocus_Use

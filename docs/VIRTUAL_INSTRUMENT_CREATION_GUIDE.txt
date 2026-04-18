@@ -70,10 +70,10 @@ Current `virtualInstrument_nE` channel names:
   - `n`
   - `E`
   - `nE_within_bounds`
-  - `skipOutOfBounds` (settable 0/1; when 1, out-of-bounds n/E requests are skipped)
+  - `nFast0EFast1` (settable 0/1; `0` keeps `E` exact and snaps `n`, `1` keeps `n` exact and snaps `E`)
 
-Note: older scripts may still reference `skipSettingOutOfBoundsValues`; use
-`skipOutOfBounds` instead.
+Note: older scripts that referenced `skipOutOfBounds` must be updated to
+`nFast0EFast1`.
 
 
 ================================================================================
