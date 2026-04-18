@@ -279,8 +279,10 @@ classdef instrument_strainController < instrumentInterface
                 plot(ax4, sessionTimetable.Time, sessionTimetable.branchNum, "k", LineWidth = 1);
                 ylabel("branch []");
                 linkaxes([ax1, ax2, ax3, ax4], "x");
+                applyCompactTickFormat([ax1, ax2, ax3, ax4]);
             else
                 linkaxes([ax1, ax2, ax3], "x");
+                applyCompactTickFormat([ax1, ax2, ax3]);
             end
         end
     end

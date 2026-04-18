@@ -1,7 +1,26 @@
 global engine smscan smaux smdata bridge; %#ok<GVMIS,NUSED>
 
-% Close existing figures from previous sessions.
-close all;
+% Close the scan/queue GUIs before any workspace/setup changes so stale GUI
+% controls cannot remain interactive while a new main script is starting up.
+% Do not force-close arbitrary figures here because active scan figures use
+% CloseRequestFcn protection to guard saved data.
+guiHandles = gobjects(0, 1);
+if exist("smaux", "var") && isstruct(smaux)
+    if isfield(smaux, "smgui") && isstruct(smaux.smgui) && isfield(smaux.smgui, "figure1") ...
+            && isgraphics(smaux.smgui.figure1)
+        guiHandles(end + 1, 1) = smaux.smgui.figure1; %#ok<SAGROW>
+    end
+    if isfield(smaux, "sm") && isstruct(smaux.sm) && isfield(smaux.sm, "figure1") ...
+            && isgraphics(smaux.sm.figure1)
+        guiHandles(end + 1, 1) = smaux.sm.figure1; %#ok<SAGROW>
+    end
+end
+for k = 1:numel(guiHandles)
+    try
+        close(guiHandles(k));
+    catch
+    end
+end
 
 % Ensure sm-dev code folders on path (avoid instruments/private)
 st = dbstack("-completenames");
@@ -70,4 +89,3 @@ delete(visadevfind);
 delete(serialportfind);
 clearvars codeDir codeEntries folderPath i name st repoRootDir secretsPath D;
 %clear all;
-
