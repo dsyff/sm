@@ -338,6 +338,7 @@ classdef instrument_CS165MU < instrumentInterface
             obj.liveAxes.YDir = "normal";
             axis(obj.liveAxes, "image"); % square pixels
             obj.liveAxes.Toolbar.Visible = "off";
+            applyCompactTickFormat(obj.liveAxes);
             obj.liveFigure.Visible = "on";
             drawnow;
         end
@@ -596,5 +597,4 @@ classdef instrument_CS165MU < instrumentInterface
         end
     end
 end
-
 

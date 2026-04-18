@@ -130,6 +130,7 @@ for dispIdx = 1:numel(dispStruct)
     end
 
     set(gca, 'FontSize', axisTickFontSize);
+    applyCompactTickFormat(gca);
     title(channelTitle(chanIdx, channelNames));
 end
 

@@ -1164,6 +1164,7 @@ classdef measurementEngine < handle
                         ylabel(strrep(chName, "_", "\_"));
                     end
                 end
+                applyCompactTickFormat(gca);
             end
 
             % Ensure the empty plots render before the first data update.
