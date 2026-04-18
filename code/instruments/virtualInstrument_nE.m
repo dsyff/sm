@@ -88,7 +88,7 @@ classdef virtualInstrument_nE < virtualInstrumentInterface
                 case 4 % nFast0EFast1
                     obj.nFast0EFast1 = logical(setValues(1));
                 otherwise
-                    setWriteChannelHelper@virtualInstrumentInterface(obj, channelIndex, setValues);
+                    setWriteChannelHelper@instrumentInterface(obj, channelIndex, setValues);
             end
             obj.setHardwareFromState();
         end
@@ -111,19 +111,22 @@ classdef virtualInstrument_nE < virtualInstrumentInterface
             end
         end
 
-        function TF = setCheckChannelHelper(obj, channelIndex, ~)
-            if channelIndex == 4
-                TF = true;
-                return;
+        function TF = setCheckChannelHelper(obj, channelIndex, channelLastSetValues)
+            switch channelIndex
+                case {1, 2}
+                    [nApplied, EApplied] = obj.resolveAppliedState(obj.nStored, obj.EStored);
+                    rack = obj.getMasterRack();
+                    gateValues = rack.rackGet([obj.vTgChannelName, obj.vBgChannelName]);
+                    [nActual, EActual] = obj.computeNormalizedStateFromVoltages(gateValues(1), gateValues(2));
+                    actual = [nActual, EActual];
+                    expected = [nApplied, EApplied];
+                    tolerances = [obj.setTolerances{1}(1), obj.setTolerances{2}(1)];
+                    TF = all(abs(actual - expected) <= tolerances);
+                case 4
+                    TF = true;
+                otherwise
+                    TF = setCheckChannelHelper@instrumentInterface(obj, channelIndex, channelLastSetValues);
             end
-            [nApplied, EApplied] = obj.resolveAppliedState(obj.nStored, obj.EStored);
-            rack = obj.getMasterRack();
-            gateValues = rack.rackGet([obj.vTgChannelName, obj.vBgChannelName]);
-            [nActual, EActual] = obj.computeNormalizedStateFromVoltages(gateValues(1), gateValues(2));
-            actual = [nActual, EActual];
-            expected = [nApplied, EApplied];
-            tolerances = [obj.setTolerances{1}(1), obj.setTolerances{2}(1)];
-            TF = all(abs(actual - expected) <= tolerances);
         end
     end
 

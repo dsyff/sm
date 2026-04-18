@@ -438,6 +438,11 @@ USE SWITCH-CASE FOR CHANNEL DISPATCH
   end
 
 Performance note:
+  - For most instruments, prefer `switch channelIndex` in get/set helper
+    functions for readability.
+  - Exception: if an instrument has many groups of numbered channels and a
+    large switch becomes inefficient or obscures the batching pattern,
+    prefer a compact batch-oriented dispatch scheme instead.
   - In hot helper paths (`getWriteChannelHelper`, `getReadChannelHelper`,
     `setWriteChannelHelper`), prefer dispatching directly on `channelIndex`.
   - Avoid resolving `obj.channelTable.channels(channelIndex)` unless you need
