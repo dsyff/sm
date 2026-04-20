@@ -225,6 +225,7 @@ if strainController_Use
     recipe.addStatement("strain", "handle_strainController.requireSetCheck = true;");
 
     % Strain controller constructor restores tareData from logs (or tares if missing).
+    % Engine-worker mode helper: smeval("handle_strainController.warmup()");
 
     recipe.addChannel("strain", "del_d", "del_d", [], [], -5E-5, 5E-5);
     recipe.addChannel("strain", "T", "T");
