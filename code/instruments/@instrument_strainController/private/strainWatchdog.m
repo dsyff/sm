@@ -224,11 +224,12 @@ otherActiveControlChannelIndex = channelIndices(double(offset + 1));
 rackChannelIndex = channelIndices(double(offset + 2));
 tareChannelIndex = channelIndices(double(offset + 3));
 
-stringCommandIndices = instWorker.instWorkerRegisterStringCommands(["STOP"; "FLUSH"; "*IDN?"; "ERROR"]);
+stringCommandIndices = instWorker.instWorkerRegisterStringCommands(["STOP"; "FLUSH"; "*IDN?"; "ERROR"; "WARMUP"]);
 stopStringCommandIndex = stringCommandIndices(1);
 flushStringCommandIndex = stringCommandIndices(2);
 idnStringCommandIndex = stringCommandIndices(3);
 errorStringCommandIndex = stringCommandIndices(4);
+warmupStringCommandIndex = stringCommandIndices(5);
 getActionIndex = instWorker.instWorkerActionIndex("GET");
 setActionIndex = instWorker.instWorkerActionIndex("SET");
 checkActionIndex = instWorker.instWorkerActionIndex("CHECK");
@@ -682,6 +683,15 @@ end
                 instWorker.instWorkerSendToInst("strainWatchdog 202412 Thomas");
             case errorStringCommandIndex
                 dogError("error requested by man.", command);
+            case warmupStringCommandIndex
+                if activeControl
+                    dogError("cannot warm up cryostat while activeControl is on", command);
+                elseif ~ismethod(handle_cryostat, "warmup")
+                    dogError("cryostat %s does not support warmup", command, class(handle_cryostat));
+                else
+                    handle_cryostat.warmup();
+                    instWorker.instWorkerSendToInst(true);
+                end
             otherwise
                 dogError("invalid string command %s.", command, command.stringCommand);
         end
