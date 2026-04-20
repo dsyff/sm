@@ -49,10 +49,12 @@ classdef instrument_strainController < instrumentInterface
                 outerCurrentLimit = options.outerCurrentLimit, ...
                 innerCurrentLimit = options.innerCurrentLimit ...
             );
+            startupTimeout = seconds(60);
 
             %dogSet(obj.handle_strainWatchdog, "V_str_o", 0);
             %dogSet(obj.handle_strainWatchdog, "V_str_i", 0);
-            dogSet(obj.handle_strainWatchdog, "frequency", 100E3);
+            % Worker handshake completes before strainWatchdog finishes opening hardware.
+            dogSet(obj.handle_strainWatchdog, "frequency", 100E3, startupTimeout);
 
             if options.cryostat == "OptiCool"
                 % dogSet(obj.handle_strainWatchdog, "Z_short_r", 5.68);
@@ -60,10 +62,10 @@ classdef instrument_strainController < instrumentInterface
                 % dogSet(obj.handle_strainWatchdog, "Z_open_r", 28.9E6);
                 % dogSet(obj.handle_strainWatchdog, "Z_open_theta", deg2rad(106.7));
                 %20250904 internal calibration all on
-                dogSet(obj.handle_strainWatchdog, "Z_short_r", 5.56);
-                dogSet(obj.handle_strainWatchdog, "Z_short_theta", deg2rad(20.5));
-                dogSet(obj.handle_strainWatchdog, "Z_open_r", 27.9E6);
-                dogSet(obj.handle_strainWatchdog, "Z_open_theta", deg2rad(104.2));
+                dogSet(obj.handle_strainWatchdog, "Z_short_r", 5.56, startupTimeout);
+                dogSet(obj.handle_strainWatchdog, "Z_short_theta", deg2rad(20.5), startupTimeout);
+                dogSet(obj.handle_strainWatchdog, "Z_open_r", 27.9E6, startupTimeout);
+                dogSet(obj.handle_strainWatchdog, "Z_open_theta", deg2rad(104.2), startupTimeout);
             elseif options.cryostat == "Montana2"
                 %20250409
                 % dogSet(obj.handle_strainWatchdog, "Z_short_r", 1.783);
@@ -71,10 +73,10 @@ classdef instrument_strainController < instrumentInterface
                 % dogSet(obj.handle_strainWatchdog, "Z_open_r", 27.9E6);
                 % dogSet(obj.handle_strainWatchdog, "Z_open_theta", deg2rad(104.17));
                 %20250904 new LCR meter
-                dogSet(obj.handle_strainWatchdog, "Z_short_r", 2.402);
-                dogSet(obj.handle_strainWatchdog, "Z_short_theta", deg2rad(41.89));
-                dogSet(obj.handle_strainWatchdog, "Z_open_r", 20E9);
-                dogSet(obj.handle_strainWatchdog, "Z_open_theta", deg2rad(65));
+                dogSet(obj.handle_strainWatchdog, "Z_short_r", 2.402, startupTimeout);
+                dogSet(obj.handle_strainWatchdog, "Z_short_theta", deg2rad(41.89), startupTimeout);
+                dogSet(obj.handle_strainWatchdog, "Z_open_r", 20E9, startupTimeout);
+                dogSet(obj.handle_strainWatchdog, "Z_open_theta", deg2rad(65), startupTimeout);
             end
 
             tareFiles = dir(fullfile(obj.logDir, "tareData_*.mat"));
@@ -89,9 +91,9 @@ classdef instrument_strainController < instrumentInterface
                 if ~(isnumeric(d0) && isscalar(d0) && isfinite(d0))
                     error("instrument_strainController:InvalidTareDataLog", "Invalid tareData.d_0 in log file: %s", tareFile);
                 end
-                obj.tare(double(d0));
+                obj.tare(double(d0), timeout = startupTimeout);
             else
-                obj.tare();
+                obj.tare(timeout = startupTimeout);
             end
 
             obj.address = address;
@@ -111,7 +113,7 @@ classdef instrument_strainController < instrumentInterface
 
             obj.setTimeout = hours(3);
 
-            obj.rack_strainController = string(dogGet(obj.handle_strainWatchdog, "rack"));
+            obj.rack_strainController = string(dogGet(obj.handle_strainWatchdog, "rack", startupTimeout));
         end
 
         function delete(obj)
@@ -141,14 +143,15 @@ classdef instrument_strainController < instrumentInterface
             end
         end
 
-        function tareData = tare(obj, d_0)
+        function tareData = tare(obj, d_0, options)
             arguments
                 obj instrument_strainController;
                 d_0 double {mustBeScalarOrEmpty} = [];
+                options.timeout duration = seconds(60);
             end
             if isempty(d_0)
-                dogSet(obj.handle_strainWatchdog, "tare", 20);
-                tareData = dogGet(obj.handle_strainWatchdog, "tare");
+                dogSet(obj.handle_strainWatchdog, "tare", 20, options.timeout);
+                tareData = dogGet(obj.handle_strainWatchdog, "tare", options.timeout);
 
                 localLogDir = obj.logDir;
                 if strlength(localLogDir) == 0
@@ -165,7 +168,7 @@ classdef instrument_strainController < instrumentInterface
                 ts = string(datetime("now", Format = "yyyyMMdd_HHmmss_SSS"));
                 save(fullfile(localLogDir, "tareData_" + ts + ".mat"), "tareData");
             else
-                dogSet(obj.handle_strainWatchdog, "d_0", d_0);
+                dogSet(obj.handle_strainWatchdog, "d_0", d_0, options.timeout);
                 tareData = [];
             end
         end
