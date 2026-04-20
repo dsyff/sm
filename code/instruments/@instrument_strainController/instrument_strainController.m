@@ -132,6 +132,24 @@ classdef instrument_strainController < instrumentInterface
             end
         end
 
+        function warmup(obj, timeout)
+            arguments
+                obj instrument_strainController
+                timeout duration = seconds(60)
+            end
+
+            if isempty(obj.handle_strainWatchdog)
+                error("instrument_strainController:WarmupUnavailable", ...
+                    "strainWatchdog is not available.");
+            end
+
+            reply = dogQuery(obj.handle_strainWatchdog, "WARMUP", timeout);
+            if ~(islogical(reply) && isscalar(reply) && reply)
+                error("instrument_strainController:WarmupFailed", ...
+                    "Expected logical true reply for WARMUP. Received:\n%s", formattedDisplayText(reply));
+            end
+        end
+
         function stop(obj)
             if ~isempty(obj.handle_strainWatchdog)
                 try
