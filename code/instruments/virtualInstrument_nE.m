@@ -13,8 +13,15 @@ classdef virtualInstrument_nE < virtualInstrumentInterface
         vTg_n0ENot0 (1, 1) double {mustBeFinite}
         vBg_n0ENot0 (1, 1) double {mustBeFinite}
 
+        % Requested normalized state, kept exactly as requested by n/E sets.
+        % withinBoundsStored is just an analysis flag for the requested point.
         nStored (1, 1) double {mustBeFinite} = 0
         EStored (1, 1) double {mustBeFinite} = 0
+        withinBoundsStored (1, 1) logical = true
+
+        % 0: keep E exact and snap n.
+        % 1: keep n exact and snap E.
+        nFast0EFast1 (1, 1) logical = false
     end
 
     properties (Access = private)
@@ -58,9 +65,10 @@ classdef virtualInstrument_nE < virtualInstrumentInterface
             obj.validateCalibrationPoints();
             obj.computeTransformationMatrix();
 
-            obj.addChannel("n");
-            obj.addChannel("E");
+            obj.addChannel("n", setTolerances = 1E-3);
+            obj.addChannel("E", setTolerances = 1E-3);
             obj.addChannel("nE_within_bounds");
+            obj.addChannel("nFast0EFast1");
 
             obj.initializeStoredStateFromHardware();
         end
@@ -70,11 +78,17 @@ classdef virtualInstrument_nE < virtualInstrumentInterface
         function setWriteChannelHelper(obj, channelIndex, setValues)
             switch channelIndex
                 case 1 % n
+                    obj.validateNormalizedValue(setValues(1), "n");
                     obj.nStored = setValues(1);
+                    [~, ~, obj.withinBoundsStored] = obj.computeGateVoltages(obj.nStored, obj.EStored);
                 case 2 % E
+                    obj.validateNormalizedValue(setValues(1), "E");
                     obj.EStored = setValues(1);
+                    [~, ~, obj.withinBoundsStored] = obj.computeGateVoltages(obj.nStored, obj.EStored);
+                case 4 % nFast0EFast1
+                    obj.nFast0EFast1 = logical(setValues(1));
                 otherwise
-                    setWriteChannelHelper@virtualInstrumentInterface(obj, channelIndex, setValues);
+                    setWriteChannelHelper@instrumentInterface(obj, channelIndex, setValues);
             end
             obj.setHardwareFromState();
         end
@@ -91,18 +105,28 @@ classdef virtualInstrument_nE < virtualInstrumentInterface
                         getValues = E;
                     end
                 case 3
-                    [~, ~, withinBounds] = obj.computeGateVoltages(obj.nStored, obj.EStored);
-                    getValues = double(withinBounds);
+                    getValues = double(obj.withinBoundsStored);
+                case 4
+                    getValues = double(obj.nFast0EFast1);
             end
         end
 
-        function TF = setCheckChannelHelper(obj, channelIndex, ~)
-            [vtg, vbg] = obj.computeGateVoltages(obj.nStored, obj.EStored);
-            [nEff, EEff] = obj.computeNormalizedStateFromVoltages(vtg, vbg);
-            expected = [nEff, EEff];
-            channel = obj.channelTable.channels(channelIndex);
-            getValues = obj.getChannel(channel);
-            TF = all(abs(getValues - expected(channelIndex)) <= obj.setTolerances{channelIndex});
+        function TF = setCheckChannelHelper(obj, channelIndex, channelLastSetValues)
+            switch channelIndex
+                case {1, 2}
+                    [nApplied, EApplied] = obj.resolveAppliedState(obj.nStored, obj.EStored);
+                    rack = obj.getMasterRack();
+                    gateValues = rack.rackGet([obj.vTgChannelName, obj.vBgChannelName]);
+                    [nActual, EActual] = obj.computeNormalizedStateFromVoltages(gateValues(1), gateValues(2));
+                    actual = [nActual, EActual];
+                    expected = [nApplied, EApplied];
+                    tolerances = [obj.setTolerances{1}(1), obj.setTolerances{2}(1)];
+                    TF = all(abs(actual - expected) <= tolerances);
+                case 4
+                    TF = true;
+                otherwise
+                    TF = setCheckChannelHelper@instrumentInterface(obj, channelIndex, channelLastSetValues);
+            end
         end
     end
 
@@ -121,7 +145,7 @@ classdef virtualInstrument_nE < virtualInstrumentInterface
             obj.M = [0.5*r*alphaN,  0.5*r*alphaE; 
                      0.5*alphaN,   -0.5*alphaE];
             
-            obj.Minv = inv(obj.M);
+            obj.Minv = obj.M \ eye(2);
 
             vtgCorners = [obj.vTgLimits(1), obj.vTgLimits(1), obj.vTgLimits(2), obj.vTgLimits(2)];
             vbgCorners = [obj.vBgLimits(1), obj.vBgLimits(2), obj.vBgLimits(1), obj.vBgLimits(2)];
@@ -142,10 +166,9 @@ classdef virtualInstrument_nE < virtualInstrumentInterface
             delta = obj.M * [nRaw; ERaw];
             vtg = obj.vTg_n0E0 + delta(1);
             vbg = obj.vBg_n0E0 + delta(2);
-            withinBounds = vtg >= obj.vTgLimits(1) && vtg <= obj.vTgLimits(2) && ...
-                vbg >= obj.vBgLimits(1) && vbg <= obj.vBgLimits(2);
-            vtg = min(max(vtg, obj.vTgLimits(1)), obj.vTgLimits(2));
-            vbg = min(max(vbg, obj.vBgLimits(1)), obj.vBgLimits(2));
+            tol = 1E-12 * max([1, abs(obj.vTgLimits), abs(obj.vBgLimits)]);
+            withinBounds = vtg >= obj.vTgLimits(1) - tol && vtg <= obj.vTgLimits(2) + tol && ...
+                vbg >= obj.vBgLimits(1) - tol && vbg <= obj.vBgLimits(2) + tol;
         end
 
         function [n, E] = computeNormalizedStateFromVoltages(obj, vtg, vbg)
@@ -178,10 +201,8 @@ classdef virtualInstrument_nE < virtualInstrumentInterface
         end
         
         function setHardwareFromState(obj)
-            [vtg, vbg, withinBounds] = obj.computeGateVoltages(obj.nStored, obj.EStored);
-            if ~withinBounds
-                return;
-            end
+            [nApplied, EApplied] = obj.resolveAppliedState(obj.nStored, obj.EStored);
+            [vtg, vbg] = obj.computeGateVoltages(nApplied, EApplied);
             rack = obj.getMasterRack();
             rack.rackSetWrite([obj.vTgChannelName, obj.vBgChannelName], [vtg; vbg]);
         end
@@ -192,6 +213,45 @@ classdef virtualInstrument_nE < virtualInstrumentInterface
             [n, E] = obj.computeNormalizedStateFromVoltages(gateValues(1), gateValues(2));
             obj.nStored = n;
             obj.EStored = E;
+            [~, ~, obj.withinBoundsStored] = obj.computeGateVoltages(obj.nStored, obj.EStored);
+        end
+
+        function [nResolved, EResolved] = resolveAppliedState(obj, nTarget, ETarget)
+            nResolved = nTarget;
+            EResolved = ETarget;
+            if obj.nFast0EFast1
+                EResolved = obj.clampToInterval(ETarget, obj.computeFeasibleEInterval(nTarget));
+            else
+                nResolved = obj.clampToInterval(nTarget, obj.computeFeasibleNInterval(ETarget));
+            end
+        end
+
+        function interval = computeFeasibleNInterval(obj, E)
+            ERaw = obj.EMin + E * obj.ESpan;
+            base = [obj.vTg_n0E0; obj.vBg_n0E0] + obj.M * [obj.nMin; ERaw];
+            coeff = obj.M(:, 1) * obj.nSpan;
+            interval = obj.intersectInterval([0, 1], obj.intervalFromAffineBounds(coeff(1), base(1), obj.vTgLimits));
+            interval = obj.intersectInterval(interval, obj.intervalFromAffineBounds(coeff(2), base(2), obj.vBgLimits));
+        end
+
+        function interval = computeFeasibleEInterval(obj, n)
+            nRaw = obj.nMin + n * obj.nSpan;
+            base = [obj.vTg_n0E0; obj.vBg_n0E0] + obj.M * [nRaw; obj.EMin];
+            coeff = obj.M(:, 2) * obj.ESpan;
+            interval = obj.intersectInterval([0, 1], obj.intervalFromAffineBounds(coeff(1), base(1), obj.vTgLimits));
+            interval = obj.intersectInterval(interval, obj.intervalFromAffineBounds(coeff(2), base(2), obj.vBgLimits));
+        end
+
+        function value = clampToInterval(~, target, interval)
+            value = min(max(target, interval(1)), interval(2));
+            value = min(max(value, 0), 1);
+        end
+
+        function validateNormalizedValue(~, value, label)
+            if value < 0 || value > 1
+                error("virtualInstrument_nE:InvalidNormalizedValue", ...
+                    "%s must be in the range [0, 1]. Received %g.", label, value);
+            end
         end
 
 

@@ -40,7 +40,7 @@ cleanup = onCleanup(@() safeClose_(sp)); %#ok<NASGU>
 sp.FlowControl = "none";
 
 if NameValueArgs.verbose
-    fprintf("Reprogramming STS servo ID on %s @ %d baud: %d -> %d\n", comPort, NameValueArgs.baudRate, idFrom, idTo);
+    experimentContext.print("Reprogramming STS servo ID on %s @ %d baud: %d -> %d", comPort, NameValueArgs.baudRate, idFrom, idTo);
 end
 
 % 1) unlock EPROM on old ID
@@ -48,7 +48,7 @@ flush(sp);
 sendWriteByte_(sp, idFrom8, INST_WRITE, SMS_STS_LOCK, uint8(0));
 readAck_(sp, idFrom8);
 if NameValueArgs.verbose
-    fprintf("  EPROM unlocked on ID %d\n", idFrom);
+    experimentContext.print("  EPROM unlocked on ID %d", idFrom);
 end
 
 % 2) write new ID to EPROM (writeByte to SMS_STS_ID)
@@ -56,7 +56,7 @@ flush(sp);
 sendWriteByte_(sp, idFrom8, INST_WRITE, SMS_STS_ID, idTo8);
 readAck_(sp, idFrom8);
 if NameValueArgs.verbose
-    fprintf("  Wrote new ID value (%d) via old ID %d\n", idTo, idFrom);
+    experimentContext.print("  Wrote new ID value (%d) via old ID %d", idTo, idFrom);
 end
 
 % 3) lock EPROM on NEW ID (vendor example locks with the new ID)
@@ -64,8 +64,8 @@ flush(sp);
 sendWriteByte_(sp, idTo8, INST_WRITE, SMS_STS_LOCK, uint8(1));
 readAck_(sp, idTo8);
 if NameValueArgs.verbose
-    fprintf("  EPROM locked on new ID %d\n", idTo);
-    fprintf("Done.\n");
+    experimentContext.print("  EPROM locked on new ID %d", idTo);
+    experimentContext.print("Done.");
 end
 
 end

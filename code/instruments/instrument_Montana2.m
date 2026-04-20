@@ -76,8 +76,7 @@ classdef instrument_Montana2 < instrumentInterface
             if obj.enforceTargetTemperature(targetTemperature)
                 warning("Montana target temperature was changed elsewhere.");
             end
-            channel = obj.channelTable.channels(channelIndex);
-            actualTemperature = obj.getChannel(channel);
+            actualTemperature = obj.getChannelByIndex(channelIndex);
             absDiff = abs(targetTemperature - actualTemperature);
             if targetTemperature < 3.9
                 if actualTemperature > 4

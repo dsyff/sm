@@ -25,26 +25,26 @@ classdef instrument_toyB < instrumentInterface
         
         function setWriteChannelHelper(obj, channelIndex, setValues)
             % Store the set values for the specified channel
-            channel = obj.channelTable.channels(channelIndex);
-            switch channel
-                case "X"
+            switch channelIndex
+                case 1
                     obj.storedX = setValues;
-                case "Y"
+                case 2
                     obj.storedY = setValues;
                 otherwise
+                    channel = obj.channelTable.channels(channelIndex);
                     error('Unknown channel: %s', channel);
             end
         end
         
         function getValues = getReadChannelHelper(obj, channelIndex)
             % Return the stored values for the specified channel
-            channel = obj.channelTable.channels(channelIndex);
-            switch channel
-                case "X"
+            switch channelIndex
+                case 1
                     getValues = obj.storedX;
-                case "Y"
+                case 2
                     getValues = obj.storedY;
                 otherwise
+                    channel = obj.channelTable.channels(channelIndex);
                     error('Unknown channel: %s', channel);
             end
         end

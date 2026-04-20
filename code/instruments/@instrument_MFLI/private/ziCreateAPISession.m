@@ -116,7 +116,7 @@ apilevel = min(apilevel_device, maximum_supported_apilevel);
 ziDAQ('connect', props.serveraddress, props.serverport, apilevel);
 
 if isempty(props.connected)
-  fprintf('Will try to connect device `%s` on interface `%s`.\n', props.deviceid, props.interfaces{1})
+  experimentContext.print("Will try to connect device `%s` on interface `%s`.", props.deviceid, props.interfaces{1})
   ziDAQ('connectDevice', props.deviceid, props.interfaces{1});
 end
 

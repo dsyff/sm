@@ -11,6 +11,6 @@ reply = dogQuery(handle_strainWatchdog, command, timeout);
 if islogical(reply)
     TF = reply;
 else
-    Error("Logical expected for dogCheck. Received: \n%s", formattedDisplayText(reply));
+    error("Logical expected for dogCheck. Received: \n%s", formattedDisplayText(reply));
 end
 end

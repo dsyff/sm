@@ -1,11 +1,10 @@
 classdef instrument_strainController < instrumentInterface
     properties (Access = private)
-        handle_strainWatchdog   % struct with man2Dog, dog2Man, dogFuture
-        channels string = ["del_d", "T", "Cp", "Q", "C", "d", ...
-            "V_str_o", "V_str_i", "I_str_o", "I_str_i", "activeControl"];
+        handle_strainWatchdog
         dogGetTimeout duration = seconds(15);
         dogCheckTimeout duration = seconds(60);
         rack_strainController string = "";
+        logDir (1, 1) string = "";
     end
 
     properties (Access = protected)
@@ -20,38 +19,53 @@ classdef instrument_strainController < instrumentInterface
                 options.address_K2450_A (1, 1) string = gpibAddress(17)
                 options.address_K2450_B (1, 1) string = gpibAddress(18)
                 options.address_Montana2 (1, 1) string = "136.167.55.165"
-                options.address_Opticool (1, 1) string = "127.0.0.1"
-                options.cryostat (1, 1) string {mustBeMember(options.cryostat, ["Montana2", "Opticool"])}
+                options.address_OptiCool (1, 1) string = "127.0.0.1"
+                options.cryostat (1, 1) string {mustBeMember(options.cryostat, ["Montana2", "OptiCool"])}
                 options.strainCellNumber (1, 1) uint8 {mustBeInteger, mustBePositive}
+                options.outerCurrentLimit (1, 1) double {mustBePositive} = 1.6e-7
+                options.innerCurrentLimit (1, 1) double {mustBePositive} = 1e-7
             end
 
             obj@instrumentInterface();
+            obj.numWorkersRequired = 1;
 
-            handle = strainWatchdogConstructor( ...
+            rootPath = experimentContext.getExperimentRootPath();
+            if strlength(rootPath) == 0
+                rootPath = string(pwd);
+            end
+            obj.logDir = fullfile(rootPath, "logs", "strainController");
+            if ~isfolder(obj.logDir)
+                mkdir(obj.logDir);
+            end
+
+            obj.handle_strainWatchdog = instrumentWorker("strainWatchdog", @strainWatchdog, ...
                 address_E4980AL = options.address_E4980AL, ...
                 address_K2450_A = options.address_K2450_A, ...
                 address_K2450_B = options.address_K2450_B, ...
                 address_Montana2 = options.address_Montana2, ...
-                address_Opticool = options.address_Opticool, ...
+                address_OptiCool = options.address_OptiCool, ...
                 cryostat = options.cryostat, ...
-                strainCellNumber = options.strainCellNumber ...
+                strainCellNumber = options.strainCellNumber, ...
+                outerCurrentLimit = options.outerCurrentLimit, ...
+                innerCurrentLimit = options.innerCurrentLimit ...
             );
-            obj.handle_strainWatchdog = handle;
+            startupTimeout = seconds(60);
 
-            dogSet(obj.handle_strainWatchdog, "V_str_o", 0);
-            dogSet(obj.handle_strainWatchdog, "V_str_i", 0);
-            dogSet(obj.handle_strainWatchdog, "frequency", 100E3);
+            %dogSet(obj.handle_strainWatchdog, "V_str_o", 0);
+            %dogSet(obj.handle_strainWatchdog, "V_str_i", 0);
+            % Worker handshake completes before strainWatchdog finishes opening hardware.
+            dogSet(obj.handle_strainWatchdog, "frequency", 100E3, startupTimeout);
 
-            if options.cryostat == "Opticool"
+            if options.cryostat == "OptiCool"
                 % dogSet(obj.handle_strainWatchdog, "Z_short_r", 5.68);
                 % dogSet(obj.handle_strainWatchdog, "Z_short_theta", deg2rad(22.2));
                 % dogSet(obj.handle_strainWatchdog, "Z_open_r", 28.9E6);
                 % dogSet(obj.handle_strainWatchdog, "Z_open_theta", deg2rad(106.7));
                 %20250904 internal calibration all on
-                dogSet(obj.handle_strainWatchdog, "Z_short_r", 5.56);
-                dogSet(obj.handle_strainWatchdog, "Z_short_theta", deg2rad(20.5));
-                dogSet(obj.handle_strainWatchdog, "Z_open_r", 27.9E6);
-                dogSet(obj.handle_strainWatchdog, "Z_open_theta", deg2rad(104.2));
+                dogSet(obj.handle_strainWatchdog, "Z_short_r", 5.56, startupTimeout);
+                dogSet(obj.handle_strainWatchdog, "Z_short_theta", deg2rad(20.5), startupTimeout);
+                dogSet(obj.handle_strainWatchdog, "Z_open_r", 27.9E6, startupTimeout);
+                dogSet(obj.handle_strainWatchdog, "Z_open_theta", deg2rad(104.2), startupTimeout);
             elseif options.cryostat == "Montana2"
                 %20250409
                 % dogSet(obj.handle_strainWatchdog, "Z_short_r", 1.783);
@@ -59,14 +73,31 @@ classdef instrument_strainController < instrumentInterface
                 % dogSet(obj.handle_strainWatchdog, "Z_open_r", 27.9E6);
                 % dogSet(obj.handle_strainWatchdog, "Z_open_theta", deg2rad(104.17));
                 %20250904 new LCR meter
-                dogSet(obj.handle_strainWatchdog, "Z_short_r", 2.402);
-                dogSet(obj.handle_strainWatchdog, "Z_short_theta", deg2rad(41.89));
-                dogSet(obj.handle_strainWatchdog, "Z_open_r", 20E9);
-                dogSet(obj.handle_strainWatchdog, "Z_open_theta", deg2rad(65));
+                dogSet(obj.handle_strainWatchdog, "Z_short_r", 2.402, startupTimeout);
+                dogSet(obj.handle_strainWatchdog, "Z_short_theta", deg2rad(41.89), startupTimeout);
+                dogSet(obj.handle_strainWatchdog, "Z_open_r", 20E9, startupTimeout);
+                dogSet(obj.handle_strainWatchdog, "Z_open_theta", deg2rad(65), startupTimeout);
+            end
+
+            tareFiles = dir(fullfile(obj.logDir, "tareData_*.mat"));
+            if ~isempty(tareFiles)
+                [~, idx] = max([tareFiles.datenum]);
+                tareFile = fullfile(string(tareFiles(idx).folder), string(tareFiles(idx).name));
+                S = load(tareFile, "tareData");
+                if ~isfield(S, "tareData") || ~isstruct(S.tareData) || ~isfield(S.tareData, "d_0")
+                    error("instrument_strainController:InvalidTareDataLog", "Invalid tareData log file: %s", tareFile);
+                end
+                d0 = S.tareData.d_0;
+                if ~(isnumeric(d0) && isscalar(d0) && isfinite(d0))
+                    error("instrument_strainController:InvalidTareDataLog", "Invalid tareData.d_0 in log file: %s", tareFile);
+                end
+                obj.tare(double(d0), timeout = startupTimeout);
+            else
+                obj.tare(timeout = startupTimeout);
             end
 
             obj.address = address;
-            obj.communicationHandle = handle;
+            obj.communicationHandle = obj.handle_strainWatchdog;
 
             obj.addChannel("del_d", setTolerances = 5e-9);
             obj.addChannel("T", setTolerances = 0.1);
@@ -82,12 +113,41 @@ classdef instrument_strainController < instrumentInterface
 
             obj.setTimeout = hours(3);
 
-            obj.rack_strainController = string(dogGet(obj.handle_strainWatchdog, "rack"));
+            obj.rack_strainController = string(dogGet(obj.handle_strainWatchdog, "rack", startupTimeout));
         end
 
         function delete(obj)
             % Ask the watchdog to stop
             obj.stop();
+        end
+
+        function flush(obj)
+            if isempty(obj.handle_strainWatchdog)
+                return;
+            end
+            reply = dogQuery(obj.handle_strainWatchdog, "FLUSH", seconds(30));
+            if ~(islogical(reply) && isscalar(reply) && reply)
+                error("instrument_strainController:FlushFailed", ...
+                    "Expected logical true reply for FLUSH. Received:\n%s", formattedDisplayText(reply));
+            end
+        end
+
+        function warmup(obj, timeout)
+            arguments
+                obj instrument_strainController
+                timeout duration = seconds(60)
+            end
+
+            if isempty(obj.handle_strainWatchdog)
+                error("instrument_strainController:WarmupUnavailable", ...
+                    "strainWatchdog is not available.");
+            end
+
+            reply = dogQuery(obj.handle_strainWatchdog, "WARMUP", timeout);
+            if ~(islogical(reply) && isscalar(reply) && reply)
+                error("instrument_strainController:WarmupFailed", ...
+                    "Expected logical true reply for WARMUP. Received:\n%s", formattedDisplayText(reply));
+            end
         end
 
         function stop(obj)
@@ -101,16 +161,32 @@ classdef instrument_strainController < instrumentInterface
             end
         end
 
-        function tareData = tare(obj, d_0)
+        function tareData = tare(obj, d_0, options)
             arguments
                 obj instrument_strainController;
                 d_0 double {mustBeScalarOrEmpty} = [];
+                options.timeout duration = seconds(60);
             end
             if isempty(d_0)
-                dogSet(obj.handle_strainWatchdog, "tare", 20);
-                tareData = dogGet(obj.handle_strainWatchdog, "tare");
+                dogSet(obj.handle_strainWatchdog, "tare", 20, options.timeout);
+                tareData = dogGet(obj.handle_strainWatchdog, "tare", options.timeout);
+
+                localLogDir = obj.logDir;
+                if strlength(localLogDir) == 0
+                    rootPath = experimentContext.getExperimentRootPath();
+                    if strlength(rootPath) == 0
+                        rootPath = string(pwd);
+                    end
+                    localLogDir = fullfile(rootPath, "logs", "strainController");
+                    obj.logDir = localLogDir;
+                end
+                if ~isfolder(localLogDir)
+                    mkdir(localLogDir);
+                end
+                ts = string(datetime("now", Format = "yyyyMMdd_HHmmss_SSS"));
+                save(fullfile(localLogDir, "tareData_" + ts + ".mat"), "tareData");
             else
-                dogSet(obj.handle_strainWatchdog, "d_0", d_0);
+                dogSet(obj.handle_strainWatchdog, "d_0", d_0, options.timeout);
                 tareData = [];
             end
         end
@@ -118,97 +194,122 @@ classdef instrument_strainController < instrumentInterface
         function rack_strainController = getRack(obj)
             rack_strainController = obj.rack_strainController;
         end
+    end
 
-        function plotLastSession(obj, options)
+    methods (Static)
+        function plotLastSession(options)
             % Plot the most recent watchdog session data saved by the worker.
             arguments
-                obj instrument_strainController
-                options.dataFolder (1,1) string = "dogTimetable";
+                options.dataFolder (1,1) string = "";
                 options.plotBranchNum (1,1) logical = true;
             end
             dataFolder = options.dataFolder;
             plotBranchNum = options.plotBranchNum;
 
-            fileTable = struct2table(dir(dataFolder + filesep + "*.mat"));
-            fileTable = sortrows(fileTable, "name", "descend");
-
-            %% combine files
-            if ~isempty(fileTable)
-                fileCount = 1;
-                if height(fileTable) == 1
-                    firstFilename = fileTable.name;
-                else
-                    firstFilename = fileTable.name(1);
+            if strlength(dataFolder) == 0 || dataFolder == "dogTimetable"
+                rootPath = experimentContext.getExperimentRootPath();
+                if strlength(rootPath) == 0
+                    rootPath = string(pwd);
                 end
-                load(dataFolder + filesep + firstFilename);
-                sessionTimetable = rmmissing(dataTimetable);
-                for fileIndex = 2:height(fileTable)
-                    load(dataFolder + filesep + fileTable.name(fileIndex));
-                    if sessionTimetable.Time(1) - dataTimetable.Time(end) < minutes(5)
-                        sessionTimetable = [dataTimetable; sessionTimetable]; %#ok<AGROW>
-                        fileCount = fileCount + 1;
-                    else
-                        break;
-                    end
+                dataFolder = fullfile(rootPath, "logs", "strainController", "dogTimetable");
+            end
+
+            if ~isfolder(dataFolder)
+                error("instrument_strainController:DataFolderNotFound", ...
+                    "Data folder not found: %s", dataFolder);
+            end
+
+            fileInfo = dir(fullfile(dataFolder, "*.mat"));
+            if isempty(fileInfo)
+                error("instrument_strainController:NoSessionFiles", ...
+                    "No .mat files found in: %s", dataFolder);
+            end
+            fileNames = sort(string({fileInfo.name}), "descend");
+
+            sessionTimetable = timetable();
+            fileCount = 0;
+            for fileIndex = 1:numel(fileNames)
+                filePath = fullfile(dataFolder, fileNames(fileIndex));
+                loaded = load(filePath, "dataTimetable");
+                if ~isfield(loaded, "dataTimetable")
+                    error("instrument_strainController:InvalidDataTimetableFile", ...
+                        "Missing dataTimetable in file: %s", filePath);
                 end
-                disp("Loaded " + fileCount + " file(s).")
-                %%
-                if ~isempty(sessionTimetable)
-
-                    f = figure();
-                    if plotBranchNum
-                        t = tiledlayout(f, 4, 1);
-                    else
-                        t = tiledlayout(f, 3, 1);
-                    end
-
-                    ax1 = nexttile(t);
-                    hold(ax1, "on");
-                    y_max = max(max(sessionTimetable.del_d_target * 1E6), max(sessionTimetable.del_d * 1E6));
-                    y_min = min(min(sessionTimetable.del_d_target * 1E6), min(sessionTimetable.del_d * 1E6));
-                    area(ax1, sessionTimetable.Time, (y_max - y_min + 0.15) * (abs(sessionTimetable.del_d - sessionTimetable.del_d_target) < 5E-9) + y_min - 0.075, y_min - 0.075, FaceColor = [0.9, 0.9, 0.9], EdgeColor = "none", ShowBaseLine = false, HandleVisibility = "off");
-                    plot(ax1, sessionTimetable.Time, sessionTimetable.del_d_target * 1E6, "--k", LineWidth = 2);
-                    plot(ax1, sessionTimetable.Time, sessionTimetable.del_d * 1E6, "b", LineWidth = 1);
-                    ylim(ax1, [y_min - 0.1, y_max + 0.1])
-                    ylabel("displacement [\mum]");
-                    legend(["target", "measured"]);
-
-                    ax2 = nexttile(t);
-                    hold(ax2, "on");
-                    plot(ax2, sessionTimetable.Time, sessionTimetable.V_str_o, "r", LineWidth = 1);
-                    plot(ax2, sessionTimetable.Time, sessionTimetable.V_str_i, "b", LineWidth = 1);
-                    [V_str_o_min, V_str_o_max, V_str_i_min, V_str_i_max] = obj.updateStrainVoltageBounds(sessionTimetable.T);
-                    plot(ax2, sessionTimetable.Time, V_str_o_min, "--r", LineWidth = 1, HandleVisibility = "off");
-                    plot(ax2, sessionTimetable.Time, V_str_o_max, "--r", LineWidth = 1, HandleVisibility = "off");
-                    plot(ax2, sessionTimetable.Time, V_str_i_min, "--b", LineWidth = 1, HandleVisibility = "off");
-                    plot(ax2, sessionTimetable.Time, V_str_i_max, "--b", LineWidth = 1, HandleVisibility = "off");
-                    ylabel("strain voltage [V]");
-                    legend(["outer", "inner"]);
-
-                    ax3 = nexttile(t);
-                    hold(ax3, "on");
-                    plot(ax3, sessionTimetable.Time, sessionTimetable.T, "k", LineWidth = 1);
-                    ylabel("temperature [K]");
-
-                    if plotBranchNum
-                        ax4 = nexttile(t);
-                        hold(ax4, "on");
-                        plot(ax4, sessionTimetable.Time, sessionTimetable.branchNum, "k", LineWidth = 1);
-                        ylabel("branch []");
-
-                        linkaxes([ax1, ax2, ax3, ax4], "x");
-                    else
-                        linkaxes([ax1, ax2, ax3], "x");
-                    end
+                dataTimetable = rmmissing(loaded.dataTimetable);
+                if isempty(dataTimetable)
+                    continue;
+                end
+                if isempty(sessionTimetable)
+                    sessionTimetable = dataTimetable;
+                    fileCount = 1;
+                    continue;
+                end
+                if sessionTimetable.Time(1) - dataTimetable.Time(end) < minutes(5)
+                    sessionTimetable = [dataTimetable; sessionTimetable];
+                    fileCount = fileCount + 1;
                 else
-                    warning("empty dataTimetable");
+                    break;
                 end
             end
 
+            if isempty(sessionTimetable)
+                error("instrument_strainController:EmptySession", ...
+                    "No non-empty dataTimetable found in: %s", dataFolder);
+            end
+
+            experimentContext.print("Loaded " + fileCount + " file(s).");
+
+            f = figure();
+            if plotBranchNum
+                t = tiledlayout(f, 4, 1);
+            else
+                t = tiledlayout(f, 3, 1);
+            end
+
+            ax1 = nexttile(t);
+            hold(ax1, "on");
+            y_max = max(max(sessionTimetable.del_d_target * 1E6), max(sessionTimetable.del_d * 1E6));
+            y_min = min(min(sessionTimetable.del_d_target * 1E6), min(sessionTimetable.del_d * 1E6));
+            area(ax1, sessionTimetable.Time, (y_max - y_min + 0.15) * (abs(sessionTimetable.del_d - sessionTimetable.del_d_target) < 5E-9) + y_min - 0.075, y_min - 0.075, FaceColor = [0.9, 0.9, 0.9], EdgeColor = "none", ShowBaseLine = false, HandleVisibility = "off");
+            plot(ax1, sessionTimetable.Time, sessionTimetable.del_d_target * 1E6, "--k", LineWidth = 2);
+            plot(ax1, sessionTimetable.Time, sessionTimetable.del_d * 1E6, "b", LineWidth = 1);
+            ylim(ax1, [y_min - 0.1, y_max + 0.1])
+            ylabel("displacement [\mum]");
+            legend(["target", "measured"]);
+
+            ax2 = nexttile(t);
+            hold(ax2, "on");
+            plot(ax2, sessionTimetable.Time, sessionTimetable.V_str_o, "r", LineWidth = 1);
+            plot(ax2, sessionTimetable.Time, sessionTimetable.V_str_i, "b", LineWidth = 1);
+            [V_str_o_min, V_str_o_max, V_str_i_min, V_str_i_max] = instrument_strainController.updateStrainVoltageBounds(sessionTimetable.T);
+            plot(ax2, sessionTimetable.Time, V_str_o_min, "--r", LineWidth = 1, HandleVisibility = "off");
+            plot(ax2, sessionTimetable.Time, V_str_o_max, "--r", LineWidth = 1, HandleVisibility = "off");
+            plot(ax2, sessionTimetable.Time, V_str_i_min, "--b", LineWidth = 1, HandleVisibility = "off");
+            plot(ax2, sessionTimetable.Time, V_str_i_max, "--b", LineWidth = 1, HandleVisibility = "off");
+            ylabel("strain voltage [V]");
+            legend(["outer", "inner"]);
+
+            ax3 = nexttile(t);
+            hold(ax3, "on");
+            plot(ax3, sessionTimetable.Time, sessionTimetable.T, "k", LineWidth = 1);
+            ylabel("temperature [K]");
+
+            if plotBranchNum
+                ax4 = nexttile(t);
+                hold(ax4, "on");
+                plot(ax4, sessionTimetable.Time, sessionTimetable.branchNum, "k", LineWidth = 1);
+                ylabel("branch []");
+                linkaxes([ax1, ax2, ax3, ax4], "x");
+                applyCompactTickFormat([ax1, ax2, ax3, ax4]);
+            else
+                linkaxes([ax1, ax2, ax3], "x");
+                applyCompactTickFormat([ax1, ax2, ax3]);
+            end
         end
+    end
 
-
-    function [min, max] = strainVoltageBounds(~, T)
+    methods (Static, Access = private)
+        function [min, max] = strainVoltageBounds(T)
 
             min = nan(size(T));
             max = nan(size(T));
@@ -231,10 +332,10 @@ classdef instrument_strainController < instrumentInterface
 
         end
 
-        function [V_str_o_min, V_str_o_max, V_str_i_min, V_str_i_max] = updateStrainVoltageBounds(obj, T)
+        function [V_str_o_min, V_str_o_max, V_str_i_min, V_str_i_max] = updateStrainVoltageBounds(T)
             temperatureSafeMargin = 3;
             voltageBoundFraction = 0.9;
-            [V_min, V_max] = obj.strainVoltageBounds(T + temperatureSafeMargin);
+            [V_min, V_max] = instrument_strainController.strainVoltageBounds(T + temperatureSafeMargin);
 
             % outer voltages are connected so that positive corresponds to
             % stretch
@@ -255,25 +356,64 @@ classdef instrument_strainController < instrumentInterface
         end
 
         function getValues = getReadChannelHelper(obj, channelIndex)
-            channel = obj.channels(channelIndex);
-            val = dogGet(obj.handle_strainWatchdog, channel, obj.dogGetTimeout);
+            switch channelIndex
+                case 1
+                    val = dogGet(obj.handle_strainWatchdog, "del_d", obj.dogGetTimeout);
+                case 2
+                    val = dogGet(obj.handle_strainWatchdog, "T", obj.dogGetTimeout);
+                case 3
+                    val = dogGet(obj.handle_strainWatchdog, "Cp", obj.dogGetTimeout);
+                case 4
+                    val = dogGet(obj.handle_strainWatchdog, "Q", obj.dogGetTimeout);
+                case 5
+                    val = dogGet(obj.handle_strainWatchdog, "C", obj.dogGetTimeout);
+                case 6
+                    val = dogGet(obj.handle_strainWatchdog, "d", obj.dogGetTimeout);
+                case 7
+                    val = dogGet(obj.handle_strainWatchdog, "V_str_o", obj.dogGetTimeout);
+                case 8
+                    val = dogGet(obj.handle_strainWatchdog, "V_str_i", obj.dogGetTimeout);
+                case 9
+                    val = dogGet(obj.handle_strainWatchdog, "I_str_o", obj.dogGetTimeout);
+                case 10
+                    val = dogGet(obj.handle_strainWatchdog, "I_str_i", obj.dogGetTimeout);
+                case 11
+                    val = dogGet(obj.handle_strainWatchdog, "activeControl", obj.dogGetTimeout);
+                otherwise
+                    channel = obj.channelTable.channels(channelIndex);
+                    error("instrument_strainController:UnsupportedChannel", "Unsupported channel %s.", channel);
+            end
             getValues = double(val);
         end
 
         function setWriteChannelHelper(obj, channelIndex, setValues)
-            channel = obj.channels(channelIndex);
-            switch channel
-                case {"del_d", "T", "V_str_o", "V_str_i", "activeControl"}
-                    dogSet(obj.handle_strainWatchdog, channel, setValues);
+            switch channelIndex
+                case 1
+                    dogSet(obj.handle_strainWatchdog, "del_d", setValues);
+                case 2
+                    dogSet(obj.handle_strainWatchdog, "T", setValues);
+                case 7
+                    dogSet(obj.handle_strainWatchdog, "V_str_o", setValues);
+                case 8
+                    dogSet(obj.handle_strainWatchdog, "V_str_i", setValues);
+                case 11
+                    dogSet(obj.handle_strainWatchdog, "activeControl", setValues);
                 otherwise
             end
         end
 
         function TF = setCheckChannelHelper(obj, channelIndex, ~)
-            channel = obj.channels(channelIndex);
-            switch channel
-                case {"del_d", "T", "V_str_o", "V_str_i", "activeControl"}
-                    TF = dogCheck(obj.handle_strainWatchdog, channel, obj.dogCheckTimeout);
+            switch channelIndex
+                case 1
+                    TF = dogCheck(obj.handle_strainWatchdog, "del_d", obj.dogCheckTimeout);
+                case 2
+                    TF = dogCheck(obj.handle_strainWatchdog, "T", obj.dogCheckTimeout);
+                case 7
+                    TF = dogCheck(obj.handle_strainWatchdog, "V_str_o", obj.dogCheckTimeout);
+                case 8
+                    TF = dogCheck(obj.handle_strainWatchdog, "V_str_i", obj.dogCheckTimeout);
+                case 11
+                    TF = dogCheck(obj.handle_strainWatchdog, "activeControl", obj.dogCheckTimeout);
                 otherwise
             end
         end

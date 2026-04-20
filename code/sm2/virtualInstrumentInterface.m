@@ -24,7 +24,6 @@ classdef (Abstract) virtualInstrumentInterface < instrumentInterface
             obj@instrumentInterface();
             obj.address = address;
             obj.masterRack = masterRack;
-            obj.requireSetCheck = false;
         end
 
         function delete(obj)
@@ -45,6 +44,12 @@ classdef (Abstract) virtualInstrumentInterface < instrumentInterface
 
     methods (Access = ?instrumentInterface, Sealed)
         function getWriteChannelHelper(~, ~)
+        end
+    end
+
+    methods (Access = ?instrumentInterface)
+        function TF = setCheckChannelHelper(~, ~, ~)
+            TF = true;
         end
     end
 

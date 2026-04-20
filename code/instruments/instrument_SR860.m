@@ -76,7 +76,9 @@ classdef instrument_SR860 < instrumentInterface
             % This allows instrumentRack to minimize reading time by sending all
             % getWrite commands first, then reading all results in sequence
             handle = obj.communicationHandle;
-            %flush(handle); SR860 flushes extremely slowly
+            if visastatus(handle)
+                flush(handle);
+            end
             switch channelIndex
                 case 1  % X
                     writeline(handle, 'OUTP? 0');
@@ -203,25 +205,25 @@ classdef instrument_SR860 < instrumentInterface
                     
                     % Handle invalid response (matches legacy behavior exactly)
                     attempts = attempts + 1;
-                    disp(datetime);
+                    experimentContext.print(datetime("now"));
                     if isempty(response) || response == ""
-                        disp("SR860 timed out during query.");
+                        experimentContext.print("SR860 timed out during query.");
                     else
-                        disp("SR860 returned " + response);
+                        experimentContext.print("SR860 returned " + response);
                     end
                     
                     % Re-send the query command (this is the key insight from legacy code)
                     obj.getWriteChannelHelper(channelIndex);
-                    pause(0.001);
+                    pause(1E-6);
 
                 catch ME
                     attempts = attempts + 1;
-                    disp(datetime);
-                    disp("SR860 communication error: " + ME.message);
+                    experimentContext.print(datetime("now"));
+                    experimentContext.print("SR860 communication error: " + ME.message);
                     
                     % Re-send the query command on communication error too
                     obj.getWriteChannelHelper(channelIndex);
-                    pause(0.001);
+                    pause(1E-6);
                 end
             end
             
@@ -258,23 +260,23 @@ classdef instrument_SR860 < instrumentInterface
                     
                     % Handle invalid response (matches legacy behavior)
                     attempts = attempts + 1;
-                    disp(datetime);
+                    experimentContext.print(datetime("now"));
                     if isempty(response) || response == ""
-                        disp("SR860 SNAP timed out during query (attempt " + attempts + "/" + maxAttempts + ")");
+                        experimentContext.print("SR860 SNAP timed out during query (attempt " + attempts + "/" + maxAttempts + ")");
                     else
-                        disp("SR860 SNAP returned invalid: " + response + " (attempt " + attempts + "/" + maxAttempts + ")");
+                        experimentContext.print("SR860 SNAP returned invalid: " + response + " (attempt " + attempts + "/" + maxAttempts + ")");
                     end
                     
                     if attempts < maxAttempts
                         % Re-send the SNAP command for retry (using getWriteChannelHelper)
                         obj.getWriteChannelHelper(channelIndex);
-                        pause(0.001);
+                        pause(1E-6);
                     end
                     
                 catch ME
                     attempts = attempts + 1;
-                    disp(datetime);
-                    disp("SR860 SNAP communication error (attempt " + attempts + "/" + maxAttempts + "): " + ME.message);
+                    experimentContext.print(datetime("now"));
+                    experimentContext.print("SR860 SNAP communication error (attempt " + attempts + "/" + maxAttempts + "): " + ME.message);
                     
                     if attempts < maxAttempts
                         % Re-send the SNAP command for retry
