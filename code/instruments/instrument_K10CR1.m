@@ -56,7 +56,7 @@ classdef instrument_K10CR1 < instrumentInterface
             end
         end
 
-        function flush(obj) %#ok<MANU>
+        function flush(~)
             % No buffered communication to flush for Kinesis .NET API
         end
 
@@ -69,9 +69,9 @@ classdef instrument_K10CR1 < instrumentInterface
             handle = obj.communicationHandle;
             obj.ensureConnected();
             if strlength(obj.address) > 0
-                fprintf("instrument_K10CR1: Homing device %s (timeout %d ms).\n", char(obj.address), timeoutMs);
+                experimentContext.print("instrument_K10CR1: Homing device %s (timeout %d ms).", char(obj.address), timeoutMs);
             else
-                fprintf("instrument_K10CR1: Homing device (timeout %d ms).\n", timeoutMs);
+                experimentContext.print("instrument_K10CR1: Homing device (timeout %d ms).", timeoutMs);
             end
             Home(handle, timeoutMs);
         end
@@ -171,7 +171,7 @@ classdef instrument_K10CR1 < instrumentInterface
 
                 EnableDevice(handle);
                 pause(0.5);
-                fprintf("instrument_K10CR1: Homing device %s (timeout %d ms).\n", char(resolvedSerial), moveTimeout);
+                experimentContext.print("instrument_K10CR1: Homing device %s (timeout %d ms).", char(resolvedSerial), moveTimeout);
                 Home(handle, moveTimeout);
                 pause(0.5);
             catch connectError

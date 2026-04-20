@@ -1,6 +1,10 @@
-%% INSTRUMENT SETUP GUIDE (see demos/demo.m for the canonical full setup script)
-% Users typically copy/paste + edit demos/demo.m. Keep it up to date when you add
-% or change instruments/channels.
+%% INSTRUMENT SETUP GUIDE
+% Canonical setup scripts:
+% - Recipe (worker engine): `demos/demo.m`
+% - Recipe (worker engine, n/E example, no hardware required): `demos/demo_nE.m`
+% - Legacy rack-on-client debug example (git-ignored): `tests/demo_nE.m`
+%
+% Keep the relevant demo(s) up to date when you add/change instruments/channels.
 %
 % QUICK REFERENCE
 % ---------------
@@ -10,10 +14,10 @@
 % 3) Optional: set instrument properties / send direct hardware commands
 % 4) Add instrument to rack
 % 5) Add user-facing channels to rack
-% 6) smready(rack)
+% 6) smready(rack)  OR  smready(recipe)
 %
 % STEP 0: Add sm-dev or sm-main code folder to the path
-% This matches demos/demo.m and keeps sminit available.
+% This matches tests/demo_nE.m and keeps sminit available.
 % Example:
 %   username = string(getenv("USERNAME"));
 %   sm_dev_path = fullfile("C:\Users", username, "Desktop", "sm-dev");
@@ -43,6 +47,14 @@
 % Notes:
 % - This can be done before or after rack.addInstrument(...) (demo.m does both).
 % - Prefer instrument class methods when available; use direct commands for gaps.
+% - Safety default: keep `reset()` calls commented out unless you have
+%   explicitly ramped outputs to a known-safe state.
+% - Framework write pacing is controlled by `handle.writeCommandInterval`
+%   (default `seconds(0)`). No automatic GPIB delay is applied by default;
+%   set this manually per instrument only when needed.
+% - Keithley timing note: consecutive gets/sets can be fast, but the read
+%   phase after a get query can be much slower (often around 0.5 s,
+%   depending on NPLC/averaging/auto-zero/readback settings).
 %
 % STEP 4: add instrument to rack
 % Syntax: rack.addInstrument(handle, "instName")
@@ -52,7 +64,7 @@
 %   rack.addInstrument(handle_K2450, "K2450_A");
 %
 % STEP 5: add channels to rack (user-facing names used by smget/smset)
-% Full signature (matches demos/demo.m):
+% Full signature (matches explicit-rack debug scripts like tests/demo_nE.m):
 %   rack.addChannel("instName", "instChanName", "userChanName", rampRate, rampThreshold, softMin, softMax)
 %
 % Notes:
@@ -69,10 +81,68 @@
 % STEP 6: finish setup + launch GUI
 %   smready(rack);
 %
+% RECIPE MODE (worker engine)
+% ---------------------------
+% For recipe-based setups (recommended), build an `instrumentRackRecipe` instead:
+%   recipe = instrumentRackRecipe();
+%   recipe.addInstrument("h", "instrument_ClassName", "friendlyName", ...);
+%   recipe.addChannel("friendlyName", "instChanName", "userChanName");
+%   recipe.addStatement("friendlyName", "h = handle_myInst.communicationHandle;");
+%   recipe.addStatement("friendlyName", "writeline(h, ""SCPI_COMMAND"");");
+%   smready(recipe);
+%
+% Statement style guideline:
+% - Prefer one executable line per `recipe.addStatement(...)` call.
+% - This makes it easy to comment out individual setup lines in demos/scripts.
+% - Statements run immediately after the referenced instrument is set up.
+%
+% Optional local-debug path with the same recipe (no engine worker):
+%   smready(recipe, singleThreaded = true);
+%
+% RACK SCRIPT -> RECIPE SCRIPT MIGRATION
+% --------------------------------------
+% Use this when converting a legacy main script that currently does:
+%   rack = instrumentRack(...); ... smready(rack);
+%
+% 1) Replace rack construction:
+%      rack = instrumentRack(true);
+%   -> recipe = instrumentRackRecipe();
+%
+% 2) Convert each physical-instrument block:
+%      handle_K2450 = instrument_K2450(gpibAddress(18, 0));
+%      handle_K2450.requireSetCheck = false;
+%      h = handle_K2450.communicationHandle;
+%      writeline(h, ":OUTPut ON");
+%      rack.addInstrument(handle_K2450, "K2450_A");
+%   -> recipe.addInstrument("handle_K2450", "instrument_K2450", "K2450_A", gpibAddress(18, 0));
+%      recipe.addStatement("K2450_A", "handle_K2450.requireSetCheck = false;");
+%      recipe.addStatement("K2450_A", "h = handle_K2450.communicationHandle;");
+%      recipe.addStatement("K2450_A", "writeline(h, ':OUTPut ON');");
+%
+% 3) Convert channels 1:1:
+%      rack.addChannel(...) -> recipe.addChannel(...)
+%
+% 4) Convert virtual-instrument construction:
+%      handle_v = virtualInstrument_nE("virtual_nE", rack, ...);
+%      rack.addInstrument(handle_v, "virtual_nE");
+%   -> recipe.addVirtualInstrument("handle_v", "virtualInstrument_nE", "virtual_nE", "virtual_nE", ...);
+%
+% 5) Replace final setup call:
+%      smready(rack);
+%   -> smready(recipe);                         % worker engine default
+%      smready(recipe, singleThreaded = true); % local debug with same recipe
+%
+% 6) If an instrument needs extra client workers, make it explicit in recipe:
+%      recipe.addInstrument(..., numWorkersRequested = N);
+%    In the instrument class, set `obj.numWorkersRequired = N` and use
+%    `instrumentWorker(...)` for the actual worker startup/handshake.
+%
 % COMMON PITFALLS
 % --------------
 % - addInstrument arg order is (handle, "instName"), not ("instName", handle).
 % - The "instName" string must match between addInstrument and addChannel.
 % - "instChanName" must exist in the instrument class (see its constructor/addChannel calls).
 % - All names must be unique (instrument names, userChanName).
+% - In demo scripts, keep the same instrument order across address variables,
+%   `_Use` flags, and `if ..._Use` instrument blocks to keep maintenance predictable.
 

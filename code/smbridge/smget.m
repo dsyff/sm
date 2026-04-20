@@ -1,21 +1,38 @@
-function varargout = smget(varargin)
-% SMGET - Simplified wrapper for smget_new
-% 
-% This function provides a shorter syntax for accessing smget_new functionality.
-% All arguments are passed directly to smget_new for processing.
+function values = smget(channelNames)
+% Wrapper around instrumentRack.rackGet.
 %
-% USAGE:
-%   value = smget(channelName)
-%   values = smget(["channel1", "channel2", ...])
+% This function intentionally does NOT translate or expand channel names.
+% It expects the raw channelFriendlyNames already used by the rack.
 %
-% EXAMPLES:
-%   x = smget("sr830.X");                    % Single channel
-%   xy = smget(["sr830.X", "sr830.Y"]);      % Multiple channels as string array
+% Usage:
+%   values = smget("chan")
+%   values = smget(["ch1","ch2"])
 %
-% SEE ALSO: smget_new, smset, smrun_new
-%
-% Thomas 2025-07-17 - Convenience wrapper for faster typing
+% Notes:
+% - channelNames must be a 1-D list; it will be converted to a column vector.
+% - values is the raw numeric column vector returned by rackGet (concatenated).
 
-[varargout{1:nargout}] = smget_new(varargin{:});
+global engine %#ok<GVMIS>
 
+if isempty(channelNames)
+    values = [];
+    return
+end
+
+hasEngine = exist("engine", "var") && ~isempty(engine) && isa(engine, "measurementEngine");
+if ~hasEngine
+    error("smget:no_backend", "No measurementEngine is available. Please run smready(...) first.")
+end
+
+if ~isstring(channelNames)
+    error("smget:invalidChannels", "channelNames must be a string array.")
+end
+
+if ~isvector(channelNames)
+    error("smget:invalidChannelsShape", "channelNames must be a 1-D string array.")
+end
+
+channelNames = channelNames(:);
+values = engine.rackGet(channelNames);
+values = values(:);
 end

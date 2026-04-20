@@ -5,33 +5,30 @@ Overview
 --------
 The smbridge layer adapts the new sm2 instrumentRack system to the legacy SM GUI
 workflow. It keeps smdata/smscan/smaux compatible while routing I/O through the
-instrumentRack and new smget_new/smset_new helpers.
+instrumentRack and new smget/smset helpers.
 
 Key files
 ---------
 - code/smbridge/smready.m
   Entry point after rack setup. Creates smguiBridge, initializes smdata, and
-  launches both GUIs (smgui_small_new + sm).
+  launches both GUIs (smgui_small + sm).
 
 - code/smbridge/smguiBridge.m
   Builds legacy smdata from instrumentRack. Expands vector channels into scalar
   names for plotting compatibility. Exposes helper getters for vector/scalar
   channel name lists and channel sizes.
 
-- code/smbridge/smgui_small_new.m
+- code/smbridge/smgui_small.m
   Scan editor (single smscan). Handles loop definition, set/get channels, and
   plot selection. Uses vector channel names for acquisition, and expands to
   scalar names for plotting.
 
-- code/smbridge/sm_new_Callback.m + code/smbridge/sm.m
+- code/smbridge/sm_Callback.m + code/smbridge/sm.m
   Queue GUI and available scans library. Manages smaux.scans (library) and
-  smaux.smq (queue), launches smgui_small_new for editing, and runs smrun_new.
+  smaux.smq (queue), launches smgui_small for editing, and runs scans via
+  measurementEngine.
 
-- code/smbridge/smrun_new.m
-  Runtime scan engine. Uses smchanlookup_new to expand vector channel names
-  into scalar indices, then calls instrumentRack.rackSet/rackGet directly.
-
-- code/smbridge/smchanlookup_new.m
+- code/smbridge/smchanlookup.m
   Resolves channel names into smdata channel indices. When vector_name=true,
   vector channel names are expanded into scalar names (e.g. XY -> XY_1, XY_2).
 
@@ -42,18 +39,18 @@ Vector channels (what the GUI stores vs plots)
   - smscan.loops(i).setchan stores scalar names (vector setting is not allowed).
 - Plotting uses expanded scalar names.
   - smguiBridge expands vector channels into scalar channels in smdata.channels.
-  - smgui_small_new builds plot lists by converting vector names to scalar names
+  - smgui_small builds plot lists by converting vector names to scalar names
     (e.g. "XY_1", "XY_2") using bridge.getChannelSize.
 
 Scan GUI vs Queue GUI
 ---------------------
-- Scan GUI (smgui_small_new)
+- Scan GUI (smgui_small)
   - Edits a single smscan: loop ranges, set/get channels, constants, plots.
   - Stores plot selections in smscan.disp (1D/2D entries).
   - Uses shared state helpers for data path, PPT, and run number.
-- Queue/Main GUI (sm + sm_new_Callback)
+- Queue/Main GUI (sm + sm_Callback)
   - Manages smaux.scans (available scans) and smaux.smq (queue).
-  - Launches smgui_small_new for editing, and smrun_new for execution.
+  - Launches smgui_small for editing, and measurementEngine.run for execution.
 
 Paths and shared state
 ----------------------
@@ -61,9 +58,8 @@ Paths and shared state
   - data/: smdatapath* (data directory state)
   - ppt/:  smppt* (ppt log state)
   - run/:  smrun* (run number state)
-- smrun_new resolves relative PPT paths using bridge.experimentRootPath when set.
-- Data folder and PPT file are enforced under bridge.experimentRootPath; GUI
-  selections change the subfolder name (data) or filename (ppt), not the root.
+- measurementEngine resolves relative PPT paths using experimentContext.getExperimentRootPath() when set.
+- Default data folder is computed under experimentContext.getExperimentRootPath() when available.
 
 Menu items not yet implemented
 ------------------------------
@@ -72,23 +68,33 @@ Menu items not yet implemented
 
 Notes
 -----
-- smget_new/smset_new expect rack-friendly channel names (channelFriendlyNames).
+- smget/smset expect rack-friendly channel names (channelFriendlyNames).
 - Vector channels are expanded only for plotting and smdata compatibility; they
   are not settable as vectors.
 
-smrun_new execution flow
-------------------------
-- smrun_new takes a scan struct (or uses global smscan) and runs it against
-  instrumentRackGlobal.
-- For set/get channels, it resolves vector names into scalar indices via
-  smchanlookup_new(..., true), then builds scalar channel name lists from
-  smdata.channels for saving and display.
-- Set operations call instrumentRackGlobal.rackSet with the original
-  channelFriendlyNames and values.
-- Get operations call instrumentRackGlobal.rackGet with the original
-  channelFriendlyNames and store returned numeric values.
+measurementEngine execution flow
+--------------------------------
+- measurementEngine.run takes a scan struct (or measurementScan) and executes it:
+  - rack-mode: runs locally on the client against a client-constructed rack.
+  - recipe-mode: runs on a worker engine process (rack constructed from recipe).
+- Vector get channel names are expanded into scalar channels for plotting/saving.
 - During run, display selections are mapped to data slices; PNG/PPT export is
   handled at the end of the run.
+
+PPT constants formatting
+------------------------
+- `smsaveppt` formats scan constants with `%.6g` (general format) rather
+  than branching by magnitude.
+- This avoids inconsistent formatting paths and fixes exponent corruption from
+  a legacy `%e4` typo (e.g., `1e+16` incorrectly rendered as `1e+164`).
+
+Queued statements (Queue GUI)
+-----------------------------
+- Queue items created via "TXT enqueue" are evaluated on the client (base workspace)
+  via evalin("base", ...).
+- To run code on the engine worker (recipe mode):
+  - smeval(codeString) (eval, no outputs)
+  - smeval(codeString) can return a single output when called with an output argument
 
 Saved data structure
 --------------------

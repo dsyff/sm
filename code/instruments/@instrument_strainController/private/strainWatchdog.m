@@ -1,13 +1,15 @@
-function strainWatchdog(dog2Man, options)
+function strainWatchdog(instWorker, options)
 arguments
-    dog2Man;
+    instWorker (1, 1) instrumentWorkerRuntime;
     options.address_E4980AL (1, 1) string;
     options.address_K2450_A (1, 1) string;
     options.address_K2450_B (1, 1) string;
     options.address_Montana2 (1, 1) string;
-    options.address_Opticool (1, 1) string;
-    options.cryostat (1, 1) string {mustBeMember(options.cryostat, ["Montana2", "Opticool"])};
-    options.strainCellNumber (2, 2) uint8 {mustBeInteger, mustBePositive};
+    options.address_OptiCool (1, 1) string;
+    options.cryostat (1, 1) string {mustBeMember(options.cryostat, ["Montana2", "OptiCool"])};
+    options.strainCellNumber (1, 1) uint8 {mustBeInteger, mustBePositive};
+    options.outerCurrentLimit (1, 1) double {mustBePositive} = 1.6e-7;
+    options.innerCurrentLimit (1, 1) double {mustBePositive} = 1e-7;
 end
 %% settings
 % If last sampling is older than staleTime ago, and if activeControl is on,
@@ -24,11 +26,8 @@ overloadTolerance = 5E-10; %m tolerance for progress detection. allows a small p
 overloadHold = seconds(5); %time watchdog waits before declaring overload
 del_d_tolerance = 5E-9; %m tolerance for determining if del_d target is reached
 V_tolerance = 5E-3; %V tolerance for determining if voltage target is reached
-
-%% pass back man2dog message channel
-% man2dog commands will only be executed after initilizations are done.
-man2Dog = parallel.pool.DataQueue;
-send(dog2Man, man2Dog);
+outerCurrentRange = 10^(floor(log10(options.outerCurrentLimit)) + 1); %A smallest 1E-x strictly above outerCurrentLimit
+innerCurrentRange = 10^(floor(log10(options.innerCurrentLimit)) + 1); %A smallest 1E-x strictly above innerCurrentLimit
 
 %% initialize variables all in SI units
 % whether to keep the dog alive. used to gracefully stop the dog.
@@ -70,7 +69,6 @@ tareData = [];
 del_d_target = nan; %stores old target so loop knows when new target is set
 T_target = nan; %stores old target so loop knows when new target is set
 currentData = [];
-oldData = [];
 unfilledDataRow = [];
 V_str_o_max = nan;
 V_str_o_min = nan;
@@ -98,30 +96,34 @@ if options.cryostat == "Montana2"
     handle_cryostat = instrument_Montana2(options.address_Montana2);
     rack_strain.addInstrument(handle_cryostat, "Montana2");
     rack_strain.addChannel("Montana2", "T", "T");
-elseif options.cryostat == "Opticool"
-    handle_cryostat = instrument_Opticool(options.address_Opticool);
-    rack_strain.addInstrument(handle_cryostat, "Opticool");
-    rack_strain.addChannel("Opticool", "T", "T");
-    %rack_strain.addChannel("Opticool", "B", "B");
+elseif options.cryostat == "OptiCool"
+    handle_cryostat = instrument_OptiCool(options.address_OptiCool);
+    rack_strain.addInstrument(handle_cryostat, "OptiCool");
+    rack_strain.addChannel("OptiCool", "T", "T");
+    %rack_strain.addChannel("OptiCool", "B", "B");
 end
 
 %%
 handle_K2450_A = instrument_K2450(options.address_K2450_A);
 %handle_K2450_A.reset();
 h = handle_K2450_A.communicationHandle;
-%writeline(h,"source:voltage:read:back off"); %do not measure voltage
+%writeline(h, ":SOURce:VOLTage:READ:BACK OFF"); %do not measure voltage
 
-%writeline(h,":sense:current:range 1e-7"); %sets the sense current range
-%writeline(h,"source:voltage:Ilimit 8e-8"); %sets a current limit protector
+%writeline(h, ":SENSe:CURRent:RANGe 1e-7"); %sets the sense current range
+%writeline(h, ":SOURce:VOLTage:ILIMit 8e-8"); %sets a current limit protector
 
-writeline(h,":sense:current:range 1e-6"); %sets the sense current range
-writeline(h,"source:voltage:Ilimit 1.6e-7"); %sets a current limit protector
+writeline(h, ":SOURce:VOLTage:READ:BACK ON");
+writeline(h, ":SENSe:CURRent:AZERo:STATe OFF");
+writeline(h, ":SENSe:CURRent:AVERage:STATe OFF");
+writeline(h, ":SOURce:DELay 0");
+writeline(h, sprintf(":SENSe:CURRent:RANGe %g", outerCurrentRange)); %sets sense current range from outerCurrentLimit
+writeline(h, sprintf(":SOURce:VOLTage:ILIMit %g", options.outerCurrentLimit)); %sets a current limit protector
 
-writeline(h,":source:voltage:range 200"); %sets the source voltage range
-%writeline(h,":source:voltage:range:auto ON"); %use auto range for voltage
-%writeline(h,":route:terminals rear"); %use rear terminal
-%writeline(h,":sense:current:NPLcycles 2"); %number of power line cycles per measurement
-writeline(h,":OUTP ON");
+writeline(h, ":SOURce:VOLTage:RANGe 200"); %sets the source voltage range
+%writeline(h, ":SOURce:VOLTage:RANGe:AUTO ON"); %use auto range for voltage
+%writeline(h, ":ROUTe:TERMinals REAR"); %use rear terminal
+writeline(h, ":SENSe:CURRent:NPLCycles 0.5"); %number of power line cycles per measurement
+writeline(h, ":OUTPut ON");
 pause(2);
 handle_K2450_A.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
 handle_K2450_A.setSetTolerances("V_source", V_tolerance); %used to determine if voltage has been reached
@@ -133,19 +135,23 @@ rack_strain.addChannel("K2450_A", "VI", "VI_str_o");
 handle_K2450_B = instrument_K2450(options.address_K2450_B);
 %handle_K2450_B.reset();
 h = handle_K2450_B.communicationHandle;
-%writeline(h,"source:voltage:read:back off"); %do not measure voltage
+%writeline(h, ":SOURce:VOLTage:READ:BACK OFF"); %do not measure voltage
 
-%writeline(h,":sense:current:range 1e-7"); %sets the sense current range
-%writeline(h,"source:voltage:Ilimit 5e-8"); %sets a current limit protector
+%writeline(h, ":SENSe:CURRent:RANGe 1e-7"); %sets the sense current range
+%writeline(h, ":SOURce:VOLTage:ILIMit 5e-8"); %sets a current limit protector
 
-writeline(h,":sense:current:range 1e-6"); %sets the sense current range
-writeline(h,"source:voltage:Ilimit 1e-7"); %sets a current limit protector
+writeline(h, ":SOURce:VOLTage:READ:BACK ON");
+writeline(h, ":SENSe:CURRent:AZERo:STATe OFF");
+writeline(h, ":SENSe:CURRent:AVERage:STATe OFF");
+writeline(h, ":SOURce:DELay 0");
+writeline(h, sprintf(":SENSe:CURRent:RANGe %g", innerCurrentRange)); %sets sense current range from innerCurrentLimit
+writeline(h, sprintf(":SOURce:VOLTage:ILIMit %g", options.innerCurrentLimit)); %sets a current limit protector
 
-writeline(h,":source:voltage:range 200"); %sets the source voltage range
-%writeline(h,":source:voltage:range:auto ON"); %use auto range for voltage
-%writeline(h,":route:terminals rear"); %use rear terminal
-%writeline(h,":sense:current:NPLcycles 2"); %number of power line cycles per measurement
-writeline(h,":OUTP ON");
+writeline(h, ":SOURce:VOLTage:RANGe 200"); %sets the source voltage range
+%writeline(h, ":SOURce:VOLTage:RANGe:AUTO ON"); %use auto range for voltage
+%writeline(h, ":ROUTe:TERMinals REAR"); %use rear terminal
+writeline(h, ":SENSe:CURRent:NPLCycles 0.5"); %number of power line cycles per measurement
+writeline(h, ":OUTPut ON");
 pause(2);
 handle_K2450_B.chargeCurrentLimit = 1E-7; %used to determine if voltage has been reached on capacitive load
 handle_K2450_B.setSetTolerances("V_source", V_tolerance); %used to determine if voltage has been reached
@@ -154,30 +160,90 @@ rack_strain.addChannel("K2450_B", "V_source", "V_str_i");
 rack_strain.addChannel("K2450_B", "I_measure", "I_str_i");
 rack_strain.addChannel("K2450_B", "VI", "VI_str_i");
 %% create cleanup object that tries to ramp down voltages if strainWatchdog was not closed gracefully
-cleanupObj = onCleanup(@() rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [0, 0]));
+%cleanupObj = onCleanup(@() rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [0, 0]));
 %%
-logFolder = "doglog";
+rootPath = experimentContext.getExperimentRootPath();
+if strlength(rootPath) == 0
+    rootPath = string(pwd);
+end
+
+baseLogDir = fullfile(rootPath, "logs", "strainController");
+if ~isfolder(baseLogDir)
+    mkdir(baseLogDir);
+end
+
+logFolder = fullfile(baseLogDir, "doglog");
 if ~isfolder(logFolder)
     mkdir(logFolder);
 end
-dataTimetableFolder = "dogTimetable";
+
+dataTimetableFolder = fullfile(baseLogDir, "dogTimetable");
 if ~isfolder(dataTimetableFolder)
     mkdir(dataTimetableFolder);
 end
 
 %% get current target temperature
 alwaysControlVariableSetValues.T = handle_cryostat.getCurrentTargetTemperature();
+activeControlChannelNames = string(fieldnames(activeControlVariables));
+alwaysControlChannelNames = string(fieldnames(alwaysControlVariables));
+readOnlyChannelNames = string(fieldnames(readOnlyVariables));
+directControlChannelNames = string(fieldnames(directControlVariables));
+parameterChannelNames = string(fieldnames(parameterVariables));
+otherChannelNames = ["activeControl"; "rack"; "tare"];
+channelIndices = instWorker.instWorkerRegisterChannels([ ...
+    activeControlChannelNames; ...
+    alwaysControlChannelNames; ...
+    readOnlyChannelNames; ...
+    directControlChannelNames; ...
+    parameterChannelNames; ...
+    otherChannelNames]);
 
-%% set del_d target
-activeControlVariableSetValues.del_d = 0;
+groupIndex_activeControlVariables = uint32(1);
+groupIndex_alwaysControlVariables = uint32(2);
+groupIndex_readOnlyVariables = uint32(3);
+groupIndex_directControlVariables = uint32(4);
+groupIndex_parameterVariables = uint32(5);
+groupIndex_otherVariables = uint32(6);
+kindIndex_stringCommand = uint32(1);
+kindIndex_channelCommand = uint32(2);
 
-%% start listening to commands
-afterEach(man2Dog, @dogGetsCommand);
+channelGroupIndexByChannelIndex = zeros(1, numel(channelIndices), "uint32");
+offset = 0;
+channelGroupIndexByChannelIndex(double(offset + (1:numel(activeControlChannelNames)))) = groupIndex_activeControlVariables;
+offset = offset + numel(activeControlChannelNames);
+channelGroupIndexByChannelIndex(double(offset + (1:numel(alwaysControlChannelNames)))) = groupIndex_alwaysControlVariables;
+offset = offset + numel(alwaysControlChannelNames);
+channelGroupIndexByChannelIndex(double(offset + (1:numel(readOnlyChannelNames)))) = groupIndex_readOnlyVariables;
+offset = offset + numel(readOnlyChannelNames);
+channelGroupIndexByChannelIndex(double(offset + (1:numel(directControlChannelNames)))) = groupIndex_directControlVariables;
+offset = offset + numel(directControlChannelNames);
+channelGroupIndexByChannelIndex(double(offset + (1:numel(parameterChannelNames)))) = groupIndex_parameterVariables;
+offset = offset + numel(parameterChannelNames);
+channelGroupIndexByChannelIndex(double(offset + (1:numel(otherChannelNames)))) = groupIndex_otherVariables;
+otherActiveControlChannelIndex = channelIndices(double(offset + 1));
+rackChannelIndex = channelIndices(double(offset + 2));
+tareChannelIndex = channelIndices(double(offset + 3));
+
+stringCommandIndices = instWorker.instWorkerRegisterStringCommands(["STOP"; "FLUSH"; "*IDN?"; "ERROR"; "WARMUP"]);
+stopStringCommandIndex = stringCommandIndices(1);
+flushStringCommandIndex = stringCommandIndices(2);
+idnStringCommandIndex = stringCommandIndices(3);
+errorStringCommandIndex = stringCommandIndices(4);
+warmupStringCommandIndex = stringCommandIndices(5);
+getActionIndex = instWorker.instWorkerActionIndex("GET");
+setActionIndex = instWorker.instWorkerActionIndex("SET");
+checkActionIndex = instWorker.instWorkerActionIndex("CHECK");
+
 %% start infinite loop
 % without try/catch, matlab sometimtes fails to handle error here correctly
 % and instead restarts the worker with no warning
 try
     while keepAlive
+        while instWorker.instWorkerHasPendingFromInst()
+            command = instWorker.instWorkerPollFromInst();
+            dogGetsCommand(command);
+        end
+
         %the dog works on controlling strain here
         if activeControl
             % react to target changes and temperature changes
@@ -333,7 +399,7 @@ try
             %["Cp", "Q", "V_str_o", "I_str_o", "V_str_i", "I_str_i", "T",
             %"C", "del_d", "del_d_target", "branchNum"];
             currentData(unfilledDataRow, :) = num2cell([getValues.', ...
-                readOnlyVariables.C, activeControlVariables.del_d, del_d_target, branchNum]); %#ok<AGROW>
+                readOnlyVariables.C, activeControlVariables.del_d, del_d_target, branchNum]);
             currentData.Time(unfilledDataRow) = lastUpdate;
 
             if unfilledDataRow == dataChunkLength
@@ -343,7 +409,6 @@ try
             end
         else
             if justEndedActiveControl
-                rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [0, 0]);
                 refreshDataTimetablesAndLoopVariables(true);
                 justEndedActiveControl = false;
             end
@@ -353,14 +418,14 @@ try
 
         % This pause is here to ensure this while loop can be interrupted. This
         % causes negligible slowdown.
-        pause(1E-5);
+        pause(1E-6);
     end
-    rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [0, 0]);
+    %rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [0, 0]);
     %rack_strain.rackSet(["V_str_o", "V_str_i"], [0, 0]);
 catch ME
     saveDataTimetable(currentData);
-    send(dog2Man, ME);
-    rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [0, 0]);
+    instWorker.instWorkerSendExceptionToInst(ME);
+    %rack_strain.rackSetWrite(["V_str_o", "V_str_i"], [0, 0]);
     %rack_strain.rackSet(["V_str_o", "V_str_i"], [0, 0]);
 end
     function setCurrentDisplacementAsReference(command)
@@ -381,6 +446,7 @@ end
         parameterVariables.d_0 = d_0;
         tareData.d_0 = d_0;
         tareData.values = values;
+        experimentContext.print("strainWatchdog tare: performed new tare (d_0 = " + compose("%.9e", d_0) + " m).");
     end
 
     function getValue = directGet(channel)
@@ -430,272 +496,250 @@ end
         save(saveFilename + ".mat", "-struct", "parameterVariables");
     end
 
-    function matched = activeControlVariableCommands(command)
-        % error allowed
-        if any(command.channel == string(fieldnames(activeControlVariables)).')
-            matched = true;
-            switch command.action
-                case "GET"
-                    if activeControl
-                        freshSend(activeControlVariables.(command.channel));
-                    else
-                        send(dog2Man, directGet(command.channel));
-                    end
-                case "SET"
-                    activeControlVariableSetValues.(command.channel) = command.value;
-                case "CHECK"
-                    if activeControl
-                        freshSend(atTarget.(command.channel));
-                    else
-                        dogError("cannot check %s while activeControl is off.", command, command.channel);
-                    end
-            end
-        else
-            matched = false;
+    function activeControlVariableCommand(command)
+        switch command.actionIndex
+            case getActionIndex
+                if activeControl
+                    freshSend(activeControlVariables.(command.channel));
+                else
+                    instWorker.instWorkerSendToInst(directGet(command.channel));
+                end
+            case setActionIndex
+                activeControlVariableSetValues.(command.channel) = command.value;
+            case checkActionIndex
+                if activeControl
+                    freshSend(atTarget.(command.channel));
+                else
+                    dogError("cannot check %s while activeControl is off.", command, command.channel);
+                end
+            otherwise
+                dogError("invalid action %s.", command, command.action);
         end
     end
 
-    function matched = alwaysControlVariableCommands(command)
-        % error allowed
-        if any(command.channel == string(fieldnames(alwaysControlVariables)).')
-            matched = true;
-            switch command.action
-                case "GET"
-                    if activeControl
-                        freshSend(alwaysControlVariables.(command.channel));
-                    else
-                        send(dog2Man, directGet(command.channel));
-                    end
-                case "SET"
-                    alwaysControlVariableSetValues.(command.channel) = command.value;
-                    if ~activeControl
-                        directSet(command.channel, command.value);
-                    end
-                case "CHECK"
-                    if activeControl
-                        freshSend(atTarget.(command.channel));
-                    else
-                        send(dog2Man, rack_strain.rackSetCheck(command.channel));
-                    end
-            end
-        else
-            matched = false;
+    function alwaysControlVariableCommand(command)
+        switch command.actionIndex
+            case getActionIndex
+                if activeControl
+                    freshSend(alwaysControlVariables.(command.channel));
+                else
+                    instWorker.instWorkerSendToInst(directGet(command.channel));
+                end
+            case setActionIndex
+                alwaysControlVariableSetValues.(command.channel) = command.value;
+                if ~activeControl
+                    directSet(command.channel, command.value);
+                end
+            case checkActionIndex
+                if activeControl
+                    freshSend(atTarget.(command.channel));
+                else
+                    instWorker.instWorkerSendToInst(rack_strain.rackSetCheck(command.channel));
+                end
+            otherwise
+                dogError("invalid action %s.", command, command.action);
         end
     end
 
-
-    function matched = readOnlyVariableCommands(command)
-        % error allowed
-        if any(command.channel == string(fieldnames(readOnlyVariables)).')
-            matched = true;
-            switch command.action
-                case "GET"
-                    if activeControl
-                        freshSend(readOnlyVariables.(command.channel));
-                    else
-                        send(dog2Man, directGet(command.channel));
-                    end
-                case "SET"
-                    dogError("cannot set channel %s.", command, command.channel);
-                case "CHECK"
-                    dogError("cannot check channel %s.", command, command.channel);
-            end
-        else
-            matched = false;
+    function readOnlyVariableCommand(command)
+        switch command.actionIndex
+            case getActionIndex
+                if activeControl
+                    freshSend(readOnlyVariables.(command.channel));
+                else
+                    instWorker.instWorkerSendToInst(directGet(command.channel));
+                end
+            case setActionIndex
+                dogError("cannot set channel %s.", command, command.channel);
+            case checkActionIndex
+                dogError("cannot check channel %s.", command, command.channel);
+            otherwise
+                dogError("invalid action %s.", command, command.action);
         end
     end
 
-
-    function matched = directControlVariableCommands(command)
-        % error allowed
-        if any(command.channel == string(fieldnames(directControlVariables)).')
-            matched = true;
-            switch command.action
-                case "GET"
-                    if activeControl
-                        freshSend(directControlVariables.(command.channel));
-                    else
-                        send(dog2Man, directGet(command.channel));
-                    end
-                case "SET"
-                    if activeControl
-                        dogError("cannot set %s while activeControl is on.", command, command.channel);
-                    else
-                        directSet(command.channel, command.value);
-                    end
-                case "CHECK"
-                    if activeControl
-                        dogError("cannot check %s while activeControl is on.", command, command.channel);
-                    else
-                        send(dog2Man, rack_strain.rackSetCheck(command.channel));
-                    end
-            end
-        else
-            matched = false;
+    function directControlVariableCommand(command)
+        switch command.actionIndex
+            case getActionIndex
+                if activeControl
+                    freshSend(directControlVariables.(command.channel));
+                else
+                    instWorker.instWorkerSendToInst(directGet(command.channel));
+                end
+            case setActionIndex
+                if activeControl
+                    dogError("cannot set %s while activeControl is on.", command, command.channel);
+                else
+                    directSet(command.channel, command.value);
+                end
+            case checkActionIndex
+                if activeControl
+                    dogError("cannot check %s while activeControl is on.", command, command.channel);
+                else
+                    instWorker.instWorkerSendToInst(rack_strain.rackSetCheck(command.channel));
+                end
+            otherwise
+                dogError("invalid action %s.", command, command.action);
         end
     end
 
-    function matched = parameterVariableCommands(command)
-        % error allowed
-        if any(command.channel == string(fieldnames(parameterVariables)).')
-            matched = true;
-            switch command.action
-                case "GET"
-                    send(dog2Man, parameterVariables.(command.channel));
-                case "SET"
-                    if activeControl
-                        dogError("cannot set %s while activeControl is on.", command, command.channel);
-                    else
-                        parameterVariables.(command.channel) = command.value;
+    function parameterVariableCommand(command)
+        switch command.actionIndex
+            case getActionIndex
+                instWorker.instWorkerSendToInst(parameterVariables.(command.channel));
+            case setActionIndex
+                if activeControl
+                    dogError("cannot set %s while activeControl is on.", command, command.channel);
+                else
+                    parameterVariables.(command.channel) = command.value;
+                    if command.channel == "d_0"
+                        experimentContext.print("strainWatchdog tare: loaded tareData (d_0 = " + compose("%.9e", command.value) + " m).");
                     end
-                case "CHECK"
-                    dogError("cannot check %s.", command, command.channel);
-            end
-        else
-            matched = false;
+                end
+            case checkActionIndex
+                dogError("cannot check %s.", command, command.channel);
+            otherwise
+                dogError("invalid action %s.", command, command.action);
         end
     end
 
-    function matched = otherVariableCommands(command)
-        % error allowed
-        if command.channel == "activeControl"
-            matched = true;
-            switch command.action
-                case "GET"
-                    send(dog2Man, activeControl);
-                case "SET"
-                    if ~islogical(command.value) && command.value ~= 0 && command.value ~= 1
-                        dogError("command.value for channel ""activeControl"" must be logical, 0, or 1", command);
-                    elseif command.value ~= activeControl
-                        if command.value
-                            % will throw error for unset variables
-                            assertReadyForActiveControl(command);
-                            logParameterVariables();
-                        else
-                            justEndedActiveControl = true;
+    function otherVariableCommand(command)
+        switch command.channelIndex
+            case otherActiveControlChannelIndex
+                switch command.actionIndex
+                    case getActionIndex
+                        instWorker.instWorkerSendToInst(activeControl);
+                    case setActionIndex
+                        if ~islogical(command.value) && command.value ~= 0 && command.value ~= 1
+                            dogError("command.value for channel ""activeControl"" must be logical, 0, or 1", command);
+                        elseif command.value ~= activeControl
+                            if command.value
+                                assertReadyForActiveControl(command);
+                                activeControlVariableSetValues.del_d = directGet("del_d");
+                                logParameterVariables();
+                            else
+                                justEndedActiveControl = true;
+                            end
+                            activeControl = command.value;
                         end
-                        activeControl = command.value;
-                    end
-                case "CHECK"
-                    send(dog2Man, true);
-            end
-        elseif command.channel == "rack"
-            matched = true;
-            switch command.action
-                case "GET"
-                    send(dog2Man, string(formattedDisplayText(rack_strain)));
-                case "SET"
-                    dogError("cannot set %s.", command, command.channel);
-                case "CHECK"
-                    dogError("cannot check %s.", command, command.channel);
-            end
-        elseif command.channel == "tare"
-            matched = true;
-            switch command.action
-                case "GET"
-                    if isempty(tareData)
-                        dogError("tare has not been done.", command);
-                    else
-                        send(dog2Man, tareData);
-                    end
-                case "SET"
-                    if activeControl
-                        dogError("cannot tare d_0 while activeControl is on.", command);
-                    elseif ~isnumeric(command.value)
-                        dogError("command.value must be numeric.", command);
-                    elseif command.value <= 0
-                        dogError("cannot have negative number of times to measure.", command);
-                    elseif command.value > 1E3
-                        dogError("cannot measure more than 1000 times.", command);
-                    else
-                        % will throw error if any parameter is nan
-                        setCurrentDisplacementAsReference(command);
-                        logParameterVariables();
-                    end
-                case "CHECK"
-                    dogError("cannot check %s.", command, command.channel);
-            end
-        else
-            matched = false;
+                    case checkActionIndex
+                        instWorker.instWorkerSendToInst(true);
+                    otherwise
+                        dogError("invalid action %s.", command, command.action);
+                end
+            case rackChannelIndex
+                switch command.actionIndex
+                    case getActionIndex
+                        instWorker.instWorkerSendToInst(string(formattedDisplayText(rack_strain)));
+                    case setActionIndex
+                        dogError("cannot set %s.", command, command.channel);
+                    case checkActionIndex
+                        dogError("cannot check %s.", command, command.channel);
+                    otherwise
+                        dogError("invalid action %s.", command, command.action);
+                end
+            case tareChannelIndex
+                switch command.actionIndex
+                    case getActionIndex
+                        if isempty(tareData)
+                            dogError("tare has not been done.", command);
+                        else
+                            instWorker.instWorkerSendToInst(tareData);
+                        end
+                    case setActionIndex
+                        if activeControl
+                            dogError("cannot tare d_0 while activeControl is on.", command);
+                        elseif ~isnumeric(command.value)
+                            dogError("command.value must be numeric.", command);
+                        elseif command.value <= 0
+                            dogError("cannot have negative number of times to measure.", command);
+                        elseif command.value > 1E3
+                            dogError("cannot measure more than 1000 times.", command);
+                        else
+                            setCurrentDisplacementAsReference(command);
+                            logParameterVariables();
+                        end
+                    case checkActionIndex
+                        dogError("cannot check %s.", command, command.channel);
+                    otherwise
+                        dogError("invalid action %s.", command, command.action);
+                end
+            otherwise
+                dogError("invalid channel name %s.", command, command.channel);
         end
     end
 
     function stringCommands(command)
-        % error allowed
-        if command == "STOP"
-            % end watchdog.
-            if activeControl
-                refreshDataTimetablesAndLoopVariables(true);
-            end
-            keepAlive = false;
-        elseif command == "*IDN?"
-            send(dog2Man, "strainWatchdog 202412 Thomas");
-        elseif command == "ERROR"
-            dogError("error requested by man.", command);
-        else
-            dogError("invalid string command.", command);
+        switch command.stringCommandIndex
+            case stopStringCommandIndex
+                if activeControl
+                    refreshDataTimetablesAndLoopVariables(true);
+                end
+                keepAlive = false;
+            case flushStringCommandIndex
+                rack_strain.flush();
+                instWorker.instWorkerSendToInst(true);
+            case idnStringCommandIndex
+                instWorker.instWorkerSendToInst("strainWatchdog 202412 Thomas");
+            case errorStringCommandIndex
+                dogError("error requested by man.", command);
+            case warmupStringCommandIndex
+                if activeControl
+                    dogError("cannot warm up cryostat while activeControl is on", command);
+                elseif ~ismethod(handle_cryostat, "warmup")
+                    dogError("cryostat %s does not support warmup", command, class(handle_cryostat));
+                else
+                    handle_cryostat.warmup();
+                    instWorker.instWorkerSendToInst(true);
+                end
+            otherwise
+                dogError("invalid string command %s.", command, command.stringCommand);
         end
     end
 
     function freshSend(getValue)
-        % error allowed
         if (datetime("now") - lastUpdate) < staleTime
-            send(dog2Man, getValue);
+            instWorker.instWorkerSendToInst(getValue);
         else
             error("Error: measurement is stale.");
         end
     end
 
     function dogError(formatSpec, command, varargin)
-        % error allowed
-        % send(dog2Man, sprintf("Error: " + formatSpec + ".\n Command received: \n%s", varargin{:}, formattedDisplayText(command)));
         error("Error: " + formatSpec + ".\n Command received: \n%s", varargin{:}, formattedDisplayText(command));
     end
 
     function dogGetsCommand(command)
         try
-            if isstruct(command)
-                if  ~isfield(command, "channel") || ~isfield(command, "action")
-                    dogError("command should be a struct with fields ""channel"" and ""action""", command);
-                end
-                if all(command.action ~= ["GET", "SET", "CHECK"])
-                    dogError("command.action should be ""GET"", ""SET"", or ""CHECK""", command);
-                end
-                if command.action == "SET"
-                    if ~isfield(command, "value")
-                        dogError("command should have field ""value"" if command.action is ""set""", command);
+            switch command.kindIndex
+                case kindIndex_stringCommand
+                    stringCommands(command);
+                case kindIndex_channelCommand
+                    channelGroupIndex = channelGroupIndexByChannelIndex(double(command.channelIndex));
+                    switch channelGroupIndex
+                        case groupIndex_activeControlVariables
+                            activeControlVariableCommand(command);
+                        case groupIndex_alwaysControlVariables
+                            alwaysControlVariableCommand(command);
+                        case groupIndex_readOnlyVariables
+                            readOnlyVariableCommand(command);
+                        case groupIndex_directControlVariables
+                            directControlVariableCommand(command);
+                        case groupIndex_parameterVariables
+                            parameterVariableCommand(command);
+                        case groupIndex_otherVariables
+                            otherVariableCommand(command);
+                        otherwise
+                            dogError("invalid channel name %s.", command, command.channel);
                     end
-                    if isempty(command.value)
-                        dogError("command.value should not be empty if command.action is ""set""", command);
+                    if command.actionIndex == setActionIndex
+                        instWorker.instWorkerSendToInst(true);
                     end
-                end
-
-                % commands that may be used in a scan come before other
-                % commands
-                % due to dogGetsCommand being used in afterEach as an
-                % interrupt, its errors do not get thrown upward. the try catch
-                % here handles any error incurred and sends them to man via
-                % dog2Man
-                switch true
-                    case activeControlVariableCommands(command)
-                    case alwaysControlVariableCommands(command)
-                    case readOnlyVariableCommands(command)
-                    case directControlVariableCommands(command)
-                    case parameterVariableCommands(command)
-                    case otherVariableCommands(command)
-                    otherwise
-                        dogError("invalid channel name %s.", command, command.channel);
-                end
-                if command.action == "SET"
-                    send(dog2Man, true);
-                end
-            elseif isstring(command)
-                stringCommands(command)
-            else
-                dogError("command should be a struct or a string", command);
+                otherwise
+                    dogError("invalid command kind %d.", command, double(command.kindIndex));
             end
         catch ME
-            send(dog2Man, ME);
+            instWorker.instWorkerSendExceptionToInst(ME);
         end
     end
 
@@ -708,7 +752,6 @@ end
         if throwAll
             % turning off activeControl
             saveDataTimetable(currentData);
-            oldData = [];
             currentData = newTimetable;
         elseif isempty(currentData)
             % when turning on activeControl for the first time
@@ -716,7 +759,6 @@ end
         else
             % currentData is full
             saveDataTimetable(currentData);
-            oldData = currentData;
             currentData = newTimetable;
         end
         unfilledDataRow = 1;
@@ -735,9 +777,6 @@ end
             if isnan(parameterVariables.(channel))
                 dogError("channel %s has not been set.", command, channel);
             end
-        end
-        if isnan(activeControlVariableSetValues.del_d)
-            dogError("channel del_d has not been set.", command);
         end
         if isnan(alwaysControlVariableSetValues.T)
             dogError("channel T has not been set.", command);

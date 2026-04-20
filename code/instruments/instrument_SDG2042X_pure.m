@@ -52,6 +52,7 @@ classdef instrument_SDG2042X_pure < instrumentInterface
                 NameValueArgs.internalTimebase (1, 1) logical = true
             end
             obj@instrumentInterface();
+            obj.writeCommandInterval = seconds(5);
 
             obj.waveformArraySize = double(NameValueArgs.waveformArraySize);
             obj.uploadFundamentalFrequencyHz = NameValueArgs.uploadFundamentalFrequencyHz;

@@ -1,2 +1,0 @@
-https://www.waveshare.com/wiki/ST3215-HS_Servo_Motor
-https://www.waveshare.com/wiki/Bus_Servo_Adapter_(A)
