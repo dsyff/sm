@@ -231,7 +231,7 @@ if strainController_Use
     recipe.addStatement("strain", "handle_strainController.requireSetCheck = true;");
 
     % Strain controller constructor restores tareData from logs (or tares if missing).
-    % Engine-worker mode helper: smeval("handle_strainController.warmup()");
+    % To warm up: smeval("handle_strainController.warmup()");
 
     recipe.addChannel("strain", "del_d", "del_d", [], [], -5E-5, 5E-5);
     recipe.addChannel("strain", "T", "T");
@@ -283,15 +283,12 @@ end
 if LS336_Use
     recipe.addInstrument("handle_LS336", "instrument_LS336", "LS336", gpibAddress(LS336_GPIB, adaptorIndex));
     recipe.addStatement("LS336", "handle_LS336.requireSetCheck = true;");
-    recipe.addChannel("LS336", "KRDG_A", "T");
-    recipe.addChannel("LS336", "KRDG_B", "T_VTI");
-    recipe.addChannel("LS336", "KRDG_C", "T_CON");
-    recipe.addChannel("LS336", "KRDG_D", "T_SORB");
-    % Optional setpoint channels; setting nonzero values waits for temperature to settle.
-    % recipe.addChannel("LS336", "SETP_1", "T_set", [], [], 0, 350);
-    % recipe.addChannel("LS336", "SETP_2", "T_VTI_set", [], [], 0, 350);
-    % recipe.addChannel("LS336", "SETP_3", "T_CON_set", [], [], 0, 350);
-    % recipe.addChannel("LS336", "SETP_4", "T_SORB_set", [], [], 0, 350);
+    recipe.addChannel("LS336", "T_A", "T", [], [], 0, 350);
+    recipe.addChannel("LS336", "T_B", "T_VTI", [], [], 0, 350);
+    recipe.addChannel("LS336", "T_C", "T_CON", [], [], 0, 350);
+    recipe.addChannel("LS336", "T_D", "T_SORP", [], [], 0, 350);
+    % To cool down: smeval("handle_LS336.cooldown()");      % SETP 1 and 2 -> 0 K
+    % To warm up: smeval("handle_LS336.warmup()");          % SETP 1 and 2 -> 300 K
 end
 
 if GMPS4_Use
