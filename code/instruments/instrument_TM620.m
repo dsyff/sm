@@ -34,7 +34,6 @@ classdef instrument_TM620 < instrumentInterface
             readline(handle);
             flush(handle);
             writeline(handle, "MEAS?");
-            readline(handle);
         end
 
         function getValues = getReadChannelHelper(obj, channelIndex)

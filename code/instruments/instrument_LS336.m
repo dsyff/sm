@@ -42,7 +42,7 @@ classdef instrument_LS336 < instrumentInterface
 
         function getWriteChannelHelper(obj, channelIndex)
             handle = obj.communicationHandle;
-            if handle.NumBytesAvailable > 0
+            if visastatus(handle)
                 flush(handle);
             end
 
@@ -59,7 +59,7 @@ classdef instrument_LS336 < instrumentInterface
 
         function TF = setCheckChannelHelper(obj, channelIndex, channelLastSetValues)
             handle = obj.communicationHandle;
-            if handle.NumBytesAvailable > 0
+            if visastatus(handle)
                 flush(handle);
             end
 

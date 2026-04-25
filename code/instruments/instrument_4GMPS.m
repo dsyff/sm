@@ -38,7 +38,7 @@ classdef instrument_4GMPS < instrumentInterface
 
         function getWriteChannelHelper(obj, channelIndex)
             handle = obj.communicationHandle;
-            if handle.NumBytesAvailable > 0
+            if visastatus(handle)
                 flush(handle);
             end
 
@@ -111,7 +111,7 @@ classdef instrument_4GMPS < instrumentInterface
 
         function field_T = readLimitTesla(obj, command)
             handle = obj.communicationHandle;
-            if handle.NumBytesAvailable > 0
+            if visastatus(handle)
                 flush(handle);
             end
             writeline(handle, command);
