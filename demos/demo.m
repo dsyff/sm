@@ -49,6 +49,7 @@ K2450_A_GPIB = 17; %vbg/strain cell outer
 K2450_B_GPIB = 18; %vtg/strain cell inner
 K2450_C_GPIB = 19; %vtg
 
+% Do not use a Keithley 2450 in 2400 emulation mode. The emulation is bugged
 K2400_A_GPIB = 23; %vbg
 K2400_B_GPIB = 24; %vtg
 K2400_C_GPIB = 25; %vtg
@@ -776,8 +777,6 @@ if K2450_C_Use
     recipe.addChannel("K2450_C", "VI", "VI_" + K2450_C_keyword);
 end
 
-% Do not use a Keithley 2450 in 2400 emulation mode here; use the K2450
-% blocks/instrument_K2450 instead.
 if K2400_A_Use
     recipe.addInstrument("handle_K2400_A", "instrument_K2400", "K2400_A", gpibAddress(K2400_A_GPIB, adaptorIndex));
     recipe.addStatement("K2400_A", "handle_K2400_A.requireSetCheck = false;");
