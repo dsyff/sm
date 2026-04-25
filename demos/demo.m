@@ -159,9 +159,6 @@ K2400_B_keyword = "tg";
 K2400_C_Use = 0;
 K2400_C_keyword = "tg";
 
-V_bg_limits = [-5, 5];
-V_tg_limits = [-5, 5];
-
 HP34401A_A_Use = 0;
 HP34401A_B_Use = 0;
 
@@ -186,8 +183,12 @@ SDG2042X_mixed_TARB_Use = 0;
 
 virtual_del_V_Use = 0;
 virtual_hysteresis_Use = 0;
+virtual_hysteresis_V_tg_limits = [-5, 5];
+virtual_hysteresis_V_bg_limits = [-5, 5];
 virtual_nonlinear_T_Use = 0;
 virtual_nE_Use = 0;
+virtual_nE_V_bg_limits = [-6, 6];
+virtual_nE_V_tg_limits = [-6, 6];
 
 %% Create instrumentRackRecipe
 recipe = instrumentRackRecipe();
@@ -737,8 +738,7 @@ if K2450_A_Use && ~strainController_Use
     recipe.addStatement("K2450_A", "writeline(h, ':SENSe:CURRent:NPLCycles 1');");
     recipe.addStatement("K2450_A", "writeline(h, ':OUTPut ON');");
     recipe.addStatement("K2450_A", "pause(2);");
-    K2450_A_limits = gateVoltageLimitsForKeyword(K2450_A_keyword, V_tg_limits, V_bg_limits);
-    recipe.addChannel("K2450_A", "V_source", "V_" + K2450_A_keyword, 1, 0.5, K2450_A_limits(1), K2450_A_limits(2)); % 1 V/s ramp rate, 0.5 V threshold
+    recipe.addChannel("K2450_A", "V_source", "V_" + K2450_A_keyword, 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
     recipe.addChannel("K2450_A", "I_measure", "I_" + K2450_A_keyword);
     recipe.addChannel("K2450_A", "VI", "VI_" + K2450_A_keyword);
 end
@@ -757,8 +757,7 @@ if K2450_B_Use && ~strainController_Use
     recipe.addStatement("K2450_B", "writeline(h, ':SENSe:CURRent:NPLCycles 1');");
     recipe.addStatement("K2450_B", "writeline(h, ':OUTPut ON');");
     recipe.addStatement("K2450_B", "pause(2);");
-    K2450_B_limits = gateVoltageLimitsForKeyword(K2450_B_keyword, V_tg_limits, V_bg_limits);
-    recipe.addChannel("K2450_B", "V_source", "V_" + K2450_B_keyword, 1, 0.5, K2450_B_limits(1), K2450_B_limits(2)); % 1 V/s ramp rate, 0.5 V threshold
+    recipe.addChannel("K2450_B", "V_source", "V_" + K2450_B_keyword, 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
     recipe.addChannel("K2450_B", "I_measure", "I_" + K2450_B_keyword);
     recipe.addChannel("K2450_B", "VI", "VI_" + K2450_B_keyword);
 end
@@ -777,8 +776,7 @@ if K2450_C_Use
     recipe.addStatement("K2450_C", "writeline(h, ':SENSe:CURRent:NPLCycles 1');");
     recipe.addStatement("K2450_C", "writeline(h, ':OUTPut ON');");
     recipe.addStatement("K2450_C", "pause(2);");
-    K2450_C_limits = gateVoltageLimitsForKeyword(K2450_C_keyword, V_tg_limits, V_bg_limits);
-    recipe.addChannel("K2450_C", "V_source", "V_" + K2450_C_keyword, 1, 0.5, K2450_C_limits(1), K2450_C_limits(2)); % 1 V/s ramp rate, 0.5 V threshold
+    recipe.addChannel("K2450_C", "V_source", "V_" + K2450_C_keyword, 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
     recipe.addChannel("K2450_C", "I_measure", "I_" + K2450_C_keyword);
     recipe.addChannel("K2450_C", "VI", "VI_" + K2450_C_keyword);
 end
@@ -796,8 +794,7 @@ if K2400_A_Use
     recipe.addStatement("K2400_A", "writeline(h, ':CURRent:NPLCycles 1');");
     recipe.addStatement("K2400_A", "writeline(h, ':OUTPut ON');");
     recipe.addStatement("K2400_A", "pause(2);");
-    K2400_A_limits = gateVoltageLimitsForKeyword(K2400_A_keyword, V_tg_limits, V_bg_limits);
-    recipe.addChannel("K2400_A", "V_source", "V_" + K2400_A_keyword, 1, 0.5, K2400_A_limits(1), K2400_A_limits(2)); % 1 V/s ramp rate, 0.5 V threshold
+    recipe.addChannel("K2400_A", "V_source", "V_" + K2400_A_keyword, 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
     recipe.addChannel("K2400_A", "I_measure", "I_" + K2400_A_keyword);
     recipe.addChannel("K2400_A", "VI", "VI_" + K2400_A_keyword);
 end
@@ -815,8 +812,7 @@ if K2400_B_Use
     recipe.addStatement("K2400_B", "writeline(h, ':CURRent:NPLCycles 1');");
     recipe.addStatement("K2400_B", "writeline(h, ':OUTPut ON');");
     recipe.addStatement("K2400_B", "pause(2);");
-    K2400_B_limits = gateVoltageLimitsForKeyword(K2400_B_keyword, V_tg_limits, V_bg_limits);
-    recipe.addChannel("K2400_B", "V_source", "V_" + K2400_B_keyword, 1, 0.5, K2400_B_limits(1), K2400_B_limits(2)); % 1 V/s ramp rate, 0.5 V threshold
+    recipe.addChannel("K2400_B", "V_source", "V_" + K2400_B_keyword, 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
     recipe.addChannel("K2400_B", "I_measure", "I_" + K2400_B_keyword);
     recipe.addChannel("K2400_B", "VI", "VI_" + K2400_B_keyword);
 end
@@ -834,8 +830,7 @@ if K2400_C_Use
     recipe.addStatement("K2400_C", "writeline(h, ':CURRent:NPLCycles 1');");
     recipe.addStatement("K2400_C", "writeline(h, ':OUTPut ON');");
     recipe.addStatement("K2400_C", "pause(2);");
-    K2400_C_limits = gateVoltageLimitsForKeyword(K2400_C_keyword, V_tg_limits, V_bg_limits);
-    recipe.addChannel("K2400_C", "V_source", "V_" + K2400_C_keyword, 1, 0.5, K2400_C_limits(1), K2400_C_limits(2)); % 1 V/s ramp rate, 0.5 V threshold
+    recipe.addChannel("K2400_C", "V_source", "V_" + K2400_C_keyword, 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
     recipe.addChannel("K2400_C", "I_measure", "I_" + K2400_C_keyword);
     recipe.addChannel("K2400_C", "VI", "VI_" + K2400_C_keyword);
 end
@@ -1089,12 +1084,12 @@ end
 
 if virtual_hysteresis_Use
     recipe.addVirtualInstrument("handle_virtual_hysteresis_V_tg", "virtualInstrument_hysteresis", "virtual_hysteresis_V_tg", "virtual_hysteresis_V_tg", ...
-        setChannelName = "V_tg", min = V_tg_limits(1), max = V_tg_limits(2));
+        setChannelName = "V_tg", min = virtual_hysteresis_V_tg_limits(1), max = virtual_hysteresis_V_tg_limits(2));
     recipe.addStatement("virtual_hysteresis_V_tg", "handle_virtual_hysteresis_V_tg.requireSetCheck = true;");
     recipe.addChannel("virtual_hysteresis_V_tg", "hysteresis", "hys_V_tg", [], [], 0, 1);
 
     recipe.addVirtualInstrument("handle_virtual_hysteresis_V_bg", "virtualInstrument_hysteresis", "virtual_hysteresis_V_bg", "virtual_hysteresis_V_bg", ...
-        setChannelName = "V_bg", min = V_bg_limits(1), max = V_bg_limits(2));
+        setChannelName = "V_bg", min = virtual_hysteresis_V_bg_limits(1), max = virtual_hysteresis_V_bg_limits(2));
     recipe.addStatement("virtual_hysteresis_V_bg", "handle_virtual_hysteresis_V_bg.requireSetCheck = true;");
     recipe.addChannel("virtual_hysteresis_V_bg", "hysteresis", "hys_V_bg", [], [], 0, 1);
 
@@ -1120,8 +1115,8 @@ if virtual_nE_Use
     recipe.addVirtualInstrument("handle_virtual_nE", "virtualInstrument_nE", "virtual_nE", "virtual_nE", ...
         vBgChannelName = "V_bg", ...
         vTgChannelName = "V_tg", ...
-        vBgLimits = V_bg_limits, ...
-        vTgLimits = V_tg_limits, ...
+        vBgLimits = virtual_nE_V_bg_limits, ...
+        vTgLimits = virtual_nE_V_tg_limits, ...
         vBg_n0E0 = 1, ...
         vTg_n0E0 = -1, ...
         vBg_n0ENot0 = 2, ...
