@@ -16,8 +16,6 @@ classdef instrument_4GMPS < instrumentInterface
 
             obj.addChannel("IMAG", setTolerances = 1E-2);
             obj.addChannel("VMAG");
-            obj.addChannel("ULIM", setTolerances = 1E-3);
-            obj.addChannel("LLIM", setTolerances = 1E-3);
         end
 
         function flush(obj)
@@ -47,10 +45,6 @@ classdef instrument_4GMPS < instrumentInterface
                     writeline(handle, "IMAG?");
                 case 2
                     writeline(handle, "VMAG?");
-                case 3
-                    writeline(handle, "ULIM?");
-                case 4
-                    writeline(handle, "LLIM?");
             end
         end
 
@@ -80,10 +74,6 @@ classdef instrument_4GMPS < instrumentInterface
                         writeline(handle, sprintf("LLIM %g", 10 * setValues));
                         writeline(handle, "SWEEP DOWN");
                     end
-                case 3
-                    writeline(handle, sprintf("ULIM %g", 10 * setValues));
-                case 4
-                    writeline(handle, sprintf("LLIM %g", 10 * setValues));
                 otherwise
                     setWriteChannelHelper@instrumentInterface(obj, channelIndex, setValues);
             end
@@ -93,10 +83,6 @@ classdef instrument_4GMPS < instrumentInterface
             switch channelIndex
                 case 1
                     readback = obj.readFieldTesla();
-                case 3
-                    readback = obj.readLimitTesla("ULIM?");
-                case 4
-                    readback = obj.readLimitTesla("LLIM?");
             end
             TF = abs(readback - channelLastSetValues) <= obj.setTolerances{channelIndex};
         end
