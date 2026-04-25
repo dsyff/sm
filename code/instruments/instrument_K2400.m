@@ -48,7 +48,7 @@ classdef instrument_K2400 < instrumentInterface
             if visastatus(handle)
                 flush(handle);
             end
-            writeline(handle, ":MEAS?");
+            writeline(handle, ":READ?");
         end
 
         function getValues = getReadChannelHelper(obj, channelIndex)
@@ -79,7 +79,7 @@ classdef instrument_K2400 < instrumentInterface
             switch channelIndex
                 case 1
                     handle = obj.communicationHandle;
-                    writeline(handle, ":MEAS?");
+                    writeline(handle, ":READ?");
                     outputValues = str2double(split(strip(readline(handle)), ","));
                     getValues = outputValues(1);
                     current = outputValues(2);

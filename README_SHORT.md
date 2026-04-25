@@ -10,6 +10,7 @@ Quick start:
 - `requireSetCheck` flags (`false` = no settle wait)
 - `recipe.slack_notification_account_email` for queue notifications
 - channels and instrument settings as needed
+- use `instrument_K2450` for Keithley 2450 instruments; do not run a 2450 in 2400 emulation mode
 3. Run.
 
 Key concepts:
