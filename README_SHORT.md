@@ -18,3 +18,4 @@ Key concepts:
 - Scan GUI `Run` = safe mode. Point-by-point updates. Slower, safer. Use for gate-range tests.
 - Queue GUI `Run` = turbo mode. Asynchronous, fast.
 - Press `Escape` to stop. Instant only in safe mode.
+- Save and load scan definitions to reuse common scans and avoid rebuilding them each session.
