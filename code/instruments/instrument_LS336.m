@@ -18,18 +18,22 @@ classdef instrument_LS336 < instrumentInterface
             obj.setTimeout = hours(2);
             obj.setInterval = seconds(10);
 
-            obj.addChannel("KRDG_A");
-            obj.addChannel("KRDG_B");
-            obj.addChannel("KRDG_C");
-            obj.addChannel("KRDG_D");
-            obj.addChannel("SETP_1", setTolerances = 0.1);
-            obj.addChannel("SETP_2", setTolerances = 0.1);
-            obj.addChannel("SETP_3", setTolerances = 0.1);
-            obj.addChannel("SETP_4", setTolerances = 0.1);
+            obj.addChannel("T_A", setTolerances = 0.1);
+            obj.addChannel("T_B", setTolerances = 0.1);
+            obj.addChannel("T_C", setTolerances = 0.1);
+            obj.addChannel("T_D", setTolerances = 0.1);
         end
 
         function flush(obj)
             flush(obj.communicationHandle);
+        end
+
+        function cooldown(obj)
+            obj.setOutputOneAndTwo(0);
+        end
+
+        function warmup(obj)
+            obj.setOutputOneAndTwo(300);
         end
 
     end
@@ -42,11 +46,7 @@ classdef instrument_LS336 < instrumentInterface
                 flush(handle);
             end
 
-            if channelIndex <= 4
-                writeline(handle, "KRDG? " + lower(obj.temperatureInputs(channelIndex)));
-            else
-                writeline(handle, sprintf("SETP? %d", channelIndex - 4));
-            end
+            writeline(handle, "KRDG? " + lower(obj.temperatureInputs(channelIndex)));
         end
 
         function getValues = getReadChannelHelper(obj, ~)
@@ -54,26 +54,19 @@ classdef instrument_LS336 < instrumentInterface
         end
 
         function setWriteChannelHelper(obj, channelIndex, setValues)
-            if channelIndex < 5
-                setWriteChannelHelper@instrumentInterface(obj, channelIndex, setValues);
-                return;
-            end
-
-            outputIndex = channelIndex - 4;
-            writeline(obj.communicationHandle, sprintf("SETP %d,%g", outputIndex, setValues));
+            writeline(obj.communicationHandle, sprintf("SETP %d,%g", channelIndex, setValues));
         end
 
         function TF = setCheckChannelHelper(obj, channelIndex, channelLastSetValues)
-            outputIndex = channelIndex - 4;
             handle = obj.communicationHandle;
             if handle.NumBytesAvailable > 0
                 flush(handle);
             end
 
             if channelLastSetValues == 0
-                writeline(handle, sprintf("SETP? %d", outputIndex));
+                writeline(handle, sprintf("SETP? %d", channelIndex));
             else
-                writeline(handle, "KRDG? " + lower(obj.temperatureInputs(outputIndex)));
+                writeline(handle, "KRDG? " + lower(obj.temperatureInputs(channelIndex)));
             end
             readback = obj.readNumericResponse();
             TF = abs(readback - channelLastSetValues) <= obj.setTolerances{channelIndex};
@@ -82,6 +75,12 @@ classdef instrument_LS336 < instrumentInterface
     end
 
     methods (Access = private)
+
+        function setOutputOneAndTwo(obj, target_K)
+            for outputIndex = 1:2
+                writeline(obj.communicationHandle, sprintf("SETP %d,%g", outputIndex, target_K));
+            end
+        end
 
         function value = readNumericResponse(obj)
             response = strip(readline(obj.communicationHandle));
