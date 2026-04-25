@@ -28,6 +28,9 @@ Montana2_IP = "136.167.55.165";
 OptiCool_IP = "127.0.0.1";
 MPMS3_IP = "136.167.49.54";
 MPMS3_Port = uint16(11000);
+LS336_GPIB = 27;
+GMPS4_GPIB = 15;
+TM620_COM = "COM3";
 
 SR860_1_GPIB = 7; % use same GPIB as SR830_1
 SR830_1_GPIB = SR860_1_GPIB; %sd
@@ -105,6 +108,9 @@ Montana1_Use = 0;
 Montana2_Use = 0;
 OptiCool_Use = 0;
 MPMS3_Use = 0;
+LS336_Use = 0;
+GMPS4_Use = 0;
+TM620_Use = 0;
 attoDRY2100_Use = 0;
 ANC300_Use = 0; % nano positioner for attoDRY2100
 
@@ -272,6 +278,37 @@ if MPMS3_Use
     recipe.addChannel("MPMS3", "B", "B");
     recipe.addChannel("MPMS3", "temperature_rate", "T_rate");
     recipe.addChannel("MPMS3", "field_rate", "B_rate");
+end
+
+if LS336_Use
+    recipe.addInstrument("handle_LS336", "instrument_LS336", "LS336", gpibAddress(LS336_GPIB, adaptorIndex));
+    recipe.addStatement("LS336", "handle_LS336.requireSetCheck = true;");
+    recipe.addChannel("LS336", "KRDG_A", "T");
+    recipe.addChannel("LS336", "KRDG_B", "T_VTI");
+    recipe.addChannel("LS336", "KRDG_C", "T_CON");
+    recipe.addChannel("LS336", "KRDG_D", "T_SORB");
+    % Optional setpoint channels; setting nonzero values waits for temperature to settle.
+    % recipe.addChannel("LS336", "SETP_1", "T_set", [], [], 0, 350);
+    % recipe.addChannel("LS336", "SETP_2", "T_VTI_set", [], [], 0, 350);
+    % recipe.addChannel("LS336", "SETP_3", "T_CON_set", [], [], 0, 350);
+    % recipe.addChannel("LS336", "SETP_4", "T_SORB_set", [], [], 0, 350);
+end
+
+if GMPS4_Use
+    recipe.addInstrument("handle_4GMPS", "instrument_4GMPS", "4GMPS", gpibAddress(GMPS4_GPIB, adaptorIndex));
+    recipe.addStatement("4GMPS", "handle_4GMPS.requireSetCheck = true;");
+    recipe.addChannel("4GMPS", "IMAG", "B", [], [], -9, 9);
+    recipe.addChannel("4GMPS", "VMAG", "B_supply_V");
+    % Optional sweep limit channels, in tesla.
+    % recipe.addChannel("4GMPS", "ULIM", "B_upper_limit", [], [], -9, 9);
+    % recipe.addChannel("4GMPS", "LLIM", "B_lower_limit", [], [], -9, 9);
+end
+
+if TM620_Use
+    recipe.addInstrument("handle_TM620", "instrument_TM620", "TM620", TM620_COM);
+    recipe.addStatement("TM620", "handle_TM620.requireSetCheck = false;");
+    recipe.addChannel("TM620", "MEAS_A", "T_Shield");
+    recipe.addChannel("TM620", "MEAS_B", "T_Magnet");
 end
 
 if SR860_1_Use
