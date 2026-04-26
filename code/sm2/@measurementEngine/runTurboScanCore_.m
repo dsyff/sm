@@ -1,12 +1,11 @@
-function [data, plotData, stopped] = runTurboScanCore_(rack, scanObj, clientToEngine, engineToClient, requestId, snapshotInterval, logFcn)
-    % Turbo scan loop: periodic snapshot updates, no per-point ACK.
-    % Stop: poll clientToEngine PDQ, verify type == "stop".
+function [data, stopped] = runTurboScanCore_(rack, scanObj, clientToEngine, engineToClient, requestId, snapshotInterval, logFcn)
+    % Turbo scan loop: acquire continuously, send compact dirty batches when the client is ready.
     enableLog = ~isempty(logFcn) && isa(logFcn, "function_handle");
     meta = measurementEngine.computeScanMeta_(scanObj);
+    layout = measurementEngine.computeFlatDataLayout_(scanObj);
     nloops = meta.nloops;
     npoints = meta.npoints;
 
-    % Precompute per-loop channels and wait durations (seconds).
     setchansByLoop = cell(1, nloops);
     getchansByLoop = cell(1, nloops);
     startwait_s = zeros(1, nloops);
@@ -25,31 +24,16 @@ function [data, plotData, stopped] = runTurboScanCore_(rack, scanObj, clientToEn
         end
     end
 
-    % Allocate full data arrays.
-    data = cell(1, meta.totalScalar);
-    dataStride = cell(1, nloops);
-    dataDims = cell(1, nloops);
-    for li = 1:nloops
-        bd = npoints(end:-1:li);
-        if isempty(bd), bd = 1; end
-        if isscalar(bd), bd(2) = 1; end
-        dataDims{li} = bd;
-        dataStride{li} = [1 cumprod(bd(1:end-1))];
-        for k = 1:meta.nScalarGet(li)
-            data{meta.offset0(li) + k} = nan(bd);
-        end
-    end
+    data = measurementEngine.initializeFlatData_(layout);
 
-    % Precompute turbo plot layout.
     dispEntries = scanObj.disp;
     numDisp = numel(dispEntries);
-    plotData = cell(numDisp, 1);
-    pXL = zeros(1, numDisp);   % x-loop per display
-    pYL = zeros(1, numDisp);   % y-loop (0 for 1D)
-    pRL = zeros(1, numDisp);   % reset-loop (0 if none)
-    pLR = zeros(1, numDisp);   % last seen reset-loop count
-    pLI = zeros(1, numDisp);   % local data index within loop getchan
-    pByLoop = cell(1, nloops); % disp indices grouped by data loop
+    pXL = zeros(1, numDisp);
+    pYL = zeros(1, numDisp);
+    pRL = zeros(1, numDisp);
+    pLR = ones(1, numDisp);
+    pLI = zeros(1, numDisp);
+    pByLoop = cell(1, nloops);
     for k = 1:numDisp
         dc = double(dispEntries(k).channel);
         xL = double(meta.dataloop(dc));
@@ -61,14 +45,10 @@ function [data, plotData, stopped] = runTurboScanCore_(rack, scanObj, clientToEn
         pYL(k) = yL;
         rL = xL + 1;
         if yL > 0
-            plotData{k} = nan(npoints(yL), npoints(xL));
             rL = yL + 1;
-        else
-            plotData{k} = nan(1, npoints(xL));
         end
         if rL <= nloops
             pRL(k) = rL;
-            pLR(k) = 1;
         end
         pLI(k) = dc - double(meta.offset0(xL));
     end
@@ -76,19 +56,11 @@ function [data, plotData, stopped] = runTurboScanCore_(rack, scanObj, clientToEn
         pByLoop{li} = find(pXL == li);
     end
 
-    % Temp save config.
-    enableTemp = true;
     saveLI = double(scanObj.saveloop);
     if ~(isfinite(saveLI) && saveLI >= 1 && mod(saveLI, 1) == 0)
         error("measurementEngine:InvalidSaveLoop", "saveloop must be a positive integer loop index.");
     end
-    saveMinInterval_s = seconds(scanObj.saveMinInterval);
-    if ~(isfinite(saveMinInterval_s) && saveMinInterval_s > 0)
-        error("measurementEngine:InvalidSaveMinInterval", "saveMinInterval must be a finite, positive duration.");
-    end
-    lastTempSaveTic = [];
 
-    % Set constants.
     stopped = false;
     rack.flush();
     if enableLog
@@ -97,40 +69,44 @@ function [data, plotData, stopped] = runTurboScanCore_(rack, scanObj, clientToEn
         logFcn(msg);
     end
 
-    % Snapshot timing.
     snapInt_s = seconds(snapshotInterval);
     lastSnapTic = tic;
+    updateInFlight = false;
+    inFlightSeq = 0;
+    nextSeq = 0;
 
-    % --- Main measurement loop ---
+    dirtyCap = 4096;
+    dirtyN = 0;
+    dirtyChannelIdx = zeros(dirtyCap, 1);
+    dirtyFlatIdx = zeros(dirtyCap, 1);
+    dirtyValues = zeros(dirtyCap, 1);
+    dirtySaveLoopHit = false;
+
+    plotCap = 2048;
+    plotN = 0;
+    plotDispIdx = zeros(plotCap, 1);
+    plotX = zeros(plotCap, 1);
+    plotY = zeros(plotCap, 1);
+    plotValues = zeros(plotCap, 1);
+
+    resetCap = 64;
+    resetN = 0;
+    resetDispIdx = zeros(resetCap, 1);
+
     count = ones(1, nloops);
     totpoints = prod(npoints);
     didLogSet = false;
     didLogGet = false;
-    firstSnap = false;
+    firstDirty = false;
 
     for ptIdx = 1:totpoints
-        % Stop check
-        if ~stopped && clientToEngine.QueueLength > 0
-            ctl = poll(clientToEngine);
-            if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
-                stopped = true;
-            end
-        end
+        pollControls();
         if stopped, break; end
 
-        % Periodic snapshot
         if toc(lastSnapTic) >= snapInt_s
-            send(engineToClient, struct("type", "turboSnapshot", "requestId", requestId, "count", count, "plotData", {plotData}));
-            lastSnapTic = tic;
-            if enableLog && ~firstSnap
-                firstSnap = true;
-                msg = "runTurboScanCore_ first turboSnapshot " + requestId;
-                experimentContext.print(msg);
-                logFcn(msg);
-            end
+            flushDirty(false);
         end
 
-        % Determine which loops need setting.
         if ptIdx == 1
             loopsToSet = 1:nloops;
         else
@@ -142,12 +118,7 @@ function [data, plotData, stopped] = runTurboScanCore_(rack, scanObj, clientToEn
         batchSetChans = string.empty(0, 1);
         batchSetVals = double.empty(0, 1);
         for li = fliplr(loopsToSet)
-            if ~stopped && clientToEngine.QueueLength > 0
-                ctl = poll(clientToEngine);
-                if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
-                    stopped = true;
-                end
-            end
+            pollControls();
             if stopped
                 if ~isempty(batchSetChans)
                     if enableLog && ~didLogSet
@@ -217,33 +188,13 @@ function [data, plotData, stopped] = runTurboScanCore_(rack, scanObj, clientToEn
                 batchSetVals = double.empty(0, 1);
                 if stopped, break; end
 
-                % Interruptible startwait
                 if count(li) == 1 && startwait_s(li) > 0
-                    rem_ = startwait_s(li);
-                    while rem_ > 0 && ~stopped
-                        if clientToEngine.QueueLength > 0
-                            ctl = poll(clientToEngine);
-                            if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
-                                stopped = true; break;
-                            end
-                        end
-                        s_ = min(0.05, rem_); pause(s_); rem_ = rem_ - s_;
-                    end
+                    interruptiblePause(startwait_s(li));
                 end
                 if stopped, break; end
 
-                % Interruptible waittime
                 if waittime_s(li) > 0
-                    rem_ = waittime_s(li);
-                    while rem_ > 0 && ~stopped
-                        if clientToEngine.QueueLength > 0
-                            ctl = poll(clientToEngine);
-                            if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
-                                stopped = true; break;
-                            end
-                        end
-                        s_ = min(0.05, rem_); pause(s_); rem_ = rem_ - s_;
-                    end
+                    interruptiblePause(waittime_s(li));
                 end
             end
         end
@@ -258,16 +209,9 @@ function [data, plotData, stopped] = runTurboScanCore_(rack, scanObj, clientToEn
         end
         if stopped, break; end
 
-        % Stop check after set
-        if clientToEngine.QueueLength > 0
-            ctl = poll(clientToEngine);
-            if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
-                stopped = true;
-            end
-        end
+        pollControls();
         if stopped, break; end
 
-        % Determine which loops to read.
         if ptIdx == 1
             loopsToRead = 1:nloops;
         else
@@ -277,12 +221,7 @@ function [data, plotData, stopped] = runTurboScanCore_(rack, scanObj, clientToEn
         end
 
         for li = loopsToRead
-            if ~stopped && clientToEngine.QueueLength > 0
-                ctl = poll(clientToEngine);
-                if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
-                    stopped = true;
-                end
-            end
+            pollControls();
             if stopped, break; end
 
             getchans = getchansByLoop{li};
@@ -296,65 +235,43 @@ function [data, plotData, stopped] = runTurboScanCore_(rack, scanObj, clientToEn
                 newdata = double(rack.rackGet(getchans));
                 newdata = newdata(:);
 
-                % Store in data arrays.
-                stride = dataStride{li};
-                subs = count(nloops:-1:li);
-                if numel(subs) < numel(dataDims{li})
-                    subs(end+1:numel(dataDims{li})) = 1;
-                end
-                linIdx = 1 + sum((subs - 1) .* stride);
+                linIdx = measurementEngine.computeFlatLinIdx_(layout, li, count);
+                channelIdx = (meta.offset0(li) + (1:meta.nScalarGet(li))).';
                 for k = 1:meta.nScalarGet(li)
-                    data{meta.offset0(li) + k}(linIdx) = newdata(k);
+                    data{channelIdx(k)}(linIdx) = newdata(k);
                 end
+                appendDirty(channelIdx, linIdx, newdata(1:numel(channelIdx)), li == saveLI);
 
-                % Reset plot arrays when outer loop resets.
                 for k = 1:numDisp
                     rL = pRL(k);
                     if rL > 0 && count(rL) ~= pLR(k)
-                        plotData{k}(:) = NaN;
+                        appendReset(k);
                         pLR(k) = count(rL);
                     end
                 end
-                % Fill plot data via direct indexing.
+
                 dIdxs = pByLoop{li};
                 for j = 1:numel(dIdxs)
                     k = dIdxs(j);
                     lI = pLI(k);
                     if lI >= 1 && lI <= numel(newdata)
                         if pYL(k) > 0
-                            plotData{k}(count(pYL(k)), count(pXL(k))) = newdata(lI);
+                            appendPlot(k, count(pXL(k)), count(pYL(k)), newdata(lI));
                         else
-                            plotData{k}(count(pXL(k))) = newdata(lI);
+                            appendPlot(k, count(pXL(k)), 1, newdata(lI));
                         end
                     end
                 end
 
-                % Snapshot at interval.
                 if toc(lastSnapTic) >= snapInt_s
-                    send(engineToClient, struct("type", "turboSnapshot", "requestId", requestId, "count", count, "plotData", {plotData}));
-                    lastSnapTic = tic;
-                end
-            end
-
-            % Temp save.
-            if enableTemp && li == saveLI
-                if isempty(lastTempSaveTic) || toc(lastTempSaveTic) >= saveMinInterval_s
-                    send(engineToClient, struct("type", "tempData", "requestId", requestId, "count", count, "data", {data}));
-                    lastTempSaveTic = tic;
+                    flushDirty(false);
                 end
             end
         end
 
-        % Stop check after read
-        if ~stopped && clientToEngine.QueueLength > 0
-            ctl = poll(clientToEngine);
-            if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
-                stopped = true;
-            end
-        end
+        pollControls();
         if stopped, break; end
 
-        % Update counters.
         j = 1;
         while j <= numel(loopsToRead)
             li = loopsToRead(j);
@@ -368,19 +285,170 @@ function [data, plotData, stopped] = runTurboScanCore_(rack, scanObj, clientToEn
         end
     end
 
-    % Final snapshot.
-    send(engineToClient, struct("type", "turboSnapshot", "requestId", requestId, "count", count, "plotData", {plotData}));
+    flushDirty(true);
+
+    function pollControls()
+        while clientToEngine.QueueLength > 0
+            ctl = poll(clientToEngine);
+            if ~isstruct(ctl) || ~isfield(ctl, "type")
+                continue;
+            end
+            if isfield(ctl, "requestId") && ctl.requestId ~= requestId
+                continue;
+            end
+            if ctl.type == "stop"
+                stopped = true;
+            elseif ctl.type == "turboReady"
+                if ~isfield(ctl, "seq") || double(ctl.seq) == inFlightSeq
+                    updateInFlight = false;
+                end
+            end
+        end
+    end
+
+    function flushDirty(force)
+        pollControls();
+        if dirtyN == 0 && plotN == 0 && resetN == 0
+            return;
+        end
+        if force
+            while updateInFlight
+                pollControls();
+                if updateInFlight
+                    pause(1E-6);
+                end
+            end
+        elseif updateInFlight
+            return;
+        end
+
+        nextSeq = nextSeq + 1;
+        send(engineToClient, struct( ...
+            "type", "turboDirty", ...
+            "requestId", requestId, ...
+            "seq", nextSeq, ...
+            "count", count, ...
+            "channelIdx", dirtyChannelIdx(1:dirtyN), ...
+            "flatIdx", dirtyFlatIdx(1:dirtyN), ...
+            "values", dirtyValues(1:dirtyN), ...
+            "plotDispIdx", plotDispIdx(1:plotN), ...
+            "plotX", plotX(1:plotN), ...
+            "plotY", plotY(1:plotN), ...
+            "plotValues", plotValues(1:plotN), ...
+            "resetDispIdx", resetDispIdx(1:resetN), ...
+            "saveLoopHit", dirtySaveLoopHit));
+        updateInFlight = true;
+        inFlightSeq = nextSeq;
+        dirtyN = 0;
+        plotN = 0;
+        resetN = 0;
+        dirtySaveLoopHit = false;
+        lastSnapTic = tic;
+        if enableLog && ~firstDirty
+            firstDirty = true;
+            msg = "runTurboScanCore_ first turboDirty " + requestId;
+            experimentContext.print(msg);
+            logFcn(msg);
+        end
+    end
+
+    function appendDirty(channelIdx, linIdx, values, saveLoopHit)
+        n = numel(values);
+        ensureDirtyCapacity(n);
+        rows = dirtyN + (1:n);
+        dirtyChannelIdx(rows) = channelIdx(:);
+        dirtyFlatIdx(rows) = linIdx;
+        dirtyValues(rows) = values(:);
+        dirtyN = dirtyN + n;
+        dirtySaveLoopHit = dirtySaveLoopHit || saveLoopHit;
+    end
+
+    function appendPlot(displayIdx, xIdx, yIdx, value)
+        ensurePlotCapacity(1);
+        plotN = plotN + 1;
+        plotDispIdx(plotN) = displayIdx;
+        plotX(plotN) = xIdx;
+        plotY(plotN) = yIdx;
+        plotValues(plotN) = value;
+    end
+
+    function appendReset(displayIdx)
+        if plotN > 0
+            oldPlotDispIdx = plotDispIdx(1:plotN);
+            oldPlotX = plotX(1:plotN);
+            oldPlotY = plotY(1:plotN);
+            oldPlotValues = plotValues(1:plotN);
+            keepPlot = oldPlotDispIdx ~= displayIdx;
+            keptPlotN = nnz(keepPlot);
+            plotDispIdx(1:keptPlotN) = oldPlotDispIdx(keepPlot);
+            plotX(1:keptPlotN) = oldPlotX(keepPlot);
+            plotY(1:keptPlotN) = oldPlotY(keepPlot);
+            plotValues(1:keptPlotN) = oldPlotValues(keepPlot);
+            plotN = keptPlotN;
+        end
+        if resetN > 0
+            oldResetDispIdx = resetDispIdx(1:resetN);
+            keepReset = oldResetDispIdx ~= displayIdx;
+            keptResetN = nnz(keepReset);
+            resetDispIdx(1:keptResetN) = oldResetDispIdx(keepReset);
+            resetN = keptResetN;
+        end
+        ensureResetCapacity(1);
+        resetN = resetN + 1;
+        resetDispIdx(resetN) = displayIdx;
+    end
+
+    function ensureDirtyCapacity(nExtra)
+        needed = dirtyN + nExtra;
+        if needed <= dirtyCap
+            return;
+        end
+        dirtyCap = max(needed, dirtyCap * 2);
+        dirtyChannelIdx(dirtyCap, 1) = 0;
+        dirtyFlatIdx(dirtyCap, 1) = 0;
+        dirtyValues(dirtyCap, 1) = 0;
+    end
+
+    function ensurePlotCapacity(nExtra)
+        needed = plotN + nExtra;
+        if needed <= plotCap
+            return;
+        end
+        plotCap = max(needed, plotCap * 2);
+        plotDispIdx(plotCap, 1) = 0;
+        plotX(plotCap, 1) = 0;
+        plotY(plotCap, 1) = 0;
+        plotValues(plotCap, 1) = 0;
+    end
+
+    function ensureResetCapacity(nExtra)
+        needed = resetN + nExtra;
+        if needed <= resetCap
+            return;
+        end
+        resetCap = max(needed, resetCap * 2);
+        resetDispIdx(resetCap, 1) = 0;
+    end
+
+    function interruptiblePause(duration_s)
+        rem_ = duration_s;
+        while rem_ > 0 && ~stopped
+            pollControls();
+            if stopped
+                break;
+            end
+            s_ = min(0.05, rem_);
+            pause(s_);
+            rem_ = rem_ - s_;
+        end
+    end
 
     function stoppedOut = rackSetWithStop(channelNames, values, stoppedIn)
         rack.rackSetWrite(channelNames, values);
         stoppedOut = stoppedIn;
         while ~stoppedOut && ~rack.rackSetCheck(channelNames)
-            if clientToEngine.QueueLength > 0
-                ctl = poll(clientToEngine);
-                if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
-                    stoppedOut = true;
-                end
-            end
+            pollControls();
+            stoppedOut = stopped;
             pause(1E-6);
         end
     end

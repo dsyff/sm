@@ -24,20 +24,9 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, clientToEngine, engin
         end
     end
 
-    % Allocate data arrays.
-    data = cell(1, meta.totalScalar);
-    dataStride = cell(1, nloops);
-    dataDims = cell(1, nloops);
-    for li = 1:nloops
-        bd = npoints(end:-1:li);
-        if isempty(bd), bd = 1; end
-        if isscalar(bd), bd(2) = 1; end
-        dataDims{li} = bd;
-        dataStride{li} = [1 cumprod(bd(1:end-1))];
-        for k = 1:meta.nScalarGet(li)
-            data{meta.offset0(li) + k} = nan(bd);
-        end
-    end
+    % Allocate flat data arrays; the client reshapes them before saving.
+    layout = measurementEngine.computeFlatDataLayout_(scanObj);
+    data = measurementEngine.initializeFlatData_(layout);
 
     % Precompute display info for safePoint plot values.
     dispEntries = scanObj.disp;
@@ -49,18 +38,6 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, clientToEngine, engin
         dispDL(k) = double(meta.dataloop(dc));
         dispLI(k) = dc - double(meta.offset0(dispDL(k)));
     end
-
-    % Temp save config.
-    enableTemp = true;
-    saveLI = double(scanObj.saveloop);
-    if ~(isfinite(saveLI) && saveLI >= 1 && mod(saveLI, 1) == 0)
-        error("measurementEngine:InvalidSaveLoop", "saveloop must be a positive integer loop index.");
-    end
-    saveMinInterval_s = seconds(scanObj.saveMinInterval);
-    if ~(isfinite(saveMinInterval_s) && saveMinInterval_s > 0)
-        error("measurementEngine:InvalidSaveMinInterval", "saveMinInterval must be a finite, positive duration.");
-    end
-    lastTempSaveTic = [];
 
     % Set constants.
     stopped = false;
@@ -254,15 +231,11 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, clientToEngine, engin
                 newdata = double(rack.rackGet(getchans));
                 newdata = newdata(:);
 
-                % Store in data arrays.
-                stride = dataStride{li};
-                subs = count(nloops:-1:li);
-                if numel(subs) < numel(dataDims{li})
-                    subs(end+1:numel(dataDims{li})) = 1;
-                end
-                linIdx = 1 + sum((subs - 1) .* stride);
+                % Store in flat data arrays.
+                linIdx = measurementEngine.computeFlatLinIdx_(layout, li, count);
+                channelIdx = (meta.offset0(li) + (1:meta.nScalarGet(li))).';
                 for k = 1:meta.nScalarGet(li)
-                    data{meta.offset0(li) + k}(linIdx) = newdata(k);
+                    data{channelIdx(k)}(linIdx) = newdata(k);
                 end
 
                 % Send safePoint with plot values.
@@ -272,7 +245,15 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, clientToEngine, engin
                         plotValues(k) = newdata(dispLI(k));
                     end
                 end
-                send(engineToClient, struct("type", "safePoint", "requestId", requestId, "loopIdx", li, "count", count, "plotValues", plotValues));
+                send(engineToClient, struct( ...
+                    "type", "safePoint", ...
+                    "requestId", requestId, ...
+                    "loopIdx", li, ...
+                    "count", count, ...
+                    "plotValues", plotValues, ...
+                    "channelIdx", channelIdx, ...
+                    "flatIdx", repmat(linIdx, numel(channelIdx), 1), ...
+                    "values", newdata(1:numel(channelIdx))));
                 if enableLog && ~firstSafe
                     firstSafe = true;
                     msg = "runSafeScanCore_ first safePoint " + requestId;
@@ -302,14 +283,6 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, clientToEngine, engin
                     if gotAck || stopped, break; end
                 end
                 if stopped, break; end
-            end
-
-            % Temp save.
-            if enableTemp && li == saveLI
-                if isempty(lastTempSaveTic) || toc(lastTempSaveTic) >= saveMinInterval_s
-                    send(engineToClient, struct("type", "tempData", "requestId", requestId, "count", count, "data", {data}));
-                    lastTempSaveTic = tic;
-                end
             end
         end
 

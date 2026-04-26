@@ -49,7 +49,7 @@ In recipe mode, the engine:
 `measurementEngine.run(scan, filename, mode)` supports two update strategies when running on a worker engine:
 
 - **safe**: the worker sends a `safePoint` after each datapoint; the client updates plots for each point and acks each update.
-- **turbo**: the worker sends periodic `turboSnapshot` updates at a fixed cadence; the client polls, applies only the latest snapshot to the GUI, and continues until an explicit `runDone`.
+- **turbo**: the worker accumulates dirty data/plot updates and sends one compact `turboDirty` batch only after the client has processed the previous batch; the client owns plotting, temp saves, and final save assembly.
 
 In the legacy GUIs:
 
@@ -117,19 +117,16 @@ For each data point read:
 
 ### Turbo mode protocol
 
-1. Worker maintains a cell array of plot-data arrays (`plotData`), pre-allocated with NaN.
-   - 1D displays: `nan(1, npoints(xLoop))`.
-   - 2D displays: `nan(npoints(yLoop), npoints(xLoop))`.
-   - Arrays are reset to NaN when the outer (3rd+) loop index changes. For a 2-loop scan this happens only once at startup.
-2. As each data point is read, the worker fills `plotData` via direct indexing (`plotData{k}(count(yL), count(xL)) = value`).
-3. Periodically (default 0.2 s, controlled by the `turboSnapshotInterval` property), the worker sends the complete `plotData` to `engineToClient`: `struct("type", "turboSnapshot", "requestId", ..., "count", ..., "plotData", {plotData})`.
-4. A final snapshot is sent after the loop exits.
-5. Client polls `engineToClient`, keeps only the latest `turboSnapshot`, and applies it to the GUI with `drawnow limitrate`.
-6. Client continues polling until it receives `runDone`.
+1. Worker stores measured channels as flat 1D arrays.
+2. As each data point is read, the worker appends dirty entries (`channelIdx`, `flatIdx`, `values`) plus compact plot updates (`plotDispIdx`, `plotX`, `plotY`, `plotValues`) to a pending batch.
+3. Periodically (default 0.2 s, controlled by the `turboSnapshotInterval` property), the worker sends `turboDirty` only if the previous `turboDirty` has been acknowledged by the client with `turboReady`.
+4. If the client is behind, the worker keeps acquiring and coalesces more dirty entries into the pending batch instead of enqueueing more GUI data.
+5. Client applies every `turboDirty` batch to its local flat data mirror and live plots, then sends `turboReady`.
+6. Worker flushes any final pending dirty batch before `runDone`; `runDone` is control-only (`ok/completed/error`) and does not carry the full data cell.
 
 ### Temp saves
 
-Both scan functions periodically send `struct("type", "tempData", "requestId", ..., "count", ..., "data", {data})` to the client based on `scanObj.saveloop` settings. The client writes this to a single temp file (`filename + "~"`).
+Worker scan functions do not package full temp-save payloads. During worker scans the client maintains the authoritative save mirror from `safePoint` or `turboDirty` data fields, reshapes the flat arrays to the legacy `data` cell shapes, and writes the single temp file (`filename + "~"`) according to `scanObj.saveloop` and `scanObj.saveMinInterval`.
 
 ## Core data structures
 
@@ -186,30 +183,37 @@ All inter-process links use `parallel.pool.PollableDataQueue` (PDQ) and explicit
 
 Two PDQ channels connect the client and engine worker:
 
-| Channel | Direction | Creator | Messages |
-|---------|-----------|---------|----------|
-| `engineToClient` | worker → client | client (passed to `parfeval`) | `engineReady`, `rackReady`, `safePoint`, `turboSnapshot`, `tempData`, `runDone`, `evalDone`, `rackGetDone`, `rackSetDone`, `rackDispDone`, `parfeval` |
-| `clientToEngine` | client → worker | worker (sent back via `engineReady`) | `run`, `stop`, `ack`, `shutdown`, `eval`, `rackGet`, `rackSet`, `rackDisp`, `parfevalDone` |
+- `engineToClient`: worker → client, created by the client and passed to `parfeval`. Messages: `engineReady`, `rackReady`, `safePoint`, `turboDirty`, `runDone`, `evalDone`, `rackGetDone`, `rackSetDone`, `rackDispDone`, `parfeval`.
+- `clientToEngine`: client → worker, created by the worker and sent back via `engineReady`. Messages: `run`, `stop`, `ack`, `turboReady`, `shutdown`, `eval`, `rackGet`, `rackSet`, `rackDisp`, `parfevalDone`.
 
 ### Message flow during a scan
 
-```
-Client                          clientToEngine PDQ              Worker
-  |                                   |                           |
-  |--- struct("type","run",...) ------>|                           |
-  |                                   |-----> poll, start scan -->|
-  |                                   |                           |
-  |     (safe mode)                   |                           |
-  |<--- safePoint --------------------|<----- send --------------|
-  |--- ack or stop ------------------>|                           |
-  |                                   |-----> poll, handle ----->|
-  |                                   |                           |
-  |     (turbo mode)                  |                           |
-  |<--- turboSnapshot (periodic) -----|<----- send --------------|
-  |--- stop (if ESC pressed) -------->|                           |
-  |                                   |-----> poll, verify ----->|
-  |                                   |                           |
-  |<--- runDone ----------------------|<----- send --------------|
+```text
+clientToEngine PDQ: client enqueues, worker polls
+
+Client                            clientToEngine PDQ                 Worker
+  |                                      |                              |
+  |-- run ----------------------------->|                              |
+  |                                      |-- poll run ----------------->|
+  |                                      |                              |
+  |-- ack or stop (safe mode) --------->|                              |
+  |                                      |-- poll ack/stop ----------->|
+  |                                      |                              |
+  |-- turboReady or stop (turbo mode) ->|                              |
+  |                                      |-- poll turboReady/stop ---->|
+
+engineToClient PDQ: worker enqueues, client polls
+
+Client                            engineToClient PDQ                 Worker
+  |                                      |                              |
+  |<-- poll safePoint ------------------|                              |
+  |                                      |<-- safePoint ----------------|
+  |                                      |                              |
+  |<-- poll turboDirty -----------------|                              |
+  |                                      |<-- turboDirty ---------------|
+  |                                      |                              |
+  |<-- poll runDone --------------------|                              |
+  |                                      |<-- runDone ------------------|
 ```
 
 ## experimentContext (shared context + printing)
