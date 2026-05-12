@@ -80,10 +80,10 @@ Recent rack-side changes that affect scan/runtime behavior:
 - `instrumentRack.channelTable` now stores instrument-local `channelIndices` so repeated get/set paths avoid channel-name resolution.
 - Read-delay ordering is precomputed and cached at channel-registration time (no per-call re-sort for hot paths).
 - Set/ramp helpers operate on row-index vectors + cell arrays instead of table copy/filter loops.
-- Ramping now caches rack-level `lastSetValues` and `lastCheckedValues`:
-  - `lastSetValues` updates after successful write dispatch.
-  - `lastCheckedValues` updates only after `setCheck` passes.
-  - ramp start-value decisions prefer `lastCheckedValues` and only fall back to live `get(...)` when needed.
+- Ramping caches rack-level command and verification state separately:
+  - `lastCommandedValues` updates after successful write dispatch.
+  - `lastVerifiedValues` updates only after `setCheck` passes.
+  - ramp start-value decisions prefer `lastCommandedValues` and only fall back to live `get(...)` when no command has been dispatched yet.
 - The fixed ramp-loop `pause(0.75)` was removed. Write pacing is now an instrument-level concern via:
   - `instrumentInterface.writeCommandInterval`
   - `instrumentInterface.writeCommandIntervalMinWrites` (interval starts only after this many writes since last successful read)
