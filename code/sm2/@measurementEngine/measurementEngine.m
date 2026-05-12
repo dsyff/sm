@@ -1335,6 +1335,60 @@ classdef measurementEngine < handle
             meta.totalScalar = totalScalar;
         end
 
+        function layout = computeFlatDataLayout_(scanObj)
+            meta = measurementEngine.computeScanMeta_(scanObj);
+            loopDims = cell(1, meta.nloops);
+            loopStride = cell(1, meta.nloops);
+            channelDims = cell(1, meta.totalScalar);
+            channelLoop = zeros(1, meta.totalScalar);
+            for loopIdx = 1:meta.nloops
+                dims = meta.npoints(end:-1:loopIdx);
+                if isempty(dims)
+                    dims = 1;
+                end
+                if isscalar(dims)
+                    dims(2) = 1;
+                end
+                loopDims{loopIdx} = dims;
+                loopStride{loopIdx} = [1 cumprod(dims(1:end-1))];
+                for k = 1:meta.nScalarGet(loopIdx)
+                    channelIdx = meta.offset0(loopIdx) + k;
+                    channelDims{channelIdx} = dims;
+                    channelLoop(channelIdx) = loopIdx;
+                end
+            end
+
+            layout = struct();
+            layout.meta = meta;
+            layout.loopDims = loopDims;
+            layout.loopStride = loopStride;
+            layout.channelDims = channelDims;
+            layout.channelLoop = channelLoop;
+        end
+
+        function dataFlat = initializeFlatData_(layout)
+            dataFlat = cell(1, layout.meta.totalScalar);
+            for channelIdx = 1:layout.meta.totalScalar
+                dataFlat{channelIdx} = nan(prod(layout.channelDims{channelIdx}), 1);
+            end
+        end
+
+        function data = reshapeFlatData_(dataFlat, layout)
+            data = cell(1, layout.meta.totalScalar);
+            for channelIdx = 1:layout.meta.totalScalar
+                data{channelIdx} = reshape(dataFlat{channelIdx}, layout.channelDims{channelIdx});
+            end
+        end
+
+        function linIdx = computeFlatLinIdx_(layout, loopIdx, count)
+            subs = count(layout.meta.nloops:-1:loopIdx);
+            dims = layout.loopDims{loopIdx};
+            if numel(subs) < numel(dims)
+                subs(end+1:numel(dims)) = 1;
+            end
+            linIdx = 1 + sum((subs - 1) .* layout.loopStride{loopIdx});
+        end
+
         function sbpl = subplotShape_(numDisp)
             switch numDisp
                 case 0
@@ -1429,7 +1483,7 @@ classdef measurementEngine < handle
 
         [data, stopped] = runScanCore_(rack, scanObj, onRead, figHandle, snapshotInterval, onSnapshot, onTemp, logFcn, isScanInProgressFcn)
         stopped = waitWithStop_(waitDuration, figHandle, isScanInProgressFcn)
-        [data, plotData, stopped] = runTurboScanCore_(rack, scanObj, clientToEngine, engineToClient, requestId, snapshotInterval, logFcn)
+        [data, stopped] = runTurboScanCore_(rack, scanObj, clientToEngine, engineToClient, requestId, snapshotInterval, logFcn)
         [data, stopped] = runSafeScanCore_(rack, scanObj, clientToEngine, engineToClient, requestId, logFcn)
     end
 

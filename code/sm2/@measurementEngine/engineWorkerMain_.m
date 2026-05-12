@@ -106,7 +106,6 @@ function engineWorkerMain_(engineToClient, recipe, workerFprintfQueue, experimen
                 end
                 ok = true;
                 err = [];
-                data = {};
                 completed = false;
                 try
                     if ~isa(currentRunScanObj, "measurementScan")
@@ -119,7 +118,7 @@ function engineWorkerMain_(engineToClient, recipe, workerFprintfQueue, experimen
                         logCore = @wlog;
                     end
                     if mode == "safe"
-                        [data, stopped] = measurementEngine.runSafeScanCore_(rack, currentRunScanObj, clientToEngine, engineToClient, currentRunRequestId, logCore);
+                        [~, stopped] = measurementEngine.runSafeScanCore_(rack, currentRunScanObj, clientToEngine, engineToClient, currentRunRequestId, logCore);
                         completed = ~stopped;
                     elseif mode == "turbo"
                         snapshotInterval = seconds(0.2);
@@ -132,7 +131,7 @@ function engineWorkerMain_(engineToClient, recipe, workerFprintfQueue, experimen
                         if ~(isduration(snapshotInterval) && isfinite(seconds(snapshotInterval)) && snapshotInterval > seconds(0))
                             error("measurementEngine:InvalidTurboInterval", "Invalid snapshotInterval for turbo mode.");
                         end
-                        [data, ~, stopped] = measurementEngine.runTurboScanCore_(rack, currentRunScanObj, clientToEngine, engineToClient, currentRunRequestId, snapshotInterval, logCore);
+                        [~, stopped] = measurementEngine.runTurboScanCore_(rack, currentRunScanObj, clientToEngine, engineToClient, currentRunRequestId, snapshotInterval, logCore);
                         completed = ~stopped;
                     else
                         error("measurementEngine:InvalidMode", "Unknown scan mode %s.", mode);
@@ -148,7 +147,6 @@ function engineWorkerMain_(engineToClient, recipe, workerFprintfQueue, experimen
                     "requestId", currentRunRequestId, ...
                     "ok", ok, ...
                     "completed", completed, ...
-                    "data", {data}, ...
                     "error", err));
                 if verbose
                     wlog("send runDone " + currentRunRequestId + " ok=" + ok);
