@@ -35,10 +35,10 @@ classdef virtualInstrument_nE < virtualInstrumentInterface
     end
 
     methods
-        function obj = virtualInstrument_nE(address, masterRack, NameValueArgs)
+        function obj = virtualInstrument_nE(address, masterRackProxy, NameValueArgs)
             arguments
                 address (1, 1) string
-                masterRack (1, 1) instrumentRack
+                masterRackProxy (1, 1) instrumentRackProxy
                 NameValueArgs.vBgChannelName (1, 1) string
                 NameValueArgs.vTgChannelName (1, 1) string
                 NameValueArgs.vBgLimits (1, 2) double
@@ -49,7 +49,7 @@ classdef virtualInstrument_nE < virtualInstrumentInterface
                 NameValueArgs.vTg_n0ENot0 (1, 1) double
             end
 
-            obj@virtualInstrumentInterface(address, masterRack);
+            obj@virtualInstrumentInterface(address, masterRackProxy);
 
             obj.vTgChannelName = NameValueArgs.vTgChannelName;
             obj.vBgChannelName = NameValueArgs.vBgChannelName;
@@ -96,8 +96,8 @@ classdef virtualInstrument_nE < virtualInstrumentInterface
         function getValues = getReadChannelHelper(obj, channelIndex)
             switch channelIndex
                 case {1, 2}
-                    rack = obj.getMasterRack();
-                    gateValues = rack.rackGet([obj.vTgChannelName, obj.vBgChannelName]);
+                    masterRackProxy = obj.getMasterRackProxy();
+                    gateValues = masterRackProxy.rackGet([obj.vTgChannelName, obj.vBgChannelName]);
                     [n, E] = obj.computeNormalizedStateFromVoltages(gateValues(1), gateValues(2));
                     if channelIndex == 1
                         getValues = n;
@@ -115,8 +115,8 @@ classdef virtualInstrument_nE < virtualInstrumentInterface
             switch channelIndex
                 case {1, 2}
                     [nApplied, EApplied] = obj.resolveAppliedState(obj.nStored, obj.EStored);
-                    rack = obj.getMasterRack();
-                    gateValues = rack.rackGet([obj.vTgChannelName, obj.vBgChannelName]);
+                    masterRackProxy = obj.getMasterRackProxy();
+                    gateValues = masterRackProxy.rackGet([obj.vTgChannelName, obj.vBgChannelName]);
                     [nActual, EActual] = obj.computeNormalizedStateFromVoltages(gateValues(1), gateValues(2));
                     actual = [nActual, EActual];
                     expected = [nApplied, EApplied];
@@ -203,13 +203,13 @@ classdef virtualInstrument_nE < virtualInstrumentInterface
         function setHardwareFromState(obj)
             [nApplied, EApplied] = obj.resolveAppliedState(obj.nStored, obj.EStored);
             [vtg, vbg] = obj.computeGateVoltages(nApplied, EApplied);
-            rack = obj.getMasterRack();
-            rack.rackSetWrite([obj.vTgChannelName, obj.vBgChannelName], [vtg; vbg]);
+            masterRackProxy = obj.getMasterRackProxy();
+            masterRackProxy.rackSetWrite([obj.vTgChannelName, obj.vBgChannelName], [vtg; vbg]);
         end
 
         function initializeStoredStateFromHardware(obj)
-            rack = obj.getMasterRack();
-            gateValues = rack.rackGet([obj.vTgChannelName, obj.vBgChannelName]);
+            masterRackProxy = obj.getMasterRackProxy();
+            gateValues = masterRackProxy.rackGet([obj.vTgChannelName, obj.vBgChannelName]);
             [n, E] = obj.computeNormalizedStateFromVoltages(gateValues(1), gateValues(2));
             obj.nStored = n;
             obj.EStored = E;

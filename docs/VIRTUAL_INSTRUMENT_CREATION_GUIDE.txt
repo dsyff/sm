@@ -6,7 +6,7 @@ OVERVIEW
 --------
 Virtual instruments are software-only instruments that:
   - Inherit from `virtualInstrumentInterface` (which inherits `instrumentInterface`)
-  - Are constructed with a reference to the master `instrumentRack`
+  - Are constructed with a narrow `instrumentRackProxy`
   - Register channels via `addChannel(...)`
   - Implement `getReadChannelHelper` (required) and optionally `setWriteChannelHelper`
 
@@ -20,13 +20,13 @@ for composite controls that map a user “set” onto multiple physical channels
 
 classdef virtualInstrument_example < virtualInstrumentInterface
     methods
-        function obj = virtualInstrument_example(address, masterRack)
+        function obj = virtualInstrument_example(address, masterRackProxy)
             arguments
                 address (1, 1) string
-                masterRack (1, 1) instrumentRack
+                masterRackProxy (1, 1) instrumentRackProxy
             end
 
-            obj@virtualInstrumentInterface(address, masterRack);
+            obj@virtualInstrumentInterface(address, masterRackProxy);
             obj.addChannel("derived_value");
         end
     end
@@ -35,8 +35,8 @@ classdef virtualInstrument_example < virtualInstrumentInterface
         function getValues = getReadChannelHelper(obj, channelIndex)
             switch channelIndex
                 case 1
-                    rack = obj.getMasterRack();
-                    v = rack.rackGet("some_physical_channel");
+                    masterRackProxy = obj.getMasterRackProxy();
+                    v = masterRackProxy.rackGet("some_physical_channel");
                     getValues = v(1);
             end
         end
@@ -44,7 +44,7 @@ classdef virtualInstrument_example < virtualInstrumentInterface
 end
 
 Key points:
-  - The constructor MUST call `virtualInstrumentInterface(address, masterRack)`.
+  - The constructor MUST call `virtualInstrumentInterface(address, masterRackProxy)`.
   - Return numeric data with the correct length for the declared channel size.
   - Virtual instruments do not participate in the physical getWrite/getRead
     scheduler; reads are synchronous.
@@ -55,14 +55,18 @@ Key points:
 ================================================================================
 
 To make a virtual channel settable, override `setWriteChannelHelper` and map the
-requested value onto one or more physical channels using the master rack.
+requested value onto one or more physical channels using the master rack proxy.
 
 Pattern:
   - Keep a small amount of internal state (the last requested virtual value)
   - Compute physical targets
-  - Write the physical targets via `rack.rackSetWrite(...)` (or `rack.rackSet(...)`)
+  - Write the physical targets via `masterRackProxy.rackSetWrite(...)` (or `masterRackProxy.rackSet(...)`)
   - Do not call physical instrument `getChannel`/`setChannel` directly from virtual
     instrument methods; use rack APIs so rack locking/batching stays correct
+  - Do not write directly to physical communication handles (`writeline`,
+    `write`, serial/VISA/TCP calls, etc.) from virtual instruments. The rack
+    cannot observe those commands, so software limits, ramp origin tracking,
+    retry handling, and set-check bookkeeping can become inconsistent.
 
 See `code/instruments/virtualInstrument_nE.m` for a concrete example.
 
@@ -82,22 +86,32 @@ Note: older scripts that referenced `skipOutOfBounds` must be updated to
 
 When using `instrumentRackRecipe` (engine-worker rack construction):
   - Virtual instruments are constructed on the engine worker.
-  - The engine passes the worker’s master rack into the constructor.
+  - The engine passes a proxy for the worker's master rack into the constructor.
 
 To add a virtual instrument to a recipe:
   - Use `recipe.addVirtualInstrument(handleVar, className, friendlyName, ...)`
-  - Ensure your constructor signature is `(address, masterRack, NameValueArgs...)`.
+  - Ensure your constructor signature is `(address, masterRackProxy, NameValueArgs...)`.
 
 
 ================================================================================
 4. COMMON PITFALLS
 ================================================================================
 
-  - Do not rely on globals: always use `obj.getMasterRack()`.
+  - Do not rely on globals: always use `obj.getMasterRackProxy()`.
   - Avoid recursion: do not read/write your own virtual channel(s) via the rack.
   - Keep reads fast: virtual reads run inline with the measurement loop.
-  - Direct physical instrument get/set calls inside virtual instruments are blocked
-    by the framework; use `rack.rackGet(...)` and `rack.rackSetWrite(...)`.
+  - Direct physical instrument get/set calls inside virtual instruments are
+    forbidden by policy, but not reliably blocked at runtime; use
+    `masterRackProxy.rackGet(...)`, `masterRackProxy.rackSetWrite(...)`, or
+    `masterRackProxy.rackSet(...)`.
+  - Direct serial/VISA/TCP writes from virtual instruments are also forbidden
+    because they bypass rack limits, ramp caches, retries, and batching.
+  - Do not pass physical instrument handles or communication handles into virtual
+    instrument constructors for later physical writes. This cannot be reliably
+    guarded at runtime and must be caught in code review.
+  - If a virtual instrument truly needs a non-channel method such as camera image
+    acquisition, use `masterRackProxy.getReviewedInstrumentHandleForNonChannelMethod(...)`
+    and document why the exception is not physical channel I/O.
 
 
 ================================================================================

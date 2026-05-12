@@ -92,10 +92,10 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
     end
 
     methods
-        function obj = virtualInstrument_attodryAutofocus(address, masterRack, NameValueArgs)
+        function obj = virtualInstrument_attodryAutofocus(address, masterRackProxy, NameValueArgs)
             arguments
                 address (1, 1) string {mustBeNonzeroLengthText}
-                masterRack (1, 1) instrumentRack
+                masterRackProxy (1, 1) instrumentRackProxy
                 NameValueArgs.T_channelName (1, 1) string
                 NameValueArgs.B_channelName (1, 1) string
 
@@ -152,7 +152,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 NameValueArgs.maxAutoshiftCalibrationSteps (1, 1) double {mustBeInteger, mustBePositive} = 20
             end
 
-            obj@virtualInstrumentInterface(address, masterRack);
+            obj@virtualInstrumentInterface(address, masterRackProxy);
 
             obj.T_channelName = NameValueArgs.T_channelName;
             obj.B_channelName = NameValueArgs.B_channelName;
@@ -236,8 +236,8 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         function positions = characterizeBeamSplitterEndpoints(obj)
             obj.assertOpticsChannelsConfigured();
 
-            rack = obj.getMasterRack();
-            rack.rackSet([obj.BS_camera_setConsistentlyChannelName; obj.BS_LED_setConsistentlyChannelName], [1; 1]);
+            masterRackProxy = obj.getMasterRackProxy();
+            masterRackProxy.rackSet([obj.BS_camera_setConsistentlyChannelName; obj.BS_LED_setConsistentlyChannelName], [1; 1]);
 
             [cameraOnDeg, cameraOffDeg] = obj.measureLikelyEndpoints( ...
                 obj.BS_camera_positionChannelName, obj.BS_camera_on_PositionDeg, obj.BS_camera_off_PositionDeg);
@@ -291,12 +291,12 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                     "Call characterizeBeamSplitterEndpoints() before setBeamSplitterState().");
             end
 
-            rack = obj.getMasterRack();
-            rack.rackSet(setConsistentChannelName, 1);
+            masterRackProxy = obj.getMasterRackProxy();
+            masterRackProxy.rackSet(setConsistentChannelName, 1);
 
             for attemptIndex = 1:obj.bsSetMaxAttempts
-                rack.rackSet(positionChannelName, commandDeg);
-                measuredDeg = rack.rackGet(positionChannelName);
+                masterRackProxy.rackSet(positionChannelName, commandDeg);
+                measuredDeg = masterRackProxy.rackGet(positionChannelName);
                 if abs(measuredDeg - targetLikelyDeg) <= obj.bsPositionToleranceDeg
                     return;
                 end
@@ -464,8 +464,8 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
 
     methods (Access = private)
         function waitForTargetsWithCompensation(obj)
-            rack = obj.getMasterRack();
-            rack.rackSetWrite([obj.T_channelName; obj.B_channelName], [obj.targetT; obj.targetB]);
+            masterRackProxy = obj.getMasterRackProxy();
+            masterRackProxy.rackSetWrite([obj.T_channelName; obj.B_channelName], [obj.targetT; obj.targetB]);
 
             deadline = datetime("now") + obj.targetWaitTimeout;
             while true
@@ -494,8 +494,8 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         end
 
         function currentTB = getCurrentTB(obj)
-            rack = obj.getMasterRack();
-            currentTB = rack.rackGet([obj.T_channelName; obj.B_channelName]);
+            masterRackProxy = obj.getMasterRackProxy();
+            currentTB = masterRackProxy.rackGet([obj.T_channelName; obj.B_channelName]);
             currentTB = currentTB(:);
             if numel(currentTB) ~= 2
                 error("virtualInstrument_attodryAutofocus:UnexpectedTBReadLength", ...
@@ -511,17 +511,9 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         end
 
         function anc = getANC300Handle(obj)
-            rack = obj.getMasterRack();
-            mask = rack.instrumentTable.instrumentFriendlyNames == obj.ANC300InstrumentFriendlyName;
-            if ~any(mask)
-                error("virtualInstrument_attodryAutofocus:MissingANC300", ...
-                    "ANC300 instrument ""%s"" not found in rack.", obj.ANC300InstrumentFriendlyName);
-            end
-            anc = rack.instrumentTable.instruments(find(mask, 1, "first"));
-            if ~isa(anc, "instrument_ANC300")
-                error("virtualInstrument_attodryAutofocus:InvalidANC300", ...
-                    "Instrument ""%s"" is not an instrument_ANC300.", obj.ANC300InstrumentFriendlyName);
-            end
+            masterRackProxy = obj.getMasterRackProxy();
+            anc = masterRackProxy.getReviewedInstrumentHandleForNonChannelMethod( ...
+                obj.ANC300InstrumentFriendlyName, "instrument_ANC300", "autofocus ANC300 stepAxis");
         end
 
         function s = tenengradSharpness(obj, image2D)
@@ -534,12 +526,12 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         end
 
         function runAutofocus(obj)
-            rack = obj.getMasterRack();
+            masterRackProxy = obj.getMasterRackProxy();
             anc = obj.getANC300Handle();
             regime = obj.temperatureRegime;
             vxy = obj.initialVoltage_xy(regime);
             vz = obj.initialVoltage_z(regime);
-            rack.rackSetWrite([obj.ANC300_voltage_x_ChannelName; obj.ANC300_voltage_y_ChannelName; obj.ANC300_voltage_z_ChannelName], [vxy; vxy; vz]);
+            masterRackProxy.rackSetWrite([obj.ANC300_voltage_x_ChannelName; obj.ANC300_voltage_y_ChannelName; obj.ANC300_voltage_z_ChannelName], [vxy; vxy; vz]);
 
             refSharp = obj.tenengradSharpness(obj.referenceSampleImage);
             thresh = obj.tenengradThreshold * refSharp;
@@ -572,7 +564,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             nTrial = obj.zStepTrialCount;
             vZ = vz;
             for iter = 1:obj.maxAutofocusIterations
-                rack.rackSetWrite(obj.ANC300_voltage_z_ChannelName, vZ);
+                masterRackProxy.rackSetWrite(obj.ANC300_voltage_z_ChannelName, vZ);
                 img0 = obj.acquireCameraImage();
                 s0 = obj.tenengradSharpness(img0);
                 anc.stepAxis("z", nTrial);
@@ -683,8 +675,8 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 end
             end
 
-            rack = obj.getMasterRack();
-            rack.rackSet([blockChannel; NDChannel], [blockTargetDeg; ndTargetDeg]);
+            masterRackProxy = obj.getMasterRackProxy();
+            masterRackProxy.rackSet([blockChannel; NDChannel], [blockTargetDeg; ndTargetDeg]);
         end
 
         function setLedState(obj, ledOn)
@@ -698,22 +690,22 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 rgb = [0; 0; 0];
             end
 
-            rack = obj.getMasterRack();
-            rack.rackSet(obj.ledRgbChannelName, rgb);
+            masterRackProxy = obj.getMasterRackProxy();
+            masterRackProxy.rackSet(obj.ledRgbChannelName, rgb);
         end
 
         function [likelyOnDeg, likelyOffDeg] = measureLikelyEndpoints(obj, positionChannelName, onCommandDeg, offCommandDeg)
-            rack = obj.getMasterRack();
+            masterRackProxy = obj.getMasterRackProxy();
 
             onSamples = zeros(obj.bsCalibrationCycles, 1);
             offSamples = zeros(obj.bsCalibrationCycles, 1);
 
             for cycleIndex = 1:obj.bsCalibrationCycles
-                rack.rackSet(positionChannelName, offCommandDeg);
-                offSamples(cycleIndex) = rack.rackGet(positionChannelName);
+                masterRackProxy.rackSet(positionChannelName, offCommandDeg);
+                offSamples(cycleIndex) = masterRackProxy.rackGet(positionChannelName);
 
-                rack.rackSet(positionChannelName, onCommandDeg);
-                onSamples(cycleIndex) = rack.rackGet(positionChannelName);
+                masterRackProxy.rackSet(positionChannelName, onCommandDeg);
+                onSamples(cycleIndex) = masterRackProxy.rackGet(positionChannelName);
             end
 
             likelyOnDeg = obj.pickLikelyPosition(onSamples);
@@ -730,14 +722,9 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         end
 
         function image2D = acquireCameraImage(obj)
-            rack = obj.getMasterRack();
-            mask = rack.instrumentTable.instrumentFriendlyNames == obj.cameraInstrumentFriendlyName;
-            if ~any(mask)
-                error("virtualInstrument_attodryAutofocus:MissingCameraInstrument", ...
-                    "Camera instrument ""%s"" was not found in rack.instrumentTable.", obj.cameraInstrumentFriendlyName);
-            end
-
-            cameraHandle = rack.instrumentTable.instruments(find(mask, 1, "first"));
+            masterRackProxy = obj.getMasterRackProxy();
+            cameraHandle = masterRackProxy.getReviewedInstrumentHandleForNonChannelMethod( ...
+                obj.cameraInstrumentFriendlyName, "", "autofocus camera acquireSingleImage");
             if ~ismethod(cameraHandle, "acquireSingleImage")
                 error("virtualInstrument_attodryAutofocus:CameraMethodMissing", ...
                     "Camera instrument ""%s"" must expose acquireSingleImage().", obj.cameraInstrumentFriendlyName);
@@ -777,14 +764,8 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         end
 
         function assertChannelsExist(obj, channelNames)
-            rack = obj.getMasterRack();
             channelNames = unique(channelNames(:));
-            available = rack.channelTable.channelFriendlyNames;
-            missing = channelNames(~ismember(channelNames, available));
-            if ~isempty(missing)
-                error("virtualInstrument_attodryAutofocus:MissingRackChannels", ...
-                    "These rack channels are missing: %s", strjoin(missing, ", "));
-            end
+            obj.getMasterRackProxy().assertChannelsExist(channelNames);
         end
 
         function assertOpticsChannelsConfigured(obj)

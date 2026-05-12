@@ -1,7 +1,7 @@
 classdef (Abstract) virtualInstrumentInterface < instrumentInterface
     % virtualInstrumentInterface - Base class for software-only virtual instruments.
     %
-    % Provides shared wiring for virtual instruments tied to an instrumentRack.
+    % Provides shared wiring for virtual instruments tied to an instrumentRackProxy.
     % Virtual channels participate in rack sets but are read synchronously after
     % all hardware-backed channels have completed their batch get cycle.
     % LLM note: virtual instruments rely on instrumentInterface.setWriteChannel,
@@ -11,34 +11,34 @@ classdef (Abstract) virtualInstrumentInterface < instrumentInterface
     % Thomas 20251009
 
     properties (Access = protected)
-        masterRack instrumentRack {mustBeScalarOrEmpty} = instrumentRack.empty();
+        masterRackProxy instrumentRackProxy {mustBeScalarOrEmpty} = instrumentRackProxy.empty();
     end
 
     methods
-        function obj = virtualInstrumentInterface(address, masterRack)
+        function obj = virtualInstrumentInterface(address, masterRackProxy)
             arguments
                 address (1, 1) string {mustBeNonzeroLengthText};
-                masterRack (1, 1) instrumentRack
+                masterRackProxy (1, 1) instrumentRackProxy
             end
 
             obj@instrumentInterface();
             obj.address = address;
-            obj.masterRack = masterRack;
+            obj.masterRackProxy = masterRackProxy;
         end
 
         function delete(obj)
-            obj.masterRack = instrumentRack.empty();
+            obj.masterRackProxy = instrumentRackProxy.empty();
             delete@instrumentInterface(obj);
         end
     end
 
     methods (Access = protected)
-        function rack = getMasterRack(obj)
-            if isempty(obj.masterRack) || ~isvalid(obj.masterRack)
+        function masterRackProxy = getMasterRackProxy(obj)
+            if isempty(obj.masterRackProxy) || ~isvalid(obj.masterRackProxy)
                 error("virtualInstrumentInterface:MissingMasterRack", ...
-                    "The master instrument rack reference is missing or invalid.");
+                    "The master instrument rack proxy reference is missing or invalid.");
             end
-            rack = obj.masterRack;
+            masterRackProxy = obj.masterRackProxy;
         end
     end
 

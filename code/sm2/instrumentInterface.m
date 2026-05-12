@@ -125,7 +125,6 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 obj;
                 channelIndex (1, 1) {mustBePositive, mustBeInteger};
             end
-            obj.assertByIndexPhysicalAccessFromVirtualContextAllowed("getWriteChannelByIndex");
             channelIndex = obj.normalizeChannelIndex(channelIndex);
             obj.performGetWriteByIndex(channelIndex);
         end
@@ -135,7 +134,6 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 obj;
                 channelIndex (1, 1) {mustBePositive, mustBeInteger};
             end
-            obj.assertByIndexPhysicalAccessFromVirtualContextAllowed("getReadChannelByIndex");
             channelIndex = obj.normalizeChannelIndex(channelIndex);
             getValues = obj.performGetReadByIndex(channelIndex);
         end
@@ -145,7 +143,6 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 obj;
                 channelIndex (1, 1) {mustBePositive, mustBeInteger};
             end
-            obj.assertByIndexPhysicalAccessFromVirtualContextAllowed("getChannelByIndex");
             channelIndex = obj.normalizeChannelIndex(channelIndex);
             obj.performGetWriteByIndex(channelIndex);
             getValues = obj.performGetReadByIndex(channelIndex);
@@ -157,7 +154,6 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 channelIndex (1, 1) {mustBePositive, mustBeInteger};
                 setValues double {mustBeVector};
             end
-            obj.assertByIndexPhysicalAccessFromVirtualContextAllowed("setChannelByIndex");
             obj.setWriteChannelByIndex(channelIndex, setValues);
             if ~obj.setCheckChannelByIndex(channelIndex)
                 startTime = datetime("now");
@@ -175,7 +171,6 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 channelIndex (1, 1) {mustBePositive, mustBeInteger};
                 setValues double {mustBeVector};
             end
-            obj.assertByIndexPhysicalAccessFromVirtualContextAllowed("setWriteChannelByIndex");
             channelIndex = obj.normalizeChannelIndex(channelIndex);
             channel = obj.channelTable.channels(channelIndex);
             obj.checkSize(channelIndex, setValues);
@@ -196,7 +191,6 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 obj;
                 channelIndex (1, 1) {mustBePositive, mustBeInteger};
             end
-            obj.assertByIndexPhysicalAccessFromVirtualContextAllowed("setCheckChannelByIndex");
             channelIndex = obj.normalizeChannelIndex(channelIndex);
             if ~obj.requireSetCheck
                 TF = true;
@@ -218,7 +212,6 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 obj;
                 channel (1, 1) string {mustBeNonzeroLengthText};
             end
-            obj.assertDirectPhysicalAccessFromVirtualContextAllowed("getChannel");
             channelIndex = obj.findChannelIndex(channel);
             getValues = obj.getChannelByIndex(channelIndex);
         end
@@ -229,7 +222,6 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 channel (1, 1) string {mustBeNonzeroLengthText};
                 setValues double {mustBeVector};
             end
-            obj.assertDirectPhysicalAccessFromVirtualContextAllowed("setChannel");
             channelIndex = obj.findChannelIndex(channel);
             obj.setChannelByIndex(channelIndex, setValues);
         end
@@ -240,7 +232,6 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 channel (1, 1) string {mustBeNonzeroLengthText};
                 setValues double {mustBeVector};
             end
-            obj.assertDirectPhysicalAccessFromVirtualContextAllowed("setWriteChannel");
             channelIndex = obj.findChannelIndex(channel);
             obj.setWriteChannelByIndex(channelIndex, setValues);
         end
@@ -251,7 +242,6 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 obj;
                 channel (1, 1) string {mustBeNonzeroLengthText};
             end
-            obj.assertDirectPhysicalAccessFromVirtualContextAllowed("setCheckChannel");
             channelIndex = obj.findChannelIndex(channel);
             TF = obj.setCheckChannelByIndex(channelIndex);
         end
@@ -391,16 +381,6 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
             end
             obj.lastWriteCommandTic = tic;
             obj.writesSinceLastRead = obj.writesSinceLastRead + 1;
-        end
-
-        function assertDirectPhysicalAccessFromVirtualContextAllowed(obj, apiName)
-            % Runtime blocking for direct physical access is intentionally
-            % disabled; policy is enforced by code review.
-        end
-
-        function assertByIndexPhysicalAccessFromVirtualContextAllowed(obj, apiName)
-            % Runtime blocking for by-index physical access is intentionally
-            % disabled; policy is enforced by code review.
         end
 
     end

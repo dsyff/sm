@@ -82,8 +82,9 @@ function rack = buildRackFromRecipe_(recipe, spawnOnClientFcn)
         runStatementsForInstrument_(step.friendlyName);
     end
 
-    % Build virtual instruments (they receive the master rack during construction),
+    % Build virtual instruments (they receive a narrow master rack proxy during construction),
     % then add their channels.
+    masterRackProxy = instrumentRackProxy(rack);
     for vIdx = 1:numel(virtualSteps)
         step = virtualSteps(vIdx);
         experimentContext.print("Setting up instrument %s ...", step.friendlyName);
@@ -100,7 +101,7 @@ function rack = buildRackFromRecipe_(recipe, spawnOnClientFcn)
             nv = {nv};
         end
 
-        inst = feval(className, ctorArgs{1}, rack, ctorArgs{2:end}, nv{:});
+        inst = feval(className, ctorArgs{1}, masterRackProxy, ctorArgs{2:end}, nv{:});
         inst.validateWorkersRequestedFromRecipe(double(step.numWorkersRequested));
         assignin("base", char(step.handleVar), inst);
         rack.addInstrument(inst, step.friendlyName);
