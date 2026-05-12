@@ -28,6 +28,9 @@ Montana2_IP = "136.167.55.165";
 OptiCool_IP = "127.0.0.1";
 MPMS3_IP = "136.167.49.54";
 MPMS3_Port = uint16(11000);
+LS336_GPIB = 27;
+GMPS4_GPIB = 15;
+TM620_COM = "COM3";
 
 SR860_1_GPIB = 7; % use same GPIB as SR830_1
 SR830_1_GPIB = SR860_1_GPIB; %sd
@@ -46,6 +49,7 @@ K2450_A_GPIB = 17; %vbg/strain cell outer
 K2450_B_GPIB = 18; %vtg/strain cell inner
 K2450_C_GPIB = 19; %vtg
 
+% Do not use a Keithley 2450 in 2400 emulation mode. The emulation is bugged
 K2400_A_GPIB = 23; %vbg
 K2400_B_GPIB = 24; %vtg
 K2400_C_GPIB = 25; %vtg
@@ -105,6 +109,9 @@ Montana1_Use = 0;
 Montana2_Use = 0;
 OptiCool_Use = 0;
 MPMS3_Use = 0;
+LS336_Use = 0;
+GMPS4_Use = 0;
+TM620_Use = 0;
 attoDRY2100_Use = 0;
 ANC300_Use = 0; % nano positioner for attoDRY2100
 
@@ -175,9 +182,18 @@ SDG2042X_pure_Use = 0;
 SDG2042X_mixed_TARB_Use = 0;
 
 virtual_del_V_Use = 0;
-virtual_hysteresis_Use = 0;
+
 virtual_nonlinear_T_Use = 0;
+
 virtual_nE_Use = 0;
+virtual_nE_V_bg_limits = [-6, 6];
+virtual_nE_V_tg_limits = [-6, 6];
+
+virtual_hysteresis_gate_Use = 0;
+virtual_hysteresis_V_bg_limits = [-5, 5];
+virtual_hysteresis_V_tg_limits = [-5, 5];
+
+virtual_hysteresis_nE_Use = 0;
 
 %% Create instrumentRackRecipe
 recipe = instrumentRackRecipe();
@@ -225,7 +241,7 @@ if strainController_Use
     recipe.addStatement("strain", "handle_strainController.requireSetCheck = true;");
 
     % Strain controller constructor restores tareData from logs (or tares if missing).
-    % Engine-worker mode helper: smeval("handle_strainController.warmup()");
+    % To warm up: smeval("handle_strainController.warmup()");
 
     recipe.addChannel("strain", "del_d", "del_d", [], [], -5E-5, 5E-5);
     recipe.addChannel("strain", "T", "T");
@@ -272,6 +288,31 @@ if MPMS3_Use
     recipe.addChannel("MPMS3", "B", "B");
     recipe.addChannel("MPMS3", "temperature_rate", "T_rate");
     recipe.addChannel("MPMS3", "field_rate", "B_rate");
+end
+
+if LS336_Use
+    recipe.addInstrument("handle_LS336", "instrument_LS336", "LS336", gpibAddress(LS336_GPIB, adaptorIndex));
+    recipe.addStatement("LS336", "handle_LS336.requireSetCheck = true;");
+    recipe.addChannel("LS336", "T_A", "T", [], [], 0, 350);
+    recipe.addChannel("LS336", "T_B", "T_VTI", [], [], 0, 350);
+    recipe.addChannel("LS336", "T_C", "T_CON", [], [], 0, 350);
+    recipe.addChannel("LS336", "T_D", "T_SORP", [], [], 0, 350);
+    % To cool down: smeval("handle_LS336.cooldown()");      % SETP 1 and 2 -> 0 K
+    % To warm up: smeval("handle_LS336.warmup()");          % SETP 1 and 2 -> 300 K
+end
+
+if GMPS4_Use
+    recipe.addInstrument("handle_4GMPS", "instrument_4GMPS", "4GMPS", gpibAddress(GMPS4_GPIB, adaptorIndex));
+    recipe.addStatement("4GMPS", "handle_4GMPS.requireSetCheck = true;");
+    recipe.addChannel("4GMPS", "IMAG", "B", [], [], -9, 9);
+    recipe.addChannel("4GMPS", "VMAG", "B_supply_V");
+end
+
+if TM620_Use
+    recipe.addInstrument("handle_TM620", "instrument_TM620", "TM620", TM620_COM);
+    recipe.addStatement("TM620", "handle_TM620.requireSetCheck = false;");
+    recipe.addChannel("TM620", "MEAS_A", "T_Shield");
+    recipe.addChannel("TM620", "MEAS_B", "T_Magnet");
 end
 
 if SR860_1_Use
@@ -1046,13 +1087,6 @@ if virtual_del_V_Use
     recipe.addChannel("virtual_delta", "del_V", "del_V", [], [], -10, 10);
 end
 
-if virtual_hysteresis_Use
-    recipe.addVirtualInstrument("handle_virtual_hysteresis", "virtualInstrument_hysteresis", "virtual_hysteresis1", "virtual_hysteresis1", ...
-        setChannelName = "V_tg", min = -5, max = 5);
-    recipe.addStatement("virtual_hysteresis1", "handle_virtual_hysteresis.requireSetCheck = true;");
-    recipe.addChannel("virtual_hysteresis1", "hysteresis", "hys_V_tg", [], [], 0, 1);
-end
-
 if virtual_nonlinear_T_Use
     recipe.addVirtualInstrument("handle_virtual_nonlinear_T", "virtualInstrument_nonlinear_T", "virtual_nonlinear_T", "virtual_nonlinear_T", ...
         tSetChannelName = "T", tMin = 4, tMax = 200);
@@ -1064,8 +1098,8 @@ if virtual_nE_Use
     recipe.addVirtualInstrument("handle_virtual_nE", "virtualInstrument_nE", "virtual_nE", "virtual_nE", ...
         vBgChannelName = "V_bg", ...
         vTgChannelName = "V_tg", ...
-        vBgLimits = [-6, 6], ...
-        vTgLimits = [-6, 6], ...
+        vBgLimits = virtual_nE_V_bg_limits, ...
+        vTgLimits = virtual_nE_V_tg_limits, ...
         vBg_n0E0 = 1, ...
         vTg_n0E0 = -1, ...
         vBg_n0ENot0 = 2, ...
@@ -1099,6 +1133,30 @@ if virtual_attodryAutofocus_Use
     recipe.addChannel("attodryAutofocus", "T", "attodry_T", [], [], 0, 400);
     recipe.addChannel("attodryAutofocus", "B", "attodry_B", [], [], -1, 1);
     recipe.addChannel("attodryAutofocus", "color", "attodry_color", [], [], 0, 1);
+end
+
+if virtual_hysteresis_gate_Use
+    recipe.addVirtualInstrument("handle_virtual_hysteresis_V_bg", "virtualInstrument_hysteresis", "virtual_hysteresis_V_bg", "virtual_hysteresis_V_bg", ...
+        setChannelName = "V_bg", min = virtual_hysteresis_V_bg_limits(1), max = virtual_hysteresis_V_bg_limits(2));
+    recipe.addStatement("virtual_hysteresis_V_bg", "handle_virtual_hysteresis_V_bg.requireSetCheck = false;");
+    recipe.addChannel("virtual_hysteresis_V_bg", "hysteresis", "hys_V_bg", [], [], 0, 1);
+
+    recipe.addVirtualInstrument("handle_virtual_hysteresis_V_tg", "virtualInstrument_hysteresis", "virtual_hysteresis_V_tg", "virtual_hysteresis_V_tg", ...
+        setChannelName = "V_tg", min = virtual_hysteresis_V_tg_limits(1), max = virtual_hysteresis_V_tg_limits(2));
+    recipe.addStatement("virtual_hysteresis_V_tg", "handle_virtual_hysteresis_V_tg.requireSetCheck = false;");
+    recipe.addChannel("virtual_hysteresis_V_tg", "hysteresis", "hys_V_tg", [], [], 0, 1);
+end
+
+if virtual_hysteresis_nE_Use
+    recipe.addVirtualInstrument("handle_virtual_hysteresis_n", "virtualInstrument_hysteresis", "virtual_hysteresis_n", "virtual_hysteresis_n", ...
+        setChannelName = "n_normalized", min = 0, max = 1);
+    recipe.addStatement("virtual_hysteresis_n", "handle_virtual_hysteresis_n.requireSetCheck = false;");
+    recipe.addChannel("virtual_hysteresis_n", "hysteresis", "hys_n", [], [], 0, 1);
+
+    recipe.addVirtualInstrument("handle_virtual_hysteresis_E", "virtualInstrument_hysteresis", "virtual_hysteresis_E", "virtual_hysteresis_E", ...
+        setChannelName = "E_normalized", min = 0, max = 1);
+    recipe.addStatement("virtual_hysteresis_E", "handle_virtual_hysteresis_E.requireSetCheck = false;");
+    recipe.addChannel("virtual_hysteresis_E", "hysteresis", "hys_E", [], [], 0, 1);
 end
 
 

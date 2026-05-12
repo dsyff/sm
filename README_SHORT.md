@@ -10,6 +10,7 @@ Quick start:
 - `requireSetCheck` flags (`false` = no settle wait)
 - `recipe.slack_notification_account_email` for queue notifications
 - channels and instrument settings as needed
+- use `instrument_K2450` for Keithley 2450 instruments; do not run a 2450 in 2400 emulation mode
 3. Run.
 
 Key concepts:
@@ -18,3 +19,4 @@ Key concepts:
 - Scan GUI `Run` = safe mode. Point-by-point updates. Slower, safer. Use for gate-range tests.
 - Queue GUI `Run` = turbo mode. Asynchronous, fast.
 - Press `Escape` to stop. Instant only in safe mode.
+- Save and load scan definitions to reuse common scans and avoid rebuilding them each session.
