@@ -19,16 +19,16 @@ classdef virtualInstrument_hysteresis < virtualInstrumentInterface
 
     methods
 
-        function obj = virtualInstrument_hysteresis(address, masterRack, NameValueArgs)
+        function obj = virtualInstrument_hysteresis(address, masterRackProxy, NameValueArgs)
             arguments
                 address (1, 1) string {mustBeNonzeroLengthText};
-                masterRack (1, 1) instrumentRack;
+                masterRackProxy (1, 1) instrumentRackProxy;
                 NameValueArgs.setChannelName (1, 1) string {mustBeNonzeroLengthText} = "V_tg";
                 NameValueArgs.min (1, 1) double {mustBeFinite};
                 NameValueArgs.max (1, 1) double {mustBeFinite};
             end
 
-            obj@virtualInstrumentInterface(address, masterRack);
+            obj@virtualInstrumentInterface(address, masterRackProxy);
             obj.requireSetCheck = true;
 
             obj.setChannelName = NameValueArgs.setChannelName;
@@ -50,16 +50,16 @@ classdef virtualInstrument_hysteresis < virtualInstrumentInterface
                     obj.validateNormalizedInput(normalizedInput);
                     setTarget = obj.computeSetTarget(normalizedInput);
 
-                    rack = obj.getMasterRack();
-                    rack.rackSetWrite(obj.setChannelName, setTarget);
+                    masterRackProxy = obj.getMasterRackProxy();
+                    masterRackProxy.rackSetWrite(obj.setChannelName, setTarget);
             end
         end
 
         function TF = setCheckChannelHelper(obj, channelIndex, ~)
             switch channelIndex
                 case 1
-                    rack = obj.getMasterRack();
-                    TF = rack.rackSetCheck(obj.setChannelName);
+                    masterRackProxy = obj.getMasterRackProxy();
+                    TF = masterRackProxy.rackSetCheck(obj.setChannelName);
             end
         end
 

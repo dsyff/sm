@@ -1,7 +1,7 @@
 classdef virtualInstrument_del_V < virtualInstrumentInterface
     % instrument_virtual_del_V - Minimal virtual channel instrument for del_V mapping.
     %
-    % Sets V_set according to V_set = V_get + del_V on the master instrument rack provided at
+    % Sets V_set according to V_set = V_get + del_V on the master instrument rack proxy provided at
     % construction time. The instrument exposes a single write-only channel
     % ("del_V") that, when updated, sets V_set through rackSetWrite.
     %
@@ -15,15 +15,15 @@ classdef virtualInstrument_del_V < virtualInstrumentInterface
     methods
 
         %% constructor
-        function obj = virtualInstrument_del_V(address, masterRack, NameValueArgs)
+        function obj = virtualInstrument_del_V(address, masterRackProxy, NameValueArgs)
             arguments
                 address (1, 1) string {mustBeNonzeroLengthText};
-                masterRack (1, 1) instrumentRack;
+                masterRackProxy (1, 1) instrumentRackProxy;
                 NameValueArgs.vGetChannelName (1, 1) string;
                 NameValueArgs.vSetChannelName (1, 1) string;
             end
 
-            obj@virtualInstrumentInterface(address, masterRack);
+            obj@virtualInstrumentInterface(address, masterRackProxy);
             obj.requireSetCheck = true;
 
             obj.vGetChannelName = NameValueArgs.vGetChannelName;
@@ -43,12 +43,12 @@ classdef virtualInstrument_del_V < virtualInstrumentInterface
                     % setWriteChannel (instrumentInterface) already validated this single-value
                     % channel and enforced a column double, so we can consume the scalar directly.
                     delV = setValues(1);
-                    rack = obj.getMasterRack();
-                    vGet = rack.rackGet(obj.vGetChannelName);
+                    masterRackProxy = obj.getMasterRackProxy();
+                    vGet = masterRackProxy.rackGet(obj.vGetChannelName);
                     % LLM note: rackGet validates channel sizes and returns the correct numeric shape,
                     % so an additional extractScalar call here would be redundant.
                     vSetTarget = vGet + delV;
-                    rack.rackSetWrite(obj.vSetChannelName, vSetTarget);
+                    masterRackProxy.rackSetWrite(obj.vSetChannelName, vSetTarget);
                 otherwise
                     setWriteChannelHelper@instrumentInterface(obj, channelIndex, setValues);
             end
@@ -57,8 +57,8 @@ classdef virtualInstrument_del_V < virtualInstrumentInterface
         function TF = setCheckChannelHelper(obj, channelIndex, channelLastSetValues)
             switch channelIndex
                 case 1
-                    rack = obj.getMasterRack();
-                    TF = rack.rackSetCheck(obj.vSetChannelName);
+                    masterRackProxy = obj.getMasterRackProxy();
+                    TF = masterRackProxy.rackSetCheck(obj.vSetChannelName);
                 otherwise
                     TF = setCheckChannelHelper@instrumentInterface(obj, channelIndex, channelLastSetValues);
             end
@@ -67,9 +67,9 @@ classdef virtualInstrument_del_V < virtualInstrumentInterface
         function getValues = getReadChannelHelper(obj, channelIndex)
             switch channelIndex
                 case 1
-                    rack = obj.getMasterRack();
-                    vSet = rack.rackGet(obj.vSetChannelName);
-                    vGet = rack.rackGet(obj.vGetChannelName);
+                    masterRackProxy = obj.getMasterRackProxy();
+                    vSet = masterRackProxy.rackGet(obj.vSetChannelName);
+                    vGet = masterRackProxy.rackGet(obj.vGetChannelName);
                     getValues = vSet - vGet;
             end
         end

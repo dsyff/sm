@@ -123,7 +123,7 @@
 %      rack.addChannel(...) -> recipe.addChannel(...)
 %
 % 4) Convert virtual-instrument construction:
-%      handle_v = virtualInstrument_nE("virtual_nE", rack, ...);
+%      handle_v = virtualInstrument_nE("virtual_nE", instrumentRackProxy(rack), ...);
 %      rack.addInstrument(handle_v, "virtual_nE");
 %   -> recipe.addVirtualInstrument("handle_v", "virtualInstrument_nE", "virtual_nE", "virtual_nE", ...);
 %

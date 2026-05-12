@@ -21,16 +21,16 @@ classdef virtualInstrument_nonlinear_T < virtualInstrumentInterface
 
     methods
 
-        function obj = virtualInstrument_nonlinear_T(address, masterRack, NameValueArgs)
+        function obj = virtualInstrument_nonlinear_T(address, masterRackProxy, NameValueArgs)
             arguments
                 address (1, 1) string {mustBeNonzeroLengthText};
-                masterRack (1, 1) instrumentRack;
+                masterRackProxy (1, 1) instrumentRackProxy;
                 NameValueArgs.tSetChannelName (1, 1) string;
                 NameValueArgs.tMin (1, 1) double {mustBeFinite, mustBePositive} = 4;
                 NameValueArgs.tMax (1, 1) double {mustBeFinite, mustBePositive} = 200;
             end
 
-            obj@virtualInstrumentInterface(address, masterRack);
+            obj@virtualInstrumentInterface(address, masterRackProxy);
             obj.requireSetCheck = true;
 
             obj.tSetChannelName = NameValueArgs.tSetChannelName;
@@ -51,8 +51,8 @@ classdef virtualInstrument_nonlinear_T < virtualInstrumentInterface
                     obj.validateNormalizedInput(normalizedInput);
 
                     setTarget = obj.mapNormalizedToTemperature(normalizedInput);
-                    rack = obj.getMasterRack();
-                    rack.rackSetWrite(obj.tSetChannelName, setTarget);
+                    masterRackProxy = obj.getMasterRackProxy();
+                    masterRackProxy.rackSetWrite(obj.tSetChannelName, setTarget);
                 otherwise
                     setWriteChannelHelper@instrumentInterface(obj, channelIndex, setValues);
             end
@@ -61,8 +61,8 @@ classdef virtualInstrument_nonlinear_T < virtualInstrumentInterface
         function TF = setCheckChannelHelper(obj, channelIndex, channelLastSetValues)
             switch channelIndex
                 case 1
-                    rack = obj.getMasterRack();
-                    TF = rack.rackSetCheck(obj.tSetChannelName);
+                    masterRackProxy = obj.getMasterRackProxy();
+                    TF = masterRackProxy.rackSetCheck(obj.tSetChannelName);
                 otherwise
                     TF = setCheckChannelHelper@instrumentInterface(obj, channelIndex, channelLastSetValues);
             end
@@ -71,8 +71,8 @@ classdef virtualInstrument_nonlinear_T < virtualInstrumentInterface
         function getValues = getReadChannelHelper(obj, channelIndex)
             switch channelIndex
                 case 1
-                    rack = obj.getMasterRack();
-                    temperature = rack.rackGet(obj.tSetChannelName);
+                    masterRackProxy = obj.getMasterRackProxy();
+                    temperature = masterRackProxy.rackGet(obj.tSetChannelName);
                     getValues = obj.mapTemperatureToNormalized(temperature);
             end
         end

@@ -212,34 +212,45 @@ For computed/derived channels that depend on other channels:
 classdef virtualInstrument_resistance < virtualInstrumentInterface
     
     methods
-        function obj = virtualInstrument_resistance(masterRack)
-            obj@virtualInstrumentInterface("virtual_resistance", masterRack);
+        function obj = virtualInstrument_resistance(masterRackProxy)
+            arguments
+                masterRackProxy (1, 1) instrumentRackProxy
+            end
+            obj@virtualInstrumentInterface("virtual_resistance", masterRackProxy);
             obj.addChannel("R", setTolerances = 1e-6);
         end
     end
     
     methods (Access = ?instrumentInterface)
         function getValues = getReadChannelHelper(obj, channelIndex)
-            rack = obj.getMasterRack();
-            V = rack.rackGet("voltage");
-            I = rack.rackGet("current");
+            masterRackProxy = obj.getMasterRackProxy();
+            V = masterRackProxy.rackGet("voltage");
+            I = masterRackProxy.rackGet("current");
             getValues = V / I;
         end
         
         function setWriteChannelHelper(obj, channelIndex, setValues)
             % Optional: implement if virtual channel is settable
-            rack = obj.getMasterRack();
-            I = rack.rackGet("current");
-            rack.rackSet("voltage", setValues * I);
+            masterRackProxy = obj.getMasterRackProxy();
+            I = masterRackProxy.rackGet("current");
+            masterRackProxy.rackSet("voltage", setValues * I);
         end
     end
 end
 
 KEY DIFFERENCES from physical instruments:
   - Inherit from virtualInstrumentInterface
-  - Constructor takes masterRack instead of address
+  - Constructor takes masterRackProxy instead of a full rack
   - getWriteChannelHelper is sealed (does nothing)
-  - Use obj.getMasterRack() to access other channels
+  - Use obj.getMasterRackProxy() to access other channels through rack APIs
+  - Physical channel reads/writes must go through rack APIs. Do not call another
+    instrument's get/set methods or communicationHandle directly from a virtual
+    instrument; those out-of-band commands bypass rack limits, ramp state,
+    retry handling, and batching.
+  - Do not pass physical instrument handles or communication handles into virtual
+    instrument constructors for later physical writes. Review any
+    `getReviewedInstrumentHandleForNonChannelMethod` use as a narrow non-channel
+    exception.
   - requireSetCheck inherits the instrumentInterface default (true); set it explicitly in the constructor if you want different behavior
 
 
@@ -418,7 +429,7 @@ Example without limits:
 
 VIRTUAL INSTRUMENT SETUP
 ------------------------
-  handle_virtual_del_V = virtualInstrument_del_V("virtual_delta", rack, ...
+  handle_virtual_del_V = virtualInstrument_del_V("virtual_delta", instrumentRackProxy(rack), ...
       vGetChannelName = "V_WSe2", vSetChannelName = "V_tg");
   rack.addInstrument(handle_virtual_del_V, "virtual_delta");
   rack.addChannel("virtual_delta", "del_V", "del_V", [], [], -10, 10);
