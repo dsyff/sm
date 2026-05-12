@@ -20,8 +20,8 @@ classdef (Sealed) instrumentRack < handle
         rackGetPlanCache = dictionary(string.empty(0, 1), cell.empty(0, 1));
         channelReadDelaySortOrder (:, 1) uint32 = uint32.empty(0, 1);
         channelReadDelayRanks (:, 1) uint32 = uint32.empty(0, 1);
-        lastSetValues (:, 1) cell = cell(0, 1);
-        lastCheckedValues (:, 1) cell = cell(0, 1);
+        lastCommandedValues (:, 1) cell = cell(0, 1);
+        lastVerifiedValues (:, 1) cell = cell(0, 1);
     end
     methods
         function obj = instrumentRack(skipDialog)
@@ -62,8 +62,8 @@ classdef (Sealed) instrumentRack < handle
             obj.rackGetPlanCache = dictionary(string.empty(0, 1), cell.empty(0, 1));
             obj.channelReadDelaySortOrder = uint32.empty(0, 1);
             obj.channelReadDelayRanks = uint32.empty(0, 1);
-            obj.lastSetValues = cell(0, 1);
-            obj.lastCheckedValues = cell(0, 1);
+            obj.lastCommandedValues = cell(0, 1);
+            obj.lastVerifiedValues = cell(0, 1);
         end
         
         function addInstrument(obj, instrumentObj, instrumentFriendlyName)
@@ -209,8 +209,8 @@ classdef (Sealed) instrumentRack < handle
             obj.channelReadDelayRanks(sortOrder) = uint32(1:height(obj.channelTable));
             obj.rackGetPlanCache = dictionary(string.empty(0, 1), cell.empty(0, 1));
             rowIndex = height(obj.channelTable);
-            obj.lastSetValues{rowIndex, 1} = [];
-            obj.lastCheckedValues{rowIndex, 1} = [];
+            obj.lastCommandedValues{rowIndex, 1} = [];
+            obj.lastVerifiedValues{rowIndex, 1} = [];
         end
 
         function info = getRackInfoForEditing(obj)
@@ -426,7 +426,7 @@ classdef (Sealed) instrumentRack < handle
             while tries < obj.tryTimes
                 try
                     obj.rackSetWriteHelper(channelRowIndices, setValues);
-                    obj.cacheLastSetValues(channelRowIndices, setValues);
+                    obj.cacheCommandedValues(channelRowIndices, setValues);
                     break;
                 catch ME
                     tries = tries + 1;
@@ -457,18 +457,18 @@ classdef (Sealed) instrumentRack < handle
             while tries < obj.tryTimes
                 try
                     obj.rackSetWriteHelper(channelRowIndices, setValues);
-                    obj.cacheLastSetValues(channelRowIndices, setValues);
+                    obj.cacheCommandedValues(channelRowIndices, setValues);
                     
                     timeoutSeconds = seconds(obj.batchSetTimeout);
                     startTimer = tic;
                     pendingRowIndices = channelRowIndices;
                     TFs = obj.rackVectorSetCheckHelper(pendingRowIndices);
-                    obj.promoteLastSetValues(pendingRowIndices, TFs);
+                    obj.promoteCommandedToVerified(pendingRowIndices, TFs);
                     while ~all(TFs)
                         assert(toc(startTimer) < timeoutSeconds, "Timed out while performing batch set.");
                         pendingRowIndices = pendingRowIndices(~TFs);
                         TFs = obj.rackVectorSetCheckHelper(pendingRowIndices);
-                        obj.promoteLastSetValues(pendingRowIndices, TFs);
+                        obj.promoteCommandedToVerified(pendingRowIndices, TFs);
                     end
                     break;
                 catch ME
@@ -702,8 +702,8 @@ classdef (Sealed) instrumentRack < handle
             reachedTargets = cell(numel(activeRowIndices), 1);
             isBelowThreshold = false(numel(activeRowIndices), 1);
             for i = 1:numel(activeRowIndices)
-                cachedCheckedValues = obj.lastCheckedValues{activeRowIndices(i)};
-                if isempty(cachedCheckedValues)
+                cachedCommandedValues = obj.lastCommandedValues{activeRowIndices(i)};
+                if isempty(cachedCommandedValues)
                     if all(isinf(activeRampThresholds{i}))
                         isBelowThreshold(i) = true;
                         startValues{i} = activeSetValues{i};
@@ -712,7 +712,7 @@ classdef (Sealed) instrumentRack < handle
                     end
                     startValues{i} = activeInstruments(i).getChannelByIndex(activeChannelIndices(i));
                 else
-                    startValues{i} = cachedCheckedValues;
+                    startValues{i} = cachedCommandedValues;
                 end
                 deltas = abs(activeSetValues{i} - startValues{i});
                 reachedTargets{i} = false(size(startValues{i}));
@@ -801,7 +801,7 @@ classdef (Sealed) instrumentRack < handle
                 TF = instruments(batchIndex).setCheckChannelByIndex(channelIndices(batchIndex));
                 assert(isscalar(TF), "setCheckChannelByIndex should return a scalar logical, received length %d instead", length(TF));
                 if TF
-                    obj.promoteLastSetValues(channelRowIndices(batchIndex), true);
+                    obj.promoteCommandedToVerified(channelRowIndices(batchIndex), true);
                 end
                 if ~TF
                     return;
@@ -810,20 +810,20 @@ classdef (Sealed) instrumentRack < handle
             TF = true;
         end
 
-        function cacheLastSetValues(obj, channelRowIndices, setValues)
+        function cacheCommandedValues(obj, channelRowIndices, setValues)
             for i = 1:numel(channelRowIndices)
-                obj.lastSetValues{channelRowIndices(i)} = setValues{i};
+                obj.lastCommandedValues{channelRowIndices(i)} = setValues{i};
             end
         end
 
-        function promoteLastSetValues(obj, channelRowIndices, TFs)
+        function promoteCommandedToVerified(obj, channelRowIndices, TFs)
             if isempty(channelRowIndices)
                 return;
             end
             for i = 1:numel(channelRowIndices)
                 if TFs(i)
                     rowIndex = channelRowIndices(i);
-                    obj.lastCheckedValues{rowIndex} = obj.lastSetValues{rowIndex};
+                    obj.lastVerifiedValues{rowIndex} = obj.lastCommandedValues{rowIndex};
                 end
             end
         end
