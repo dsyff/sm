@@ -919,34 +919,18 @@ end
 function setplotchoices(varargin)
     global smscan smaux;
         [plotchoicesAll, plotchoices2d] = buildPlotChoices();
-        set(smaux.smgui.oneDplot_lbh,'String',plotchoicesAll.string);       
-        set(smaux.smgui.twoDplot_lbh,'String',plotchoices2d.string);       
         
         % Disable 2D plots selection when there is only 1 loop
         numloops = length(smscan.loops);
-        if numloops <= 1
-            set(smaux.smgui.twoDplot_lbh,'Enable','off');
-            set(smaux.smgui.twoDplot_sth,'Enable','off');
-            % Clear any existing 2D plot selections when disabled
-            set(smaux.smgui.twoDplot_lbh,'Val',[]);
-            % Remove any 2D display entries from smscan.disp
-            if isfield(smscan, 'disp') && ~isempty(smscan.disp)
-                keep_indices = [];
-                for k = 1:length(smscan.disp)
-                    if isfield(smscan.disp(k), 'dim') && smscan.disp(k).dim ~= 2
-                        keep_indices = [keep_indices k];
-                    end
-                end
-                if ~isempty(keep_indices)
-                    smscan.disp = smscan.disp(keep_indices);
-                else
-                    smscan.disp = [];
-                end
+        twoDEnabled = numloops > 1;
+        if ~twoDEnabled && isfield(smscan, 'disp') && ~isempty(smscan.disp)
+            keepMask = true(1, numel(smscan.disp));
+            for k = 1:numel(smscan.disp)
+                keepMask(k) = ~isfield(smscan.disp(k), 'dim') || ~isequal(smscan.disp(k).dim, 2);
             end
-        else
-            set(smaux.smgui.twoDplot_lbh,'Enable','on');
-            set(smaux.smgui.twoDplot_sth,'Enable','on');
+            smscan.disp = smscan.disp(keepMask);
         end
+        set(smaux.smgui.twoDplot_sth, 'Enable', onOffState(twoDEnabled));
         
         plotNames = string(plotchoicesAll.string);
         newoneDvals = [];
@@ -1025,8 +1009,28 @@ function setplotchoices(varargin)
             dispEntries(entryIndex).name = string(plotchoices2d.string{local_idx});
         end
         smscan.disp = dispEntries;
-        set(smaux.smgui.oneDplot_lbh,'Val',newoneDvals);
-        set(smaux.smgui.twoDplot_lbh,'Val',newtwoDvals);
+        refreshPlotListbox(smaux.smgui.oneDplot_lbh, plotchoicesAll.string, newoneDvals, true);
+        refreshPlotListbox(smaux.smgui.twoDplot_lbh, plotchoices2d.string, newtwoDvals, twoDEnabled);
+end
+
+function refreshPlotListbox(handle, items, values, enabled)
+    itemCount = numel(items);
+    set(handle, 'Value', 1, 'ListboxTop', 1);
+    if itemCount == 0
+        set(handle, 'String', {''}, 'Value', 1, 'ListboxTop', 1);
+    else
+        values = values(values >= 1 & values <= itemCount);
+        set(handle, 'String', items, 'Value', values, 'ListboxTop', 1);
+    end
+    set(handle, 'Enable', onOffState(enabled));
+end
+
+function state = onOffState(enabled)
+    if enabled
+        state = 'on';
+    else
+        state = 'off';
+    end
 end
 
 function [plotchoicesAll, plotchoices2d] = buildPlotChoices()
