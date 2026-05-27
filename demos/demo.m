@@ -195,6 +195,9 @@ virtual_hysteresis_V_tg_limits = [-5, 5];
 
 virtual_hysteresis_nE_Use = 0;
 
+virtual_hysteresis_B_Use = 0;
+virtual_hysteresis_B_limits = [-1, 1];
+
 %% Create instrumentRackRecipe
 recipe = instrumentRackRecipe();
 recipe.slack_notification_account_email = "";
@@ -1157,6 +1160,13 @@ if virtual_hysteresis_nE_Use
         setChannelName = "E_normalized", min = 0, max = 1);
     recipe.addStatement("virtual_hysteresis_E", "handle_virtual_hysteresis_E.requireSetCheck = false;");
     recipe.addChannel("virtual_hysteresis_E", "hysteresis", "hys_E", [], [], 0, 1);
+end
+
+if virtual_hysteresis_B_Use
+    recipe.addVirtualInstrument("handle_virtual_hysteresis_B", "virtualInstrument_hysteresis", "virtual_hysteresis_B", "virtual_hysteresis_B", ...
+        setChannelName = "B", min = virtual_hysteresis_B_limits(1), max = virtual_hysteresis_B_limits(2));
+    recipe.addStatement("virtual_hysteresis_B", "handle_virtual_hysteresis_B.requireSetCheck = false;");
+    recipe.addChannel("virtual_hysteresis_B", "hysteresis", "hys_B", [], [], 0, 1);
 end
 
 
