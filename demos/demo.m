@@ -307,8 +307,8 @@ end
 if GMPS4_Use
     recipe.addInstrument("handle_4GMPS", "instrument_4GMPS", "4GMPS", gpibAddress(GMPS4_GPIB, adaptorIndex));
     recipe.addStatement("4GMPS", "handle_4GMPS.requireSetCheck = true;");
-    recipe.addChannel("4GMPS", "IMAG", "B", [], [], -9, 9);
-    recipe.addChannel("4GMPS", "VMAG", "B_supply_V");
+    recipe.addStatement("4GMPS", "handle_4GMPS.setSetTolerances(""B"", 1E-2);");
+    recipe.addChannel("4GMPS", "B", "B", [], [], -9, 9);
 end
 
 if TM620_Use
