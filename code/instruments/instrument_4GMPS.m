@@ -1,5 +1,5 @@
 classdef instrument_4GMPS < instrumentInterface
-    % Cryomagnetics 4G magnet power supply. Field channels use tesla.
+    % Cryomagnetics 4G magnet power supply. B is exposed in tesla.
 
     methods
 
@@ -14,8 +14,7 @@ classdef instrument_4GMPS < instrumentInterface
             obj.setTimeout = hours(2);
             obj.setInterval = seconds(3);
 
-            obj.addChannel("IMAG", setTolerances = 1E-2);
-            obj.addChannel("VMAG");
+            obj.addChannel("B", setTolerances = 1E-2);
         end
 
         function flush(obj)
@@ -34,56 +33,34 @@ classdef instrument_4GMPS < instrumentInterface
 
     methods (Access = ?instrumentInterface)
 
-        function getWriteChannelHelper(obj, channelIndex)
+        function getWriteChannelHelper(obj, ~)
             handle = obj.communicationHandle;
             if visastatus(handle)
                 flush(handle);
             end
 
-            switch channelIndex
-                case 1
-                    writeline(handle, "IMAG?");
-                case 2
-                    writeline(handle, "VMAG?");
-            end
+            writeline(handle, "IMAG?");
         end
 
-        function getValues = getReadChannelHelper(obj, channelIndex)
+        function getValues = getReadChannelHelper(obj, ~)
             response = strip(readline(obj.communicationHandle));
-            if channelIndex == 2
-                tokens = regexp(response, "^\s*([+-]?\d+(?:\.\d*)?(?:[Ee][+-]?\d+)?)\s*V\s*$", "tokens", "once");
-                if isempty(tokens)
-                    error("instrument_4GMPS:UnexpectedResponse", ...
-                        "Expected 4GMPS voltage response, got '%s'.", response);
-                end
-                getValues = str2double(tokens{1});
-            else
-                getValues = obj.parseFieldTesla(response);
-            end
+            getValues = obj.parseFieldTesla(response);
         end
 
-        function setWriteChannelHelper(obj, channelIndex, setValues)
+        function setWriteChannelHelper(obj, ~, setValues)
             handle = obj.communicationHandle;
-            switch channelIndex
-                case 1
-                    currentField_T = obj.readFieldTesla();
-                    if setValues >= currentField_T
-                        writeline(handle, sprintf("ULIM %g", 10 * setValues));
-                        writeline(handle, "SWEEP UP");
-                    else
-                        writeline(handle, sprintf("LLIM %g", 10 * setValues));
-                        writeline(handle, "SWEEP DOWN");
-                    end
-                otherwise
-                    setWriteChannelHelper@instrumentInterface(obj, channelIndex, setValues);
+            currentField_T = obj.readFieldTesla();
+            if setValues >= currentField_T
+                writeline(handle, sprintf("ULIM %g", 10 * setValues));
+                writeline(handle, "SWEEP UP");
+            else
+                writeline(handle, sprintf("LLIM %g", 10 * setValues));
+                writeline(handle, "SWEEP DOWN");
             end
         end
 
         function TF = setCheckChannelHelper(obj, channelIndex, channelLastSetValues)
-            switch channelIndex
-                case 1
-                    readback = obj.readFieldTesla();
-            end
+            readback = obj.readFieldTesla();
             TF = abs(readback - channelLastSetValues) <= obj.setTolerances{channelIndex};
         end
 
@@ -92,15 +69,11 @@ classdef instrument_4GMPS < instrumentInterface
     methods (Access = private)
 
         function field_T = readFieldTesla(obj)
-            field_T = obj.readLimitTesla("IMAG?");
-        end
-
-        function field_T = readLimitTesla(obj, command)
             handle = obj.communicationHandle;
             if visastatus(handle)
                 flush(handle);
             end
-            writeline(handle, command);
+            writeline(handle, "IMAG?");
             field_T = obj.parseFieldTesla(strip(readline(handle)));
         end
 
