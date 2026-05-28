@@ -223,17 +223,31 @@ classdef measurementScan
                 plotNames = strings(numel(obj.disp), 1);
                 for dispIdx = 1:numel(obj.disp)
                     name = "";
-                    if isfield(obj.disp, "name") && strlength(string(obj.disp(dispIdx).name)) > 0
-                        name = string(obj.disp(dispIdx).name);
-                    end
-
                     dc = [];
                     if isfield(obj.disp, "channel")
                         dc = obj.disp(dispIdx).channel;
                     end
 
+                    if isfield(obj.disp, "name")
+                        nameCandidates = string(obj.disp(dispIdx).name);
+                        nameCandidates = nameCandidates(~ismissing(nameCandidates) & strlength(nameCandidates) > 0);
+                        if isscalar(nameCandidates)
+                            name = nameCandidates;
+                        elseif ~isempty(nameCandidates)
+                            error("measurementScan:InvalidDispChannel", ...
+                                "disp(%d).name must resolve to one plot channel name.", dispIdx);
+                        end
+                    end
+
                     if strlength(name) == 0 && ~isempty(dc) && (isstring(dc) || ischar(dc))
-                        name = string(dc);
+                        nameCandidates = string(dc);
+                        nameCandidates = nameCandidates(~ismissing(nameCandidates) & strlength(nameCandidates) > 0);
+                        if isscalar(nameCandidates)
+                            name = nameCandidates;
+                        elseif ~isempty(nameCandidates)
+                            error("measurementScan:InvalidDispChannel", ...
+                                "disp(%d).channel must resolve to one plot channel name.", dispIdx);
+                        end
                     end
 
                     if strlength(name) > 0
