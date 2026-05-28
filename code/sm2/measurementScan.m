@@ -261,8 +261,11 @@ classdef measurementScan
                         continue;
                     end
 
-                    if isnumeric(dc) && isscalar(dc)
-                        if dc >= 1 && dc <= numel(flatScalar)
+                    if isnumeric(dc)
+                        if ~isscalar(dc)
+                            error("measurementScan:InvalidDispChannel", ...
+                                "disp(%d).channel must be a numeric scalar plot channel index.", dispIdx);
+                        elseif dc >= 1 && dc <= numel(flatScalar)
                             plotNames(dispIdx) = flatScalar(dc);
                             obj.disp(dispIdx).name = plotNames(dispIdx);
                             obj.disp(dispIdx).channel = double(dc);

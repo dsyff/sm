@@ -190,8 +190,8 @@ for dispIdx = 1:numel(scanOut.disp)
     end
 end
 
-oneDvals = unique(sort(oneDvals));
-twoDvals = unique(sort(twoDvals));
+oneDvals = unique(sort(oneDvals(:).'));
+twoDvals = unique(sort(twoDvals(:).'));
 dispOut = struct("loop", {}, "channel", {}, "dim", {}, "name", {});
 entryIdx = 0;
 for idx = oneDvals
