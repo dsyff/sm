@@ -1695,7 +1695,7 @@ function makeconstpanel(varargin)
     global smaux smscan smdata;
     %Set constants panel to below filename panel
     posData = get(smaux.smgui.datapanel,'position');
-    height = 210;
+    height = 190;
     margin = 10;
     parentsize=[180 posData(2)-height-margin 700 height];
     
