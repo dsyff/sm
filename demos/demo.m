@@ -1028,8 +1028,10 @@ if MFLI_Use
         recipe.addChannel("MFLI", "phase_" + string(i), "Th" + string(i));
         recipe.addChannel("MFLI", "signed_amplitude_" + string(i), "As" + string(i), [], [], -2, 2);
         recipe.addChannel("MFLI", "frequency_" + string(i), "f" + string(i));
+        recipe.addChannel("MFLI", "oscillator_" + string(i), "Osc" + string(i), [], [], 1, 4);
         recipe.addChannel("MFLI", "harmonic_" + string(i), "Harm" + string(i));
         recipe.addChannel("MFLI", "on_" + string(i), "On" + string(i));
+        recipe.addChannel("MFLI", "XYRTheta_" + string(i), "XYRTheta" + string(i));
     end
 end
 
