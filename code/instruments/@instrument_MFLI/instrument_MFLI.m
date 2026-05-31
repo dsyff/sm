@@ -38,23 +38,19 @@ classdef instrument_MFLI < instrumentInterface
             % Set Differential Output
             ziDAQ('setInt', [sigout_path 'diff'], 1);
 
-            % Configure 4 Sine Generators (Demodulators mapped to Signal Output)
-            % In MFLI, "Sine Generators" usually refers to the signal output mixer components.
-            % We assume the user means the 4 demodulators' signals summed to SigOut 0.
-
             for i = 1:4
-                demod_idx = i - 1; % 0-based index
+                slot_idx = i - 1;  % 0-based sine generator slot
                 osc_idx = i - 1;   % 0-based index
 
-                % Map Demod i to Osc i
-                ziDAQ('setInt', sprintf('/%s/demods/%d/oscselect', obj.device_id, demod_idx), osc_idx);
+                % Use a separate oscillator for each sine generator.
+                ziDAQ('setInt', sprintf('/%s/demods/%d/oscselect', obj.device_id, slot_idx), osc_idx);
 
                 % Enable the sine generator on the signal output
                 % /devN/sigouts/0/enables/i
-                ziDAQ('setInt', sprintf('%senables/%d', sigout_path, demod_idx), 1);
+                ziDAQ('setInt', sprintf('%senables/%d', sigout_path, slot_idx), 1);
 
                 % Create Channels
-                % amplitude_n in V
+                % signal-output sine amplitude_n in V
                 obj.addChannel(sprintf("amplitude_%d", i), setTolerances = 1e-3);
 
                 % phase_n in degrees
@@ -63,14 +59,20 @@ classdef instrument_MFLI < instrumentInterface
                 % signed_amplitude_n in V (phase encodes sign)
                 obj.addChannel(sprintf("signed_amplitude_%d", i), setTolerances = 1e-3);
 
-                % frequency_n in Hz
+                % oscillator frequency_n in Hz
                 obj.addChannel(sprintf("frequency_%d", i));
 
-                % harmonic_n
+                % demodulator oscillator_n, user-facing index 1-4
+                obj.addChannel(sprintf("oscillator_%d", i));
+
+                % demodulator harmonic_n
                 obj.addChannel(sprintf("harmonic_%d", i));
 
                 % on_n
                 obj.addChannel(sprintf("on_%d", i));
+
+                % demodulator X,Y,R,Theta
+                obj.addChannel(sprintf("XYRTheta_%d", i), 4);
             end
 
             % Sync to ensure settings are applied
@@ -92,11 +94,11 @@ classdef instrument_MFLI < instrumentInterface
 
         function getValues = getReadChannelHelper(obj, channelIndex)
             % Optimized channel handling using modular arithmetic
-            % Channel order: Amplitude, Phase, Signed Amplitude, Frequency, Harmonic, On (per generator)
+            % Channel order: Amplitude, Phase, Signed Amplitude, Frequency, Oscillator, Harmonic, On, XYRTheta
 
             idx_zero = channelIndex - 1;
-            group_idx = floor(idx_zero / 6); % 0-3 (Generator Index)
-            type_idx = mod(idx_zero, 6);     % 0-5 (Channel Type)
+            group_idx = floor(idx_zero / 8); % 0-3 (demodulator/sine slot)
+            type_idx = mod(idx_zero, 8);     % 0-7 (Channel Type)
 
             switch type_idx
                 case 0 % Amplitude
@@ -124,19 +126,31 @@ classdef instrument_MFLI < instrumentInterface
                 case 3 % Frequency
                     path = sprintf('/%s/oscs/%d/freq', obj.device_id, group_idx);
                     getValues = ziDAQ('getDouble', path);
-                case 4 % Harmonic
+                case 4 % Oscillator
+                    path = sprintf('/%s/demods/%d/oscselect', obj.device_id, group_idx);
+                    getValues = double(ziDAQ('getInt', path)) + 1;
+                case 5 % Harmonic
                     path = sprintf('/%s/demods/%d/harmonic', obj.device_id, group_idx);
                     getValues = double(ziDAQ('getInt', path));
-                case 5 % On
+                case 6 % On
                     path = sprintf('/%s/sigouts/0/enables/%d', obj.device_id, group_idx);
                     getValues = double(ziDAQ('getInt', path));
+                case 7 % XYRTheta
+                    path = sprintf('/%s/demods/%d/sample', obj.device_id, group_idx);
+                    sample = ziDAQ('getSample', path);
+                    x = double(sample.x);
+                    y = double(sample.y);
+                    if ~isscalar(x) || ~isscalar(y)
+                        error("MFLI XYRTheta_%d expected scalar x/y sample. Received x length %d, y length %d.", group_idx + 1, numel(x), numel(y));
+                    end
+                    getValues = [x; y; hypot(x, y); atan2d(y, x)];
             end
         end
 
         function setWriteChannelHelper(obj, channelIndex, setValues)
             idx_zero = channelIndex - 1;
-            group_idx = floor(idx_zero / 6); % 0-3 (Generator Index)
-            type_idx = mod(idx_zero, 6);     % 0-5 (Channel Type)
+            group_idx = floor(idx_zero / 8); % 0-3 (demodulator/sine slot)
+            type_idx = mod(idx_zero, 8);     % 0-7 (Channel Type)
 
             switch type_idx
                 case 0 % Amplitude
@@ -153,12 +167,23 @@ classdef instrument_MFLI < instrumentInterface
                 case 3 % Frequency
                     path = sprintf('/%s/oscs/%d/freq', obj.device_id, group_idx);
                     ziDAQ('setDouble', path, setValues);
-                case 4 % Harmonic
+                case 4 % Oscillator
+                    if setValues < 1 || setValues > 4 || setValues ~= round(setValues)
+                        error("MFLI oscillator_%d expects an integer oscillator index from 1 to 4. Received %.15g.", group_idx + 1, setValues);
+                    end
+                    path = sprintf('/%s/demods/%d/oscselect', obj.device_id, group_idx);
+                    ziDAQ('setInt', path, int64(setValues - 1));
+                case 5 % Harmonic
+                    if setValues < 1 || setValues ~= round(setValues)
+                        error("MFLI harmonic_%d expects a positive integer harmonic index. Received %.15g.", group_idx + 1, setValues);
+                    end
                     path = sprintf('/%s/demods/%d/harmonic', obj.device_id, group_idx);
                     ziDAQ('setInt', path, int64(setValues));
-                case 5 % On
+                case 6 % On
                     path = sprintf('/%s/sigouts/0/enables/%d', obj.device_id, group_idx);
                     ziDAQ('setInt', path, int64(setValues));
+                case 7 % XYRTheta
+                    error("Set operation not supported for channel %s", obj.channelTable.channels(channelIndex));
             end
         end
 
