@@ -100,7 +100,7 @@ end
         return
     end
     screenSize = get(0, 'ScreenSize');
-    figHeight = min(900, max(700, screenSize(4)-80));
+    figHeight = min(860, max(700, screenSize(4)-80));
     %  Create and then hide the GUI as it is being constructed.
    smaux.smgui.figure1 = figure('Visible','on',...
        'Name','Special Measure v0.9',...
@@ -1279,12 +1279,12 @@ function makescanbody(varargin)
     constVisibleRows = min(m.maxContentRows, constRows);
     constHeight = m.titlePad + m.rowH * (constVisibleRows + 1) + m.bottomPad;
 
+    smscan.loops = normalizeLoopFields(smscan.loops);
     loopHeights = zeros(1, numloops);
     loopSetRows = zeros(1, numloops);
     loopRecordRows = zeros(1, numloops);
     loopContentRows = zeros(1, numloops);
     for i = 1:numloops
-        smscan.loops(i) = normalizeLoopFields(smscan.loops(i));
         smscan.loops(i).numchans = length(smscan.loops(i).setchan);
         loopSetRows(i) = max(1, smscan.loops(i).numchans);
         loopRecordRows(i) = max(1, ceil((length(smscan.loops(i).getchan) + 1) / m.recordCols));
@@ -1463,7 +1463,7 @@ function m = smguiLayoutMetrics()
     m.rowH = 24;
     m.ctrlH = 20;
     m.ctrlPadY = 2;
-    m.titlePad = 28;
+    m.titlePad = 20;
     m.bottomPad = 8;
     m.maxContentRows = 5;
     m.constCols = 4;
@@ -1471,16 +1471,18 @@ function m = smguiLayoutMetrics()
     m.recordCols = 7;
 end
 
-function loop = normalizeLoopFields(loop)
-    if ~isfield(loop, "npoints") || isempty(loop.npoints), loop.npoints = 101; end
-    if ~isfield(loop, "rng") || isempty(loop.rng), loop.rng = [0 1]; end
-    if ~isfield(loop, "getchan") || isempty(loop.getchan), loop.getchan = {}; end
-    if ~isfield(loop, "setchan") || isempty(loop.setchan), loop.setchan = {}; end
-    if ~isfield(loop, "setchanranges") || isempty(loop.setchanranges), loop.setchanranges = {}; end
-    if ~isfield(loop, "ramptime") || isempty(loop.ramptime), loop.ramptime = 0; end
-    if ~isfield(loop, "waittime") || isempty(loop.waittime), loop.waittime = 0; end
-    if ~isfield(loop, "startwait") || isempty(loop.startwait), loop.startwait = 0; end
-    loop.numchans = length(loop.setchan);
+function loops = normalizeLoopFields(loops)
+    for i = 1:numel(loops)
+        if ~isfield(loops, "npoints") || isempty(loops(i).npoints), loops(i).npoints = 101; end
+        if ~isfield(loops, "rng") || isempty(loops(i).rng), loops(i).rng = [0 1]; end
+        if ~isfield(loops, "getchan") || isempty(loops(i).getchan), loops(i).getchan = cell(1,0); end
+        if ~isfield(loops, "setchan") || isempty(loops(i).setchan), loops(i).setchan = cell(1,0); end
+        if ~isfield(loops, "setchanranges") || isempty(loops(i).setchanranges), loops(i).setchanranges = cell(1,0); end
+        if ~isfield(loops, "ramptime") || isempty(loops(i).ramptime), loops(i).ramptime = 0; end
+        if ~isfield(loops, "waittime") || isempty(loops(i).waittime), loops(i).waittime = 0; end
+        if ~isfield(loops, "startwait") || isempty(loops(i).startwait), loops(i).startwait = 0; end
+        loops(i).numchans = length(loops(i).setchan);
+    end
 end
 
 function value = loopValueOrZero(loop, fieldName)
