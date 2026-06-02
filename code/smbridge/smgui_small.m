@@ -166,9 +166,9 @@ end
     leftW = 210;
     leftPad = 5;
     leftInnerW = leftW - 2 * leftPad;
-    panelGap = 5;
-    topPad = 0;
-    scanH = 40;
+    panelGap = 10;
+    topPad = 6;
+    scanH = 48;
     dataH = 88;
     pptH = 60;
 
@@ -180,7 +180,7 @@ end
             'String','',...
             'HorizontalAlignment','left',...
             'FontSize',8,...
-            'Position',[4 1 leftW-8 20],...
+            'Position',[4 6 leftW-8 20],...
             'Callback',@ScanTitle);
 
     panYdata = panYscan - panelGap - dataH;
@@ -1493,7 +1493,7 @@ function m = smguiLayoutMetrics()
     m.internalSliderX = 654;
     m.scrollW = 12;
     m.margin = 10;
-    m.topPad = 0;
+    m.topPad = 6;
     m.inlineGap = 3;
     m.headerGap = 12;
     m.rowH = 24;
