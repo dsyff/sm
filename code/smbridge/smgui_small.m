@@ -100,7 +100,7 @@ end
         return
     end
     screenSize = get(0, 'ScreenSize');
-    figHeight = min(860, max(700, screenSize(4)-80));
+    figHeight = min(515, screenSize(4)-80);
     %  Create and then hide the GUI as it is being constructed.
    smaux.smgui.figure1 = figure('Visible','on',...
        'Name','Special Measure v0.9',...
