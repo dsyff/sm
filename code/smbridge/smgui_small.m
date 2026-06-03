@@ -100,7 +100,7 @@ end
         return
     end
     screenSize = get(0, 'ScreenSize');
-    figHeight = min(515, screenSize(4)-80);
+    figHeight = min(611, screenSize(4)-80);
     %  Create and then hide the GUI as it is being constructed.
    smaux.smgui.figure1 = figure('Visible','on',...
        'Name','Special Measure v0.9',...
@@ -293,7 +293,7 @@ end
     smaux.smgui.oneDplot_sth = uicontrol('Parent',smaux.smgui.nullpanel,'Style','text',...
         'String','1D Plots',...
         'Position',[leftX panYDisp 95 20]);
-    plotListHeight = 240;
+    plotListHeight = 21 * 16;
     plotGap = 14;
     plotW = floor((leftW - plotGap) / 2);
     plotX2 = leftX + plotW + plotGap;
