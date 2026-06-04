@@ -56,6 +56,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         initialVoltage_xy (4, 1) double = [20; 30; 45; 50]
         initialVoltage_z (4, 1) double = [25; 35; 50; 55]
         temperatureRegime (1, 1) double {mustBeInteger, mustBeMember(temperatureRegime, [1, 2, 3, 4])} = 4
+        positionerVoltageProfileCsvPath (1, 1) string = ""
 
         tenengradThreshold (1, 1) double {mustBeNonnegative} = 1e-4
         maxAutofocusIterations (1, 1) double {mustBeInteger, mustBePositive} = 50
@@ -151,6 +152,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 NameValueArgs.initialVoltage_xy (4, 1) double = [20; 30; 45; 50]
                 NameValueArgs.initialVoltage_z (4, 1) double = [25; 35; 50; 55]
                 NameValueArgs.temperatureRegime (1, 1) double {mustBeInteger, mustBePositive} = 4
+                NameValueArgs.positionerVoltageProfileCsvPath (1, 1) string = ""
                 NameValueArgs.tenengradThreshold (1, 1) double {mustBeNonnegative} = 1e-4
                 NameValueArgs.maxAutofocusIterations (1, 1) double {mustBeInteger, mustBePositive} = 50
                 NameValueArgs.zVoltageIncrementFactor (1, 1) double {mustBePositive} = 1.2
@@ -223,6 +225,12 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                     "temperatureRegime must be 1 (300K), 2 (77K), 3 (4K), or 4 (~1K).");
             end
             obj.temperatureRegime = tr;
+            if strlength(NameValueArgs.positionerVoltageProfileCsvPath) == 0
+                obj.positionerVoltageProfileCsvPath = fullfile(fileparts(mfilename("fullpath")), ...
+                    "attodry_autofocus_positioner_voltage_profile.csv");
+            else
+                obj.positionerVoltageProfileCsvPath = NameValueArgs.positionerVoltageProfileCsvPath;
+            end
             obj.tenengradThreshold = NameValueArgs.tenengradThreshold;
             obj.maxAutofocusIterations = NameValueArgs.maxAutofocusIterations;
             obj.zVoltageIncrementFactor = NameValueArgs.zVoltageIncrementFactor;
@@ -663,8 +671,8 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         function nStepApplied = runZAutofocus(obj)
             masterRackProxy = obj.getMasterRackProxy();
             anc = obj.getANC300Handle();
-            regime = obj.temperatureRegime;
-            vz = obj.initialVoltage_z(regime);
+            firstTryVoltages = obj.getInitialPositionerVoltages();
+            vz = firstTryVoltages(2);
 
             refSharp = obj.tenengradSharpness(obj.referenceSampleImage);
             thresh = obj.tenengradThreshold * refSharp;
@@ -743,11 +751,12 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             masterRackProxy = obj.getMasterRackProxy();
             anc = obj.getANC300Handle();
             verifyPx = obj.cameraVerifiableStepSizePixel;
+            firstTryVoltages = obj.getInitialPositionerVoltages();
             axes = ["x"; "y"];
             voltageChannels = [obj.ANC300_voltage_x_ChannelName; obj.ANC300_voltage_y_ChannelName];
             xyPixelPerStepMatrix = NaN(2, 2);
             for axisIndex = 1:2
-                voltage = obj.initialVoltage_xy(obj.temperatureRegime);
+                voltage = firstTryVoltages(1);
                 while true
                     masterRackProxy.rackSetWrite(voltageChannels(axisIndex), voltage);
                     [dx0, dy0] = obj.estimateSampleOffset(obj.acquireCameraImage());
@@ -793,6 +802,51 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                     matrixRcond, obj.xyResponseMatrixMinRcond);
             end
             obj.xyPixelPerStepMatrix = xyPixelPerStepMatrix;
+        end
+
+        function firstTryVoltages = getInitialPositionerVoltages(obj)
+            csvPath = obj.positionerVoltageProfileCsvPath;
+            if strlength(csvPath) == 0 || ~isfile(csvPath)
+                error("virtualInstrument_attodryAutofocus:MissingVoltageProfileCsv", ...
+                    "Positioner voltage profile CSV does not exist: %s", csvPath);
+            end
+            profile = readtable(csvPath);
+            requiredVariables = ["temperature_K", "xy_voltage_V", "z_voltage_V"];
+            if ~all(ismember(requiredVariables, string(profile.Properties.VariableNames)))
+                error("virtualInstrument_attodryAutofocus:InvalidVoltageProfileCsv", ...
+                    "Voltage profile CSV must contain columns: %s", strjoin(requiredVariables, ", "));
+            end
+
+            temperature_K = double(profile.temperature_K(:));
+            xyVoltage_V = double(profile.xy_voltage_V(:));
+            zVoltage_V = double(profile.z_voltage_V(:));
+            if any(~isfinite(temperature_K)) || any(~isfinite(xyVoltage_V)) || any(~isfinite(zVoltage_V))
+                error("virtualInstrument_attodryAutofocus:InvalidVoltageProfileCsv", ...
+                    "Voltage profile temperatures and voltages must be finite.");
+            end
+            if any(xyVoltage_V < 0 | xyVoltage_V > 60 | zVoltage_V < 0 | zVoltage_V > 60)
+                error("virtualInstrument_attodryAutofocus:InvalidVoltageProfileCsv", ...
+                    "Voltage profile voltages must be within [0, 60] V.");
+            end
+
+            [temperature_K, sortIndex] = sort(temperature_K);
+            xyVoltage_V = xyVoltage_V(sortIndex);
+            zVoltage_V = zVoltage_V(sortIndex);
+            if any(diff(temperature_K) <= 0)
+                error("virtualInstrument_attodryAutofocus:InvalidVoltageProfileCsv", ...
+                    "Voltage profile temperatures must be unique.");
+            end
+
+            currentTB = obj.getCurrentTB();
+            currentTemperature_K = currentTB(1);
+            if currentTemperature_K < temperature_K(1) || currentTemperature_K > temperature_K(end)
+                error("virtualInstrument_attodryAutofocus:VoltageProfileTemperatureOutOfRange", ...
+                    "Current temperature %.6g K is outside voltage profile range [%.6g, %.6g] K.", ...
+                    currentTemperature_K, temperature_K(1), temperature_K(end));
+            end
+            firstTryVoltages = [ ...
+                interp1(temperature_K, xyVoltage_V, currentTemperature_K, "linear"); ...
+                interp1(temperature_K, zVoltage_V, currentTemperature_K, "linear")];
         end
 
         function setLaserPathState(obj, NameValueArgs)
