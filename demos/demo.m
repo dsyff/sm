@@ -1135,8 +1135,8 @@ if virtual_attodryAutofocus_Use
         ANC300_voltage_y_ChannelName = "ANC300_Vy", ...
         ANC300_voltage_z_ChannelName = "ANC300_Vz");
     recipe.addStatement("attodryAutofocus", "handle_virtual_attodryAutofocus.requireSetCheck = true;");
-    recipe.addChannel("attodryAutofocus", "T", "attodry_T", [], [], 0, 400);
-    recipe.addChannel("attodryAutofocus", "B", "attodry_B", [], [], -1, 1);
+    recipe.addChannel("attodryAutofocus", "T", "T_af", [], [], 0, 400);
+    recipe.addChannel("attodryAutofocus", "B", "B_af", [], [], -1, 1);
     recipe.addChannel("attodryAutofocus", "color", "attodry_color", [], [], 0, 1);
 end
 

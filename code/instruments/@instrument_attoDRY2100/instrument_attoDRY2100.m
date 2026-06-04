@@ -22,6 +22,11 @@ classdef instrument_attoDRY2100 < instrumentInterface
             obj.addChannel("driven", setTolerances = 0.1);
         end
 
+        function cooldown(obj)
+            errorNumber = action_goToBase(obj.communicationHandle);
+            obj.assertNoError(errorNumber, "action_goToBase");
+        end
+
         function delete(obj)
             if ~isempty(obj.communicationHandle)
                 tcp = obj.communicationHandle; %#ok<NASGU>
