@@ -33,6 +33,9 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         tbTargetTolerance (2, 1) double {mustBePositive} = [0.1; 1E-2]
         targetWaitTimeout (1, 1) duration = minutes(20)
         compensationInterval (1, 1) duration = seconds(2)
+        noCorrectionQuietDuration (1, 1) duration = minutes(1)
+        temperatureStableWindow (1, 1) duration = minutes(10)
+        temperatureStableSlopeTolerance_K_per_min (1, 1) double {mustBeNonnegative} = 0.050
 
         bsCalibrationCycles (1, 1) double {mustBeInteger, mustBePositive} = 6
         bsSetMaxAttempts (1, 1) double {mustBeInteger, mustBePositive} = 20
@@ -41,6 +44,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         bsQuantizationDeg (1, 1) double {mustBePositive} = 360 / 4096
 
         shiftFitTrimRatio (2, 1) double = [0.2; 0.2]
+        offsetFitRoi_px (1, 4) double = [NaN, NaN, NaN, NaN]  % [x, y, width, height]
 
         % ANC300 nanopositioner (optional). Empty = no autofocus/autoshift actuation.
         ANC300InstrumentFriendlyName (1, 1) string = ""
@@ -61,6 +65,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         targetStepSizePixel (1, 1) double {mustBePositive} = 0.5
         cameraVerifiableStepSizePixel (1, 1) double {mustBePositive} = 1.0
         autoshiftStepRatio (1, 1) double {mustBePositive} = 0.5
+        xyResponseMatrixMinRcond (1, 1) double {mustBePositive} = 1e-3
         maxAutoshiftCalibrationSteps (1, 1) double {mustBeInteger, mustBePositive} = 20
     end
 
@@ -87,8 +92,8 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         referenceFitSize_px (1, 2) double = [NaN, NaN]
         referenceFitTrim_px (1, 2) double = [NaN, NaN]
 
-        stepsPerPixel_x (1, 1) double = NaN
-        stepsPerPixel_y (1, 1) double = NaN
+        xyPixelPerStepMatrix (2, 2) double = NaN(2, 2)
+        nextCorrectionKind (1, 1) string = "xy"
     end
 
     methods
@@ -127,6 +132,9 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 NameValueArgs.tbTargetTolerance (2, 1) double {mustBePositive} = [0.1; 1E-2]
                 NameValueArgs.targetWaitTimeout (1, 1) duration = minutes(20)
                 NameValueArgs.compensationInterval (1, 1) duration = seconds(2)
+                NameValueArgs.noCorrectionQuietDuration (1, 1) duration = minutes(1)
+                NameValueArgs.temperatureStableWindow (1, 1) duration = minutes(10)
+                NameValueArgs.temperatureStableSlopeTolerance_K_per_min (1, 1) double {mustBeNonnegative} = 0.050
 
                 NameValueArgs.bsCalibrationCycles (1, 1) double {mustBeInteger, mustBePositive} = 6
                 NameValueArgs.bsSetMaxAttempts (1, 1) double {mustBeInteger, mustBePositive} = 20
@@ -134,6 +142,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 NameValueArgs.bsQuantizationDeg (1, 1) double {mustBePositive} = 360 / 4096
 
                 NameValueArgs.shiftFitTrimRatio (2, 1) double = [0.2; 0.2]
+                NameValueArgs.offsetFitRoi_px (1, 4) double = [NaN, NaN, NaN, NaN]
 
                 NameValueArgs.ANC300InstrumentFriendlyName (1, 1) string = ""
                 NameValueArgs.ANC300_voltage_x_ChannelName (1, 1) string = ""
@@ -149,6 +158,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 NameValueArgs.targetStepSizePixel (1, 1) double {mustBePositive} = 0.5
                 NameValueArgs.cameraVerifiableStepSizePixel (1, 1) double {mustBePositive} = 1.0
                 NameValueArgs.autoshiftStepRatio (1, 1) double {mustBePositive} = 0.5
+                NameValueArgs.xyResponseMatrixMinRcond (1, 1) double {mustBePositive} = 1e-3
                 NameValueArgs.maxAutoshiftCalibrationSteps (1, 1) double {mustBeInteger, mustBePositive} = 20
             end
 
@@ -185,6 +195,9 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             obj.tbTargetTolerance = NameValueArgs.tbTargetTolerance;
             obj.targetWaitTimeout = NameValueArgs.targetWaitTimeout;
             obj.compensationInterval = NameValueArgs.compensationInterval;
+            obj.noCorrectionQuietDuration = NameValueArgs.noCorrectionQuietDuration;
+            obj.temperatureStableWindow = NameValueArgs.temperatureStableWindow;
+            obj.temperatureStableSlopeTolerance_K_per_min = NameValueArgs.temperatureStableSlopeTolerance_K_per_min;
 
             obj.bsCalibrationCycles = NameValueArgs.bsCalibrationCycles;
             obj.bsSetMaxAttempts = NameValueArgs.bsSetMaxAttempts;
@@ -196,6 +209,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                     "shiftFitTrimRatio values must be in (0, 0.6).");
             end
             obj.shiftFitTrimRatio = NameValueArgs.shiftFitTrimRatio;
+            obj.offsetFitRoi_px = NameValueArgs.offsetFitRoi_px;
 
             obj.ANC300InstrumentFriendlyName = NameValueArgs.ANC300InstrumentFriendlyName;
             obj.ANC300_voltage_x_ChannelName = NameValueArgs.ANC300_voltage_x_ChannelName;
@@ -216,6 +230,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             obj.targetStepSizePixel = NameValueArgs.targetStepSizePixel;
             obj.cameraVerifiableStepSizePixel = NameValueArgs.cameraVerifiableStepSizePixel;
             obj.autoshiftStepRatio = NameValueArgs.autoshiftStepRatio;
+            obj.xyResponseMatrixMinRcond = NameValueArgs.xyResponseMatrixMinRcond;
             obj.maxAutoshiftCalibrationSteps = NameValueArgs.maxAutoshiftCalibrationSteps;
 
             if strlength(obj.ANC300InstrumentFriendlyName) > 0
@@ -344,10 +359,53 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 "sampleImage", sampleImage, ...
                 "laserOnSampleImage", laserOnSampleImage, ...
                 "laserOnlyImage", laserOnlyImage, ...
+                "offsetFitRoi_px", obj.offsetFitRoi_px, ...
                 "cameraBsLikelyOnDeg", obj.BS_camera_likelyOn_PositionDeg, ...
                 "cameraBsLikelyOffDeg", obj.BS_camera_likelyOff_PositionDeg, ...
                 "ledBsLikelyOnDeg", obj.BS_LED_likelyOn_PositionDeg, ...
                 "ledBsLikelyOffDeg", obj.BS_LED_likelyOff_PositionDeg);
+        end
+
+        function roi_px = selectOffsetFitRoi(obj)
+            if isempty(obj.referenceSampleImage)
+                error("virtualInstrument_attodryAutofocus:MissingReferenceData", ...
+                    "Call takeReferenceData() before selecting offset fit ROI.");
+            end
+            if exist("drawrectangle", "file") ~= 2
+                error("virtualInstrument_attodryAutofocus:MissingRoiTool", ...
+                    "selectOffsetFitRoi requires drawrectangle.");
+            end
+
+            imageSize = size(obj.referenceSampleImage);
+            if all(isfinite(obj.offsetFitRoi_px))
+                initialPosition = obj.offsetFitRoi_px;
+                obj.getOffsetFitRoiIndices(imageSize);
+            else
+                marginX = floor(0.1 * imageSize(2));
+                marginY = floor(0.1 * imageSize(1));
+                initialPosition = [1 + marginX, 1 + marginY, imageSize(2) - 2 * marginX, imageSize(1) - 2 * marginY];
+            end
+
+            fig = figure(Name = "Attodry Autofocus Offset ROI", NumberTitle = "off", Color = "w");
+            ax = axes(fig);
+            imagesc(ax, obj.referenceSampleImage);
+            colormap(ax, gray(256));
+            axis(ax, "image");
+            ax.YDir = "normal";
+            roiHandle = drawrectangle(ax, Position = initialPosition);
+            wait(roiHandle);
+            if ~isvalid(roiHandle)
+                error("virtualInstrument_attodryAutofocus:RoiSelectionCanceled", ...
+                    "Offset fit ROI selection was canceled.");
+            end
+
+            roi_px = roiHandle.Position;
+            obj.offsetFitRoi_px = roi_px;
+            obj.getOffsetFitRoiIndices(imageSize);
+            obj.buildReferenceFitModel();
+            if isvalid(fig)
+                close(fig);
+            end
         end
 
         function [dx, dy, gof] = estimateSampleOffset(obj, image2D)
@@ -361,13 +419,21 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
 
             filtered = log(double(image2D) + 1);
             [rows, cols] = size(filtered);
-            [xGrid, yGrid] = ndgrid(1:rows, 1:cols);
+            [fitRows, fitCols] = obj.getOffsetFitRoiIndices([rows, cols]);
+            [xGrid, yGrid] = ndgrid(fitRows, fitCols);
+            zGrid = filtered(fitRows, fitCols);
 
-            xTrim = obj.referenceFitTrim_px(1);
-            yTrim = obj.referenceFitTrim_px(2);
-            xGridTrimmed = xGrid(xTrim+1:end-xTrim, yTrim+1:end-yTrim);
-            yGridTrimmed = yGrid(xTrim+1:end-xTrim, yTrim+1:end-yTrim);
-            zGridTrimmed = filtered(xTrim+1:end-xTrim, yTrim+1:end-yTrim);
+            xTrim = ceil(obj.shiftFitTrimRatio(1) / 2 * numel(fitRows));
+            yTrim = ceil(obj.shiftFitTrimRatio(2) / 2 * numel(fitCols));
+            if xTrim * 2 >= numel(fitRows) || yTrim * 2 >= numel(fitCols)
+                error("virtualInstrument_attodryAutofocus:TrimTooLarge", ...
+                    "shiftFitTrimRatio trims away the full offset fit ROI.");
+            end
+            rowKeep = xTrim+1:numel(fitRows)-xTrim;
+            colKeep = yTrim+1:numel(fitCols)-yTrim;
+            xGridTrimmed = xGrid(rowKeep, colKeep);
+            yGridTrimmed = yGrid(rowKeep, colKeep);
+            zGridTrimmed = zGrid(rowKeep, colKeep);
 
             xColumn = xGridTrimmed(:);
             yColumn = yGridTrimmed(:);
@@ -386,28 +452,39 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         end
 
         function result = performAutofocusAndAutoshift(obj)
-            result = struct("didApplyCorrection", false, "dx_px", NaN, "dy_px", NaN);
+            result = struct("didApplyCorrection", false, "correctionKind", "none", ...
+                "correctionStepsMax", 0, "dx_px", NaN, "dy_px", NaN);
 
             if isempty(obj.referenceSampleImage)
                 error("virtualInstrument_attodryAutofocus:MissingReferenceData", ...
                     "Call takeReferenceData() before performAutofocusAndAutoshift().");
             end
 
-            if obj.anc300Configured()
-                obj.runAutofocus();
-                obj.runAutofocus();
+            if ~obj.anc300Configured()
+                liveImage = obj.acquireCameraImage();
+                [dx, dy] = obj.estimateSampleOffset(liveImage);
+                obj.lastEstimatedOffset_px = [dx; dy];
+                result.dx_px = dx;
+                result.dy_px = dy;
+                return;
             end
 
-            liveImage = obj.acquireCameraImage();
-            [dx, dy] = obj.estimateSampleOffset(liveImage);
-            obj.lastEstimatedOffset_px = [dx; dy];
-            result.dx_px = dx;
-            result.dy_px = dy;
-
-            if obj.anc300Configured()
-                obj.runAutoshift(dx, dy);
-                result.didApplyCorrection = true;
+            if obj.nextCorrectionKind == "xy"
+                result.correctionKind = "xy";
+                liveImage = obj.acquireCameraImage();
+                [dx, dy] = obj.estimateSampleOffset(liveImage);
+                obj.lastEstimatedOffset_px = [dx; dy];
+                result.dx_px = dx;
+                result.dy_px = dy;
+                [nStepX, nStepY] = obj.runAutoshift(dx, dy);
+                result.correctionStepsMax = max(abs([nStepX, nStepY]));
+                obj.nextCorrectionKind = "z";
+            else
+                result.correctionKind = "z";
+                result.correctionStepsMax = abs(obj.runZAutofocus());
+                obj.nextCorrectionKind = "xy";
             end
+            result.didApplyCorrection = result.correctionStepsMax >= 1;
         end
     end
 
@@ -415,9 +492,11 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         function getValues = getReadChannelHelper(obj, channelIndex)
             switch channelIndex
                 case 1
-                    getValues = obj.getCurrentTB()(1);
+                    currentTB = obj.getCurrentTB();
+                    getValues = currentTB(1);
                 case 2
-                    getValues = obj.getCurrentTB()(2);
+                    currentTB = obj.getCurrentTB();
+                    getValues = currentTB(2);
                 case 3
                     getValues = obj.colorStored;
                 otherwise
@@ -468,15 +547,54 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             masterRackProxy.rackSetWrite([obj.T_channelName; obj.B_channelName], [obj.targetT; obj.targetB]);
 
             deadline = datetime("now") + obj.targetWaitTimeout;
+            noCorrectionStart = NaT;
+            quietAxes = [false; false];  % [xy; z]
+            sampleCapacity = max(3, ceil(seconds(obj.temperatureStableWindow) / max(seconds(obj.compensationInterval), 1)) + 2);
+            temperatureTimes = NaT(sampleCapacity, 1);
+            temperatureSamples_K = NaN(sampleCapacity, 1);
+            temperatureSampleCount = 0;
             while true
+                nowTime = datetime("now");
                 currentTB = obj.getCurrentTB();
-                if obj.targetsReached(currentTB)
-                    return;
+                currentTemperatureTimes = temperatureTimes(1:temperatureSampleCount);
+                currentTemperatureSamples_K = temperatureSamples_K(1:temperatureSampleCount);
+                keepSamples = currentTemperatureTimes >= nowTime - obj.temperatureStableWindow;
+                temperatureSampleCount = nnz(keepSamples);
+                temperatureTimes(1:temperatureSampleCount) = currentTemperatureTimes(keepSamples);
+                temperatureSamples_K(1:temperatureSampleCount) = currentTemperatureSamples_K(keepSamples);
+                if temperatureSampleCount == sampleCapacity
+                    temperatureTimes(1:end-1) = temperatureTimes(2:end);
+                    temperatureSamples_K(1:end-1) = temperatureSamples_K(2:end);
+                    temperatureSampleCount = sampleCapacity - 1;
+                end
+                temperatureSampleCount = temperatureSampleCount + 1;
+                temperatureTimes(temperatureSampleCount) = nowTime;
+                temperatureSamples_K(temperatureSampleCount) = currentTB(1);
+
+                correction = obj.performAutofocusAndAutoshift();
+                targetsSettled = obj.targetsReached(currentTB) ...
+                    && obj.temperatureIsStable(temperatureTimes(1:temperatureSampleCount), temperatureSamples_K(1:temperatureSampleCount));
+                if targetsSettled && ~correction.didApplyCorrection
+                    if correction.correctionKind == "xy"
+                        quietAxes(1) = true;
+                    elseif correction.correctionKind == "z"
+                        quietAxes(2) = true;
+                    else
+                        quietAxes(:) = true;
+                    end
+                    if all(quietAxes)
+                        if isnat(noCorrectionStart)
+                            noCorrectionStart = nowTime;
+                        elseif nowTime - noCorrectionStart >= obj.noCorrectionQuietDuration
+                            return;
+                        end
+                    end
+                else
+                    noCorrectionStart = NaT;
+                    quietAxes(:) = false;
                 end
 
-                obj.performAutofocusAndAutoshift();
-
-                if datetime("now") >= deadline
+                if nowTime >= deadline
                     error("virtualInstrument_attodryAutofocus:TargetTimeout", ...
                         "Timed out waiting for T/B targets. Target=[%.6g, %.6g], current=[%.6g, %.6g].", ...
                         obj.targetT, obj.targetB, currentTB(1), currentTB(2));
@@ -486,6 +604,23 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                     pause(seconds(obj.compensationInterval));
                 end
             end
+        end
+
+        function TF = temperatureIsStable(obj, temperatureTimes, temperatureSamples_K)
+            if obj.temperatureStableWindow <= seconds(0)
+                TF = true;
+                return;
+            end
+            if numel(temperatureSamples_K) < 3 || temperatureTimes(end) - temperatureTimes(1) < obj.temperatureStableWindow
+                TF = false;
+                return;
+            end
+
+            filterWindow = max(3, ceil(0.1 * numel(temperatureSamples_K)));
+            filteredT = movmedian(temperatureSamples_K, filterWindow);
+            elapsedMinutes = minutes(temperatureTimes - temperatureTimes(1));
+            fitCoefficients = polyfit(elapsedMinutes, filteredT, 1);
+            TF = abs(fitCoefficients(1)) < obj.temperatureStableSlopeTolerance_K_per_min;
         end
 
         function TF = targetsReached(obj, currentTB)
@@ -516,7 +651,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 obj.ANC300InstrumentFriendlyName, "instrument_ANC300", "autofocus ANC300 stepAxis");
         end
 
-        function s = tenengradSharpness(obj, image2D)
+        function s = tenengradSharpness(~, image2D)
             img = double(image2D);
             gx = [-1 0 1; -2 0 2; -1 0 1];
             gy = gx.';
@@ -525,13 +660,11 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             s = sum(Gx(:).^2 + Gy(:).^2);
         end
 
-        function runAutofocus(obj)
+        function nStepApplied = runZAutofocus(obj)
             masterRackProxy = obj.getMasterRackProxy();
             anc = obj.getANC300Handle();
             regime = obj.temperatureRegime;
-            vxy = obj.initialVoltage_xy(regime);
             vz = obj.initialVoltage_z(regime);
-            masterRackProxy.rackSetWrite([obj.ANC300_voltage_x_ChannelName; obj.ANC300_voltage_y_ChannelName; obj.ANC300_voltage_z_ChannelName], [vxy; vxy; vz]);
 
             refSharp = obj.tenengradSharpness(obj.referenceSampleImage);
             thresh = obj.tenengradThreshold * refSharp;
@@ -539,109 +672,127 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 thresh = 1e-4;
             end
 
-            for axis = ["x", "y"]
-                prevSharp = refSharp;
-                for iter = 1:obj.maxAutofocusIterations
-                    img = obj.acquireCameraImage();
-                    sharp = obj.tenengradSharpness(img);
-                    if sharp > prevSharp
-                        prevSharp = sharp;
-                        continue;
-                    end
-                    anc.stepAxis(axis, -1);
-                    img2 = obj.acquireCameraImage();
-                    sharp2 = obj.tenengradSharpness(img2);
-                    if sharp2 > sharp
-                        prevSharp = sharp2;
-                        continue;
-                    end
-                    anc.stepAxis(axis, 1);
-                    break;
-                end
-            end
-
-            % Z: try direction and back; if change < threshold increase voltage and retry; else step in better direction
-            nTrial = obj.zStepTrialCount;
             vZ = vz;
-            for iter = 1:obj.maxAutofocusIterations
-                masterRackProxy.rackSetWrite(obj.ANC300_voltage_z_ChannelName, vZ);
-                img0 = obj.acquireCameraImage();
-                s0 = obj.tenengradSharpness(img0);
-                anc.stepAxis("z", nTrial);
-                img1 = obj.acquireCameraImage();
-                s1 = obj.tenengradSharpness(img1);
-                anc.stepAxis("z", -nTrial);
-                img2 = obj.acquireCameraImage();
-                s2 = obj.tenengradSharpness(img2);
-                dFwd = abs(s1 - s0);
-                dBwd = abs(s2 - s0);
-                if dFwd < thresh && dBwd < thresh
-                    vZ = min(60, vZ * obj.zVoltageIncrementFactor);
-                    continue;
-                end
-                if s1 > s0 && s1 >= s2
+            for nTrial = 1:obj.zStepTrialCount
+                while true
+                    masterRackProxy.rackSetWrite(obj.ANC300_voltage_z_ChannelName, vZ);
+                    img0 = obj.acquireCameraImage();
+                    s0 = obj.tenengradSharpness(img0);
                     anc.stepAxis("z", nTrial);
-                elseif s2 > s0 && s2 > s1
-                    anc.stepAxis("z", -nTrial);
-                else
-                    break;
+                    imgPlus = obj.acquireCameraImage();
+                    sPlus = obj.tenengradSharpness(imgPlus);
+                    anc.stepAxis("z", -2 * nTrial);
+                    imgMinus = obj.acquireCameraImage();
+                    sMinus = obj.tenengradSharpness(imgMinus);
+                    anc.stepAxis("z", nTrial);
+                    if max(abs([sPlus - s0, sMinus - s0])) < thresh
+                        if vZ >= 60
+                            break;
+                        end
+                        vZ = min(60, vZ * obj.zVoltageIncrementFactor);
+                        continue;
+                    end
+
+                    stepPositions = [-nTrial; 0; nTrial];
+                    sharpnessSamples = [sMinus; s0; sPlus];
+                    quadraticCoefficients = polyfit(stepPositions, sharpnessSamples, 2);
+                    if quadraticCoefficients(1) < 0
+                        nStepApplied = round(-quadraticCoefficients(2) / (2 * quadraticCoefficients(1)));
+                        nStepApplied = max(min(nStepApplied, nTrial), -nTrial);
+                    else
+                        [~, bestIndex] = max(sharpnessSamples);
+                        nStepApplied = stepPositions(bestIndex);
+                    end
+                    if abs(nStepApplied) >= 1
+                        anc.stepAxis("z", nStepApplied);
+                    end
+                    return;
                 end
             end
+            error("virtualInstrument_attodryAutofocus:ZFocusResponseMissing", ...
+                "Z sweeps up to %d steps did not change Tenengrad by at least %.6g at %.6g V.", ...
+                obj.zStepTrialCount, thresh, vZ);
         end
 
-        function runAutoshift(obj, dx_px, dy_px)
+        function [nStepX, nStepY] = runAutoshift(obj, dx_px, dy_px)
             if ~isfinite(dx_px) || ~isfinite(dy_px)
-                return;
+                error("virtualInstrument_attodryAutofocus:InvalidEstimatedOffset", ...
+                    "Estimated sample offset must be finite before autoshift.");
             end
             anc = obj.getANC300Handle();
-            if ~isfinite(obj.stepsPerPixel_x) || ~isfinite(obj.stepsPerPixel_y)
-                obj.calibrateStepsPerPixel();
+            xyMatrix = obj.calibrateXYPixelPerStepMatrix();
+            correctionSteps = round(-obj.autoshiftStepRatio * (xyMatrix \ [dx_px; dy_px]));
+            if any(~isfinite(correctionSteps))
+                error("virtualInstrument_attodryAutofocus:InvalidXYCorrection", ...
+                    "Computed XY correction steps must be finite.");
             end
-            nStepX = round(-dx_px * obj.stepsPerPixel_x);
-            nStepY = round(-dy_px * obj.stepsPerPixel_y);
+            nStepX = correctionSteps(1);
+            nStepY = correctionSteps(2);
             if nStepX ~= 0
-                anc.stepAxis("x", sign(nStepX) * min(abs(nStepX), 1000));
+                nStepX = sign(nStepX) * min(abs(nStepX), 1000);
+                anc.stepAxis("x", nStepX);
             end
             if nStepY ~= 0
-                anc.stepAxis("y", sign(nStepY) * min(abs(nStepY), 1000));
+                nStepY = sign(nStepY) * min(abs(nStepY), 1000);
+                anc.stepAxis("y", nStepY);
             end
         end
 
-        function calibrateStepsPerPixel(obj)
+        function xyPixelPerStepMatrix = calibrateXYPixelPerStepMatrix(obj)
+            obj.xyPixelPerStepMatrix = NaN(2, 2);
+            masterRackProxy = obj.getMasterRackProxy();
             anc = obj.getANC300Handle();
             verifyPx = obj.cameraVerifiableStepSizePixel;
-            [dx0, ~] = obj.estimateSampleOffset(obj.acquireCameraImage());
-            nSteps = 1;
-            for cal = 1:obj.maxAutoshiftCalibrationSteps
-                anc.stepAxis("x", nSteps);
-                [dx1, ~] = obj.estimateSampleOffset(obj.acquireCameraImage());
-                anc.stepAxis("x", -nSteps);
-                dPx = dx1 - dx0;
-                if abs(dPx) >= verifyPx * 0.5
-                    obj.stepsPerPixel_x = nSteps / abs(dPx);
-                    break;
+            axes = ["x"; "y"];
+            voltageChannels = [obj.ANC300_voltage_x_ChannelName; obj.ANC300_voltage_y_ChannelName];
+            xyPixelPerStepMatrix = NaN(2, 2);
+            for axisIndex = 1:2
+                voltage = obj.initialVoltage_xy(obj.temperatureRegime);
+                while true
+                    masterRackProxy.rackSetWrite(voltageChannels(axisIndex), voltage);
+                    [dx0, dy0] = obj.estimateSampleOffset(obj.acquireCameraImage());
+                    offset0 = [dx0; dy0];
+                    for nSteps = 1:obj.maxAutoshiftCalibrationSteps
+                        anc.stepAxis(axes(axisIndex), nSteps);
+                        [dx1, dy1] = obj.estimateSampleOffset(obj.acquireCameraImage());
+                        anc.stepAxis(axes(axisIndex), -nSteps);
+                        dPx = [dx1; dy1] - offset0;
+                        dPxNorm = norm(dPx);
+                        if nSteps == 1 && dPxNorm > 2 * verifyPx && voltage > 1
+                            voltage = max(1, voltage / obj.zVoltageIncrementFactor);
+                            break;
+                        end
+                        if dPxNorm >= verifyPx * 0.5
+                            xyPixelPerStepMatrix(:, axisIndex) = dPx / nSteps;
+                            break;
+                        end
+                    end
+                    if all(isfinite(xyPixelPerStepMatrix(:, axisIndex))) || voltage <= 1
+                        break;
+                    end
+                    if nSteps == obj.maxAutoshiftCalibrationSteps
+                        if voltage >= 60
+                            break;
+                        end
+                        voltage = min(60, voltage * obj.zVoltageIncrementFactor);
+                    end
                 end
-                nSteps = nSteps + 1;
             end
-            [~, dy0] = obj.estimateSampleOffset(obj.acquireCameraImage());
-            nSteps = 1;
-            for cal = 1:obj.maxAutoshiftCalibrationSteps
-                anc.stepAxis("y", nSteps);
-                [~, dy1] = obj.estimateSampleOffset(obj.acquireCameraImage());
-                anc.stepAxis("y", -nSteps);
-                dPx = dy1 - dy0;
-                if abs(dPx) >= verifyPx * 0.5
-                    obj.stepsPerPixel_y = nSteps / abs(dPx);
-                    break;
-                end
-                nSteps = nSteps + 1;
+            if any(~isfinite(xyPixelPerStepMatrix(:, 1)))
+                error("virtualInstrument_attodryAutofocus:XAutoshiftCalibrationFailed", ...
+                    "X calibration could not produce a camera-verifiable shift within %d steps.", obj.maxAutoshiftCalibrationSteps);
             end
-            if ~isfinite(obj.stepsPerPixel_x)
-                obj.stepsPerPixel_x = 1;
+            if any(~isfinite(xyPixelPerStepMatrix(:, 2)))
+                error("virtualInstrument_attodryAutofocus:YAutoshiftCalibrationFailed", ...
+                    "Y calibration could not produce a camera-verifiable shift within %d steps.", obj.maxAutoshiftCalibrationSteps);
             end
-            if ~isfinite(obj.stepsPerPixel_y)
-                obj.stepsPerPixel_y = 1;
+            matrixRcond = rcond(xyPixelPerStepMatrix);
+            if matrixRcond < obj.xyResponseMatrixMinRcond
+                error("virtualInstrument_attodryAutofocus:IllConditionedXYResponseMatrix", ...
+                    "XY pixel-per-step matrix is ill-conditioned: rcond %.6g < %.6g.", ...
+                    matrixRcond, obj.xyResponseMatrixMinRcond);
             end
+            obj.xyPixelPerStepMatrix = xyPixelPerStepMatrix;
         end
 
         function setLaserPathState(obj, NameValueArgs)
@@ -741,12 +892,13 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
 
             referenceFiltered = log(double(obj.referenceSampleImage) + 1);
             [rows, cols] = size(referenceFiltered);
+            [fitRows, fitCols] = obj.getOffsetFitRoiIndices([rows, cols]);
 
-            xTrim = ceil(obj.shiftFitTrimRatio(1) / 2 * rows);
-            yTrim = ceil(obj.shiftFitTrimRatio(2) / 2 * cols);
-            if xTrim * 2 >= rows || yTrim * 2 >= cols
+            xTrim = ceil(obj.shiftFitTrimRatio(1) / 2 * numel(fitRows));
+            yTrim = ceil(obj.shiftFitTrimRatio(2) / 2 * numel(fitCols));
+            if xTrim * 2 >= numel(fitRows) || yTrim * 2 >= numel(fitCols)
                 error("virtualInstrument_attodryAutofocus:TrimTooLarge", ...
-                    "shiftFitTrimRatio trims away the full image.");
+                    "shiftFitTrimRatio trims away the full offset fit ROI.");
             end
 
             [xGrid, yGrid] = ndgrid(1:rows, 1:cols);
@@ -754,6 +906,32 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             obj.referenceShiftFitModel = @(dx, dy, x, y) obj.referenceSampleInterpolant(x + dx, y + dy);
             obj.referenceFitSize_px = [rows, cols];
             obj.referenceFitTrim_px = [xTrim, yTrim];
+        end
+
+        function [fitRows, fitCols] = getOffsetFitRoiIndices(obj, imageSize)
+            rows = imageSize(1);
+            cols = imageSize(2);
+            roi = obj.offsetFitRoi_px;
+            if all(isnan(roi))
+                fitRows = 1:rows;
+                fitCols = 1:cols;
+                return;
+            end
+            if any(isnan(roi)) || any(~isfinite(roi)) || roi(3) <= 0 || roi(4) <= 0
+                error("virtualInstrument_attodryAutofocus:InvalidOffsetFitRoi", ...
+                    "offsetFitRoi_px must be [x, y, width, height] with finite positive width and height, or all NaN.");
+            end
+
+            x1 = round(roi(1));
+            y1 = round(roi(2));
+            x2 = round(roi(1) + roi(3) - 1);
+            y2 = round(roi(2) + roi(4) - 1);
+            if x1 < 1 || y1 < 1 || x2 > cols || y2 > rows || x2 < x1 || y2 < y1
+                error("virtualInstrument_attodryAutofocus:OffsetFitRoiOutOfBounds", ...
+                    "offsetFitRoi_px must lie inside image bounds [height=%d, width=%d].", rows, cols);
+            end
+            fitRows = y1:y2;
+            fitCols = x1:x2;
         end
 
         function assertReferenceFitReady(obj)
