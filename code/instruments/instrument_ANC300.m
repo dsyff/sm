@@ -6,6 +6,9 @@ classdef instrument_ANC300 < instrumentInterface
         axisId_x (1, 1) double {mustBeInteger, mustBePositive} = 3
         axisId_y (1, 1) double {mustBeInteger, mustBePositive} = 4
         axisId_z (1, 1) double {mustBeInteger, mustBePositive} = 5
+        frequency_x_Hz (1, 1) double {mustBeInteger, mustBePositive} = 50
+        frequency_y_Hz (1, 1) double {mustBeInteger, mustBePositive} = 50
+        frequency_z_Hz (1, 1) double {mustBeInteger, mustBePositive} = 50
     end
 
     methods
@@ -80,11 +83,11 @@ classdef instrument_ANC300 < instrumentInterface
                 case 3
                     obj.pendingValue = obj.queryScalar(sprintf("getv %d", obj.axisId_z));
                 case 4
-                    obj.pendingValue = obj.queryScalar(sprintf("getf %d", obj.axisId_x));
+                    obj.pendingValue = obj.frequency_x_Hz;
                 case 5
-                    obj.pendingValue = obj.queryScalar(sprintf("getf %d", obj.axisId_y));
+                    obj.pendingValue = obj.frequency_y_Hz;
                 case 6
-                    obj.pendingValue = obj.queryScalar(sprintf("getf %d", obj.axisId_z));
+                    obj.pendingValue = obj.frequency_z_Hz;
                 otherwise
                     error("instrument_ANC300:UnsupportedGetChannel", ...
                         "Unsupported get channel index %d.", channelIndex);
@@ -109,14 +112,17 @@ classdef instrument_ANC300 < instrumentInterface
                     obj.assertFiniteVoltage(value);
                     obj.writeCommand(sprintf("setv %d %.9g", obj.axisId_z, value));
                 case 4
-                    obj.assertValidFrequency(value);
-                    obj.writeCommand(sprintf("setf %d %d", obj.axisId_x, round(value)));
+                    frequency_Hz = obj.prepareFrequency(value);
+                    obj.writeCommand(sprintf("setf %d %d", obj.axisId_x, frequency_Hz));
+                    obj.frequency_x_Hz = frequency_Hz;
                 case 5
-                    obj.assertValidFrequency(value);
-                    obj.writeCommand(sprintf("setf %d %d", obj.axisId_y, round(value)));
+                    frequency_Hz = obj.prepareFrequency(value);
+                    obj.writeCommand(sprintf("setf %d %d", obj.axisId_y, frequency_Hz));
+                    obj.frequency_y_Hz = frequency_Hz;
                 case 6
-                    obj.assertValidFrequency(value);
-                    obj.writeCommand(sprintf("setf %d %d", obj.axisId_z, round(value)));
+                    frequency_Hz = obj.prepareFrequency(value);
+                    obj.writeCommand(sprintf("setf %d %d", obj.axisId_z, frequency_Hz));
+                    obj.frequency_z_Hz = frequency_Hz;
                 otherwise
                     setWriteChannelHelper@instrumentInterface(obj, channelIndex, setValues);
             end
@@ -163,6 +169,11 @@ classdef instrument_ANC300 < instrumentInterface
             end
         end
 
+        function frequency_Hz = prepareFrequency(obj, value)
+            obj.assertValidFrequency(value);
+            frequency_Hz = round(value);
+        end
+
         function writeCommand(obj, command)
             handle = obj.communicationHandle;
             writeline(handle, command);
@@ -203,7 +214,7 @@ classdef instrument_ANC300 < instrumentInterface
             responseCount = 0;
             while true
                 line = obj.readProtocolLine(command, responseLines(1:responseCount));
-                if line == "" || line == ">" || line == command
+                if strcmp(line, "") || strcmp(line, ">") || strcmp(line, string(command))
                     continue;
                 end
                 if startsWith(line, "OK")
@@ -232,6 +243,16 @@ classdef instrument_ANC300 < instrumentInterface
             try
                 line = strip(string(readline(obj.communicationHandle)));
             catch
+                if isempty(responseLines)
+                    lastResponse = "<none>";
+                else
+                    lastResponse = strjoin(responseLines, " | ");
+                end
+                error("instrument_ANC300:Timeout", ...
+                    "Timed out waiting for ANC300 response to ""%s"". Last response: %s", ...
+                    command, lastResponse);
+            end
+            if isempty(line) || ~isscalar(line) || ismissing(line)
                 if isempty(responseLines)
                     lastResponse = "<none>";
                 else
