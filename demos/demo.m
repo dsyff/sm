@@ -59,8 +59,8 @@ HP34401A_B_GPIB = 21; %dmm B
 
 K10CR1_Serial = ""; % Leave blank to use the first detected device
 
-% Thorlabs CS165MU camera (TLCamera SDK)
-CS165MU_Serial = ""; % Leave blank to use the first detected camera
+% Thorlabs CS165CU color camera (TLCamera SDK)
+CS165CU_Serial = ""; % Leave blank to use the first detected camera
 
 attoDRY2100_Address = "192.168.1.1";
 ANC300_Serial = "COM6";
@@ -163,7 +163,7 @@ HP34401A_A_Use = 0;
 HP34401A_B_Use = 0;
 
 K10CR1_Use = 0;
-CS165MU_Use = 0;
+CS165CU_Use = 0;
 Andor_Use = 0;
 ST3215HS_Use = 0;
 ST3215HS_BS_Use = 0;
@@ -870,22 +870,27 @@ if K10CR1_Use
 end
 
 % After smready(recipe), reopen live view with:
-%   engine.evalOnEngine('handle_CS165MU.showLiveView()')
+%   engine.evalOnEngine('handle_CS165CU.showLiveView()')
 % Start continuous live mode with smset("cam_live",1). Closing the
 % live-view figure stops continuous acquisition.
 % Set cam_x, cam_y, cam_w, and cam_h before autofocus references; they
 % define the acquired camera ROI image.
-if CS165MU_Use
-    recipe.addInstrument("handle_CS165MU", "instrument_CS165MU", "CS165MU", CS165MU_Serial);
-    recipe.addStatement("CS165MU", "handle_CS165MU.requireSetCheck = false;");
-    recipe.addChannel("CS165MU", "continuous", "cam_live");
-    recipe.addChannel("CS165MU", "exposure_ms", "cam_exp");
-    recipe.addChannel("CS165MU", "bin", "cam_bin");
-    recipe.addChannel("CS165MU", "roi_origin_x_px", "cam_x");
-    recipe.addChannel("CS165MU", "roi_origin_y_px", "cam_y");
-    recipe.addChannel("CS165MU", "roi_width_px", "cam_w");
-    recipe.addChannel("CS165MU", "roi_height_px", "cam_h");
-    recipe.addChannel("CS165MU", "queued_frames", "cam_q");
+% If red/green/blue planes look swapped, change bayerPattern here.
+% cam_c: 0 red, 1 green, 2 blue, 3 gray, 4 RGB truecolor live view.
+if CS165CU_Use
+    recipe.addInstrument("handle_CS165CU", "instrument_CS165CU", "CS165CU", CS165CU_Serial);
+    recipe.addStatement("CS165CU", "handle_CS165CU.requireSetCheck = false;");
+    recipe.addStatement("CS165CU", "handle_CS165CU.bayerPattern = ""RGGB"";");
+    recipe.addStatement("CS165CU", "handle_CS165CU.colorChannel = ""red"";");
+    recipe.addChannel("CS165CU", "color", "cam_c", [], [], 0, 4);
+    recipe.addChannel("CS165CU", "continuous", "cam_live");
+    recipe.addChannel("CS165CU", "exposure_ms", "cam_exp");
+    recipe.addChannel("CS165CU", "bin", "cam_bin");
+    recipe.addChannel("CS165CU", "roi_origin_x_px", "cam_x");
+    recipe.addChannel("CS165CU", "roi_origin_y_px", "cam_y");
+    recipe.addChannel("CS165CU", "roi_width_px", "cam_w");
+    recipe.addChannel("CS165CU", "roi_height_px", "cam_h");
+    recipe.addChannel("CS165CU", "queued_frames", "cam_q");
 end
 
 if Andor_Use
@@ -1124,7 +1129,7 @@ end
 
 % Run autofocus with camera continuous acquisition off, for example
 % smset("cam_live",0), because live view and autofocus both consume
-% CS165MU frames.
+% CS165CU frames.
 % cam_* ROI channels define the larger acquired camera ROI. Autofocus
 % uses offsetFitRoi_px for the sample feature ROI, while the beamspot is
 % found over the whole camera ROI.
@@ -1139,7 +1144,8 @@ if virtual_attodryAutofocus_Use
     recipe.addVirtualInstrument("handle_virtual_attodryAutofocus", "virtualInstrument_attodryAutofocus", "attodryAutofocus", "attodryAutofocus", ...
         T_channelName = "T", ...
         B_channelName = "B", ...
-        cameraInstrumentFriendlyName = "CS165MU", ...
+        cameraInstrumentFriendlyName = "CS165CU", ...
+        cameraColorChannelName = "cam_c", ...
         block_red_positionChannelName = "blk_r", ...
         block_green_positionChannelName = "blk_g", ...
         ND_red_positionChannelName = "nd_r", ...

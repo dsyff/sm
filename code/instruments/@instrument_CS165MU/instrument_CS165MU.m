@@ -29,6 +29,10 @@ classdef instrument_CS165MU < instrumentInterface
         pendingValue double = NaN;
     end
 
+    properties (SetAccess = protected)
+        isColorCamera (1, 1) logical = false
+    end
+
     properties (GetAccess = public, SetAccess = private)
         sensorWidth_px (1, 1) double = NaN;
         sensorHeight_px (1, 1) double = NaN;
@@ -195,39 +199,11 @@ classdef instrument_CS165MU < instrumentInterface
                 error("instrument_CS165MU:NoCamera", "Camera is not open.");
             end
 
-            switch channelIndex
-                case 1 % continuous
-                    obj.pendingValue = double(obj.liveEnabled);
-                case 2 % exposure_ms
-                    obj.pendingValue = double(obj.tlCamera.ExposureTime_us) / 1000;
-                case 3 % roi_origin_x_px
-                    roiAndBin = obj.tlCamera.ROIAndBin;
-                    obj.pendingValue = double(roiAndBin.ROIOriginX_pixels);
-                case 4 % roi_origin_y_px
-                    roiAndBin = obj.tlCamera.ROIAndBin;
-                    obj.pendingValue = double(roiAndBin.ROIOriginY_pixels);
-                case 5 % roi_width_px
-                    roiAndBin = obj.tlCamera.ROIAndBin;
-                    obj.pendingValue = double(roiAndBin.ROIWidth_pixels);
-                case 6 % roi_height_px
-                    roiAndBin = obj.tlCamera.ROIAndBin;
-                    obj.pendingValue = double(roiAndBin.ROIHeight_pixels);
-                case 7 % bin
-                    roiAndBin = obj.tlCamera.ROIAndBin;
-                    obj.pendingValue = double(roiAndBin.BinX);
-                case 8 % queued_frames
-                    obj.pendingValue = double(obj.tlCamera.NumberOfQueuedFrames);
-                otherwise
-                    error("instrument_CS165MU:UnknownChannelIndex", "Unknown channelIndex %d", channelIndex);
-            end
+            obj.getWriteCameraChannelHelper(channelIndex);
         end
 
         function getValues = getReadChannelHelper(obj, channelIndex)
-            switch channelIndex
-                case {1, 2, 3, 4, 5, 6, 7, 8}
-                    getValues = obj.pendingValue;
-                    obj.pendingValue = NaN;
-            end
+            getValues = obj.getReadCameraChannelHelper(channelIndex);
         end
 
         function setWriteChannelHelper(obj, channelIndex, setValues)
@@ -236,32 +212,8 @@ classdef instrument_CS165MU < instrumentInterface
             end
 
             switch channelIndex
-                case 1 % continuous
-                    enable = (setValues(1) ~= 0);
-                    if enable
-                        obj.startContinuousAcquisition();
-                    else
-                        obj.stopContinuousAcquisition();
-                    end
-
-                case 2 % exposure_ms
-                    newExposure_ms = setValues(1);
-                    if ~isfinite(newExposure_ms) || newExposure_ms <= 0
-                        error("instrument_CS165MU:InvalidExposure", "exposure_ms must be positive and finite.");
-                    end
-                    wasLive = obj.liveEnabled;
-                    if wasLive
-                        obj.stopContinuousAcquisition();
-                    end
-                    obj.tlCamera.ExposureTime_us = uint32(max(1, round(newExposure_ms * 1000)));
-                    if wasLive
-                        obj.startContinuousAcquisition();
-                    end
-
-                case {3, 4, 5, 6, 7}
-                    % ROI and bin settings are interdependent in the Thorlabs SDK
-                    obj.setRoiOrBinScalarChannel(channelIndex, setValues(1));
-
+                case {1, 2, 3, 4, 5, 6, 7}
+                    obj.setWriteCameraChannelHelper(channelIndex, setValues);
                 otherwise
                     setWriteChannelHelper@instrumentInterface(obj, channelIndex, setValues);
             end
@@ -269,10 +221,10 @@ classdef instrument_CS165MU < instrumentInterface
     end
 
     methods (Access = private)
-        function loadDotNetAssembliesAndPath(obj)
-            classFile = which(class(obj));
+        function loadDotNetAssembliesAndPath(~)
+            classFile = which("instrument_CS165MU");
             if isempty(classFile)
-                error("instrument_CS165MU:ClassLookupFailed", "Unable to locate class file via which(class(obj)).");
+                error("instrument_CS165MU:ClassLookupFailed", "Unable to locate instrument_CS165MU class file.");
             end
             instDir = fileparts(classFile);
             dllDir = fullfile(instDir, "dlls");
@@ -361,7 +313,7 @@ classdef instrument_CS165MU < instrumentInterface
             end
 
             obj.liveFigure = figure( ...
-                Name = "CS165MU Live", ...
+                Name = sprintf("%s Live", class(obj)), ...
                 NumberTitle = "off", ...
                 MenuBar = "none", ...
                 ToolBar = "none", ...
@@ -371,7 +323,7 @@ classdef instrument_CS165MU < instrumentInterface
                 HandleVisibility = "callback", ...
                 CloseRequestFcn = @(h, e) obj.onLiveFigureCloseRequest(h, e));
             if isprop(obj.liveFigure, "GraphicsSmoothing")
-                obj.liveFigure.GraphicsSmoothing = "on";
+                obj.liveFigure.GraphicsSmoothing = "off";
             end
 
             obj.liveAxes = axes(obj.liveFigure, Units = "normalized", Position = [0.08 0.12 0.9 0.82]);
@@ -393,7 +345,7 @@ classdef instrument_CS165MU < instrumentInterface
             % Initialize image object
             obj.liveImage = imagesc(obj.liveAxes, zeros(10, 10, "uint16"));
             obj.liveImage.CDataMapping = "scaled";
-            obj.liveImage.Interpolation = "bilinear";
+            obj.liveImage.Interpolation = "nearest";
             colormap(obj.liveAxes, gray(256));
             obj.liveAxes.YDir = "normal";
             axis(obj.liveAxes, "image"); % square pixels
@@ -571,6 +523,79 @@ classdef instrument_CS165MU < instrumentInterface
             image2D = obj.frameToImage2D(imageFrame);
             delete(imageFrame);
         end
+    end
+
+    methods (Access = protected)
+        function getWriteCameraChannelHelper(obj, channelIndex)
+            switch channelIndex
+                case 1 % continuous
+                    obj.pendingValue = double(obj.liveEnabled);
+                case 2 % exposure_ms
+                    obj.pendingValue = double(obj.tlCamera.ExposureTime_us) / 1000;
+                case 3 % roi_origin_x_px
+                    roiAndBin = obj.tlCamera.ROIAndBin;
+                    obj.pendingValue = double(roiAndBin.ROIOriginX_pixels);
+                case 4 % roi_origin_y_px
+                    roiAndBin = obj.tlCamera.ROIAndBin;
+                    obj.pendingValue = double(roiAndBin.ROIOriginY_pixels);
+                case 5 % roi_width_px
+                    roiAndBin = obj.tlCamera.ROIAndBin;
+                    obj.pendingValue = double(roiAndBin.ROIWidth_pixels);
+                case 6 % roi_height_px
+                    roiAndBin = obj.tlCamera.ROIAndBin;
+                    obj.pendingValue = double(roiAndBin.ROIHeight_pixels);
+                case 7 % bin
+                    roiAndBin = obj.tlCamera.ROIAndBin;
+                    obj.pendingValue = double(roiAndBin.BinX);
+                case 8 % queued_frames
+                    obj.pendingValue = double(obj.tlCamera.NumberOfQueuedFrames);
+                otherwise
+                    error("instrument_CS165MU:UnknownChannelIndex", "Unknown channelIndex %d", channelIndex);
+            end
+        end
+
+        function getValues = getReadCameraChannelHelper(obj, channelIndex)
+            switch channelIndex
+                case {1, 2, 3, 4, 5, 6, 7, 8}
+                    getValues = obj.pendingValue;
+                    obj.pendingValue = NaN;
+                otherwise
+                    error("instrument_CS165MU:UnknownChannelIndex", "Unknown channelIndex %d", channelIndex);
+            end
+        end
+
+        function setWriteCameraChannelHelper(obj, channelIndex, setValues)
+            switch channelIndex
+                case 1 % continuous
+                    enable = (setValues(1) ~= 0);
+                    if enable
+                        obj.startContinuousAcquisition();
+                    else
+                        obj.stopContinuousAcquisition();
+                    end
+
+                case 2 % exposure_ms
+                    newExposure_ms = setValues(1);
+                    if ~isfinite(newExposure_ms) || newExposure_ms <= 0
+                        error("instrument_CS165MU:InvalidExposure", "exposure_ms must be positive and finite.");
+                    end
+                    wasLive = obj.liveEnabled;
+                    if wasLive
+                        obj.stopContinuousAcquisition();
+                    end
+                    obj.tlCamera.ExposureTime_us = uint32(max(1, round(newExposure_ms * 1000)));
+                    if wasLive
+                        obj.startContinuousAcquisition();
+                    end
+
+                case {3, 4, 5, 6, 7}
+                    obj.setRoiOrBinScalarChannel(channelIndex, setValues(1));
+
+                otherwise
+                    error("instrument_CS165MU:UnknownSetChannelIndex", ...
+                        "Unknown settable channelIndex %d.", channelIndex);
+            end
+        end
 
         function image2D = frameToImage2D(~, imageFrame)
             % Convert TLCamera image frame to 2D uint16 (Height x Width)
@@ -580,6 +605,14 @@ classdef instrument_CS165MU < instrumentInterface
             image2D = reshape(imageData, [imageWidth, imageHeight]).';
         end
 
+        function [xOrigin, yOrigin] = getCurrentRoiOriginPixels(obj)
+            roiAndBin = obj.communicationHandle.ROIAndBin;
+            xOrigin = double(roiAndBin.ROIOriginX_pixels);
+            yOrigin = double(roiAndBin.ROIOriginY_pixels);
+        end
+    end
+
+    methods (Access = private)
         function updateLiveFigure(obj, image2D)
             if isempty(obj.liveFigure) || ~isvalid(obj.liveFigure)
                 return;
@@ -594,10 +627,25 @@ classdef instrument_CS165MU < instrumentInterface
             xOrigin = double(roiAndBin.ROIOriginX_pixels);
             yOrigin = double(roiAndBin.ROIOriginY_pixels);
 
-            obj.liveImage.CData = image2D;
+            if ndims(image2D) == 3
+                if size(image2D, 3) ~= 3
+                    error("instrument_CS165MU:InvalidLiveImage", "RGB live image must have 3 color planes.");
+                end
+                displayImage = double(image2D);
+                lo = min(displayImage(:));
+                hi = max(displayImage(:));
+                if hi > lo
+                    displayImage = uint8(255 * (displayImage - lo) / (hi - lo));
+                else
+                    displayImage = zeros(size(image2D), "uint8");
+                end
+                obj.liveImage.CData = displayImage;
+            else
+                obj.liveImage.CData = image2D;
+                colormap(obj.liveAxes, gray(256));
+            end
             obj.liveImage.XData = xOrigin + [0, max(0, size(image2D, 2) - 1) * binX];
             obj.liveImage.YData = yOrigin + [0, max(0, size(image2D, 1) - 1) * binY];
-            colormap(obj.liveAxes, gray(256));
             axis(obj.liveAxes, "image");
             obj.liveAxes.XLimMode = "auto";
             obj.liveAxes.YLimMode = "auto";

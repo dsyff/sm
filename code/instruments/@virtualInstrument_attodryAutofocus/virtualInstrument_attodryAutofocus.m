@@ -15,6 +15,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         B_channelName (1, 1) string
 
         cameraInstrumentFriendlyName (1, 1) string = "CS165MU"
+        cameraColorChannelName (1, 1) string = ""
 
         block_red_positionChannelName (1, 1) string = ""
         block_green_positionChannelName (1, 1) string = ""
@@ -139,6 +140,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 NameValueArgs.B_channelName (1, 1) string
 
                 NameValueArgs.cameraInstrumentFriendlyName (1, 1) string = "CS165MU"
+                NameValueArgs.cameraColorChannelName (1, 1) string = ""
 
                 NameValueArgs.block_red_positionChannelName (1, 1) string = ""
                 NameValueArgs.block_green_positionChannelName (1, 1) string = ""
@@ -214,6 +216,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             obj.B_channelName = NameValueArgs.B_channelName;
 
             obj.cameraInstrumentFriendlyName = NameValueArgs.cameraInstrumentFriendlyName;
+            obj.cameraColorChannelName = NameValueArgs.cameraColorChannelName;
 
             obj.block_red_positionChannelName = NameValueArgs.block_red_positionChannelName;
             obj.block_green_positionChannelName = NameValueArgs.block_green_positionChannelName;
@@ -333,6 +336,9 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             end
 
             obj.assertChannelsExist([obj.T_channelName; obj.B_channelName]);
+            if strlength(obj.cameraColorChannelName) > 0
+                obj.assertChannelsExist(obj.cameraColorChannelName);
+            end
 
             obj.addChannel("T", setTolerances = obj.tbTargetTolerance(1));
             obj.addChannel("B", setTolerances = obj.tbTargetTolerance(2));
@@ -1464,12 +1470,22 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             masterRackProxy = obj.getMasterRackProxy();
             cameraHandle = masterRackProxy.getReviewedInstrumentHandleForNonChannelMethod( ...
                 obj.cameraInstrumentFriendlyName, "", "autofocus camera acquireSingleImage");
-            isCS165MU = obj.cameraInstrumentFriendlyName == "CS165MU" || strcmp(string(class(cameraHandle)), "instrument_CS165MU");
+            isColorCamera = isprop(cameraHandle, "isColorCamera") && cameraHandle.isColorCamera;
+            cameraClass = string(class(cameraHandle));
+            isCS165Camera = ismember(obj.cameraInstrumentFriendlyName, ["CS165MU", "CS165CU"]) ...
+                || ismember(cameraClass, ["instrument_CS165MU", "instrument_CS165CU"]);
+            if isColorCamera
+                if strlength(obj.cameraColorChannelName) == 0
+                    error("virtualInstrument_attodryAutofocus:CameraColorChannelMissing", ...
+                        "Color camera autofocus requires cameraColorChannelName, e.g. cam_c.");
+                end
+                masterRackProxy.rackSet(obj.cameraColorChannelName, obj.colorStored);
+            end
             if ismethod(cameraHandle, "stopContinuousAcquisitionForAutofocus")
                 cameraHandle.stopContinuousAcquisitionForAutofocus();
-            elseif isCS165MU
+            elseif isCS165Camera
                 error("virtualInstrument_attodryAutofocus:CameraStopContinuousMethodMissing", ...
-                    "CS165MU autofocus acquisition requires camera method stopContinuousAcquisitionForAutofocus().");
+                    "CS165 autofocus acquisition requires camera method stopContinuousAcquisitionForAutofocus().");
             end
             if ~ismethod(cameraHandle, "acquireSingleImage")
                 error("virtualInstrument_attodryAutofocus:CameraMethodMissing", ...
@@ -1541,20 +1557,22 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             masterRackProxy = obj.getMasterRackProxy();
             cameraHandle = masterRackProxy.getReviewedInstrumentHandleForNonChannelMethod( ...
                 obj.cameraInstrumentFriendlyName, "", "autofocus camera live ROI overlay");
-            isCS165MU = obj.cameraInstrumentFriendlyName == "CS165MU" || strcmp(string(class(cameraHandle)), "instrument_CS165MU");
+            cameraClass = string(class(cameraHandle));
+            isCS165Camera = ismember(obj.cameraInstrumentFriendlyName, ["CS165MU", "CS165CU"]) ...
+                || ismember(cameraClass, ["instrument_CS165MU", "instrument_CS165CU"]);
             if all(isnan(obj.offsetFitRoi_px))
                 if ismethod(cameraHandle, "clearLiveOverlayRoi")
                     cameraHandle.clearLiveOverlayRoi();
-                elseif isCS165MU
+                elseif isCS165Camera
                     error("virtualInstrument_attodryAutofocus:CameraOverlayMethodMissing", ...
-                        "CS165MU live ROI overlay requires clearLiveOverlayRoi().");
+                        "CS165 live ROI overlay requires clearLiveOverlayRoi().");
                 end
                 return;
             end
             if ~ismethod(cameraHandle, "setLiveOverlayRoi")
-                if isCS165MU
+                if isCS165Camera
                     error("virtualInstrument_attodryAutofocus:CameraOverlayMethodMissing", ...
-                        "CS165MU live ROI overlay requires setLiveOverlayRoi().");
+                        "CS165 live ROI overlay requires setLiveOverlayRoi().");
                 end
                 return;
             end
