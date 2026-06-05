@@ -101,20 +101,22 @@ end
     end
     screenSize = get(0, 'ScreenSize');
     figHeight = min(611, screenSize(4)-80);
+    layoutMetrics = smguiLayoutMetrics();
+    figWidth = layoutMetrics.bodyX + layoutMetrics.panelW + layoutMetrics.scrollW + 3;
     %  Create and then hide the GUI as it is being constructed.
    smaux.smgui.figure1 = figure('Visible','on',...
        'Name','Special Measure v0.9',...
        'MenuBar','none', ...
        'NumberTitle','off',...
        'IntegerHandle','off',...
-       'Position',[0,0,900,figHeight],...
+       'Position',[0,0,figWidth,figHeight],...
        'Toolbar','none',...
        'Resize','off');
    movegui(smaux.smgui.figure1,'center')
 
    %put everything in this panel for aesthetic purposes
    smaux.smgui.nullpanel=uipanel('Parent',smaux.smgui.figure1,...
-        'Units','pixels','Position',[0,0,905,figHeight]);
+        'Units','pixels','Position',[0,0,figWidth+5,figHeight]);
     
     %Menu Configuration
    smaux.smgui.FileMenu = uimenu('Parent',smaux.smgui.figure1,...
@@ -165,7 +167,6 @@ end
     leftX = 3;
     leftW = 210;
     leftPad = 5;
-    layoutMetrics = smguiLayoutMetrics();
     rowTextYOffset = layoutMetrics.textYOffset;
     topPad = 6;
     scanH = smguiLeftPanelHeight(1, layoutMetrics);
@@ -580,13 +581,21 @@ end
 function ConstMenu(hObject,eventdata,i)
 global smaux smscan smdata bridge;
     val=get(smaux.smgui.consts_pmh(i),'Value');
+    popupStrings = get(smaux.smgui.consts_pmh(i), "String");
+    if iscell(popupStrings)
+        popupStrings = string(popupStrings);
+    elseif ischar(popupStrings)
+        popupStrings = string(popupStrings);
+    end
     if val==1
         smscan.consts(i)=[];
-    else
-        % Get the pure scalar channel names (what's shown in dropdown)
-        pureScalarChannelNames = getChannelNamesForContext('pure-scalar');
-        selectedScalarChannel = pureScalarChannelNames{val-1};  % -1 because first option is 'none'
-        
+    elseif val <= numel(popupStrings)
+        selectedScalarChannel = popupStrings(val);
+        if selectedScalarChannel == "none"
+            smscan.consts(i)=[];
+            makescanbody;
+            return;
+        end
         smscan.consts(i).setchan = selectedScalarChannel;
         if ~isfield(smscan.consts(i),'val')
             smscan.consts(i).val=0;
@@ -594,6 +603,8 @@ global smaux smscan smdata bridge;
         if ~isfield(smscan.consts(i),'set')
             smscan.consts(i).set=1;
         end
+    else
+        smscan.consts(i)=[];
     end
     makescanbody;
 end
@@ -1377,8 +1388,34 @@ function makeConstantsPanel(parent, panelPos, constRows, constScroll)
 end
 
 function makeConstControls(parent, i, chanval, constVal, setVal, constRows, channelnames)
-    global smaux;
+    global smaux smscan;
     m = smguiLayoutMetrics();
+    channelnames = string(channelnames(:));
+    currentName = "";
+    if chanval > 1 && chanval - 1 <= numel(channelnames)
+        currentName = channelnames(chanval - 1);
+    end
+    selectedNames = string.empty(0, 1);
+    for constIdx = 1:length(smscan.consts)
+        if constIdx == i || ~isfield(smscan.consts, "setchan") || isempty(smscan.consts(constIdx).setchan)
+            continue;
+        end
+        selectedName = string(smscan.consts(constIdx).setchan);
+        if strlength(selectedName) > 0 && selectedName ~= "none"
+            selectedNames(end+1, 1) = selectedName; %#ok<AGROW>
+        end
+    end
+    availableNames = setdiff(channelnames, selectedNames, "stable");
+    if strlength(currentName) > 0 && ~any(availableNames == currentName)
+        availableNames = [currentName; availableNames];
+    end
+    chanval = 1;
+    if strlength(currentName) > 0
+        matchIdx = find(availableNames == currentName, 1);
+        if ~isempty(matchIdx)
+            chanval = matchIdx + 1;
+        end
+    end
     row = floor((i-1) / m.constCols) + 1;
     col = mod(i-1, m.constCols);
     y = constRows * m.rowH - row * m.rowH + m.ctrlPadY;
@@ -1386,7 +1423,7 @@ function makeConstControls(parent, i, chanval, constVal, setVal, constRows, chan
     x = colW * col;
     smaux.smgui.consts_pmh(i) = uicontrol("Parent", parent, ...
         "Style", "popupmenu", ...
-        "String", ["none" channelnames], ...
+        "String", ["none"; availableNames], ...
         "Value", chanval, ...
         "HorizontalAlignment", "center", ...
         "Position", [x y m.constPopupW m.ctrlH], ...
@@ -1500,9 +1537,9 @@ end
 
 function m = smguiLayoutMetrics()
     m.bodyX = 223;
-    m.panelW = 662;
-    m.rowViewW = 642;
-    m.internalSliderX = 646;
+    m.panelW = 794;
+    m.rowViewW = 774;
+    m.internalSliderX = 778;
     m.scrollW = 12;
     m.margin = 10;
     m.topPad = 6;
@@ -1515,13 +1552,13 @@ function m = smguiLayoutMetrics()
     m.titlePad = 20;
     m.bottomPad = 8;
     m.maxContentRows = 5;
-    m.constCols = 4;
-    m.constPopupW = 82;
+    m.constCols = 3;
+    m.constPopupW = 164;
     m.constEditW = 44;
     m.constCheckW = 16;
-    m.recordCols = 7;
+    m.recordCols = 4;
     m.recordX = 60;
-    m.recordW = 74;
+    m.recordW = 164;
 end
 
 function loops = normalizeLoopFields(loops)
