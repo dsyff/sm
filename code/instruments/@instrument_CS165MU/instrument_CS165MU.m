@@ -25,7 +25,6 @@ classdef instrument_CS165MU < instrumentInterface
         liveTimer;
         liveEnabled (1, 1) logical = false;
         liveFrameRate_Hz (1, 1) double {mustBePositive} = 15;
-        livePreviewMaxPixels (1, 1) double {mustBeInteger, mustBePositive} = 512;
 
         pendingValue double = NaN;
     end
@@ -372,9 +371,13 @@ classdef instrument_CS165MU < instrumentInterface
                 HandleVisibility = "callback", ...
                 CloseRequestFcn = @(h, e) obj.onLiveFigureCloseRequest(h, e));
 
-            obj.liveAxes = axes(obj.liveFigure, Units = "normalized", Position = [0 0.06 1 0.94]);
+            obj.liveAxes = axes(obj.liveFigure, Units = "normalized", Position = [0.08 0.12 0.9 0.82]);
             colormap(obj.liveAxes, gray(256));
-            obj.liveAxes.Visible = "off";
+            obj.liveAxes.Visible = "on";
+            obj.liveAxes.TickDir = "out";
+            obj.liveAxes.Box = "on";
+            xlabel(obj.liveAxes, "x pixel");
+            ylabel(obj.liveAxes, "y pixel");
             obj.liveStatusLabel = uicontrol(obj.liveFigure, ...
                 Style = "text", ...
                 Units = "normalized", ...
@@ -386,6 +389,7 @@ classdef instrument_CS165MU < instrumentInterface
 
             % Initialize image object
             obj.liveImage = imagesc(obj.liveAxes, zeros(10, 10, "uint16"));
+            obj.liveImage.Interpolation = "bilinear";
             obj.liveAxes.YDir = "normal";
             axis(obj.liveAxes, "image"); % square pixels
             obj.liveAxes.Toolbar.Visible = "off";
@@ -411,9 +415,10 @@ classdef instrument_CS165MU < instrumentInterface
             obj.ensureLiveFigure();
 
             if isempty(obj.liveTimer) || ~isvalid(obj.liveTimer)
+                timerPeriod_s = max(0.001, round(1000 / obj.liveFrameRate_Hz) / 1000);
                 obj.liveTimer = timer( ...
                     ExecutionMode = "fixedSpacing", ...
-                    Period = 1 / obj.liveFrameRate_Hz, ...
+                    Period = timerPeriod_s, ...
                     BusyMode = "drop", ...
                     TimerFcn = @(~, ~) obj.liveTick());
             end
@@ -578,19 +583,15 @@ classdef instrument_CS165MU < instrumentInterface
                 return;
             end
 
-            binFactor = max(1, ceil(max(size(image2D)) / obj.livePreviewMaxPixels));
-            if binFactor > 1
-                previewRows = floor(size(image2D, 1) / binFactor) * binFactor;
-                previewCols = floor(size(image2D, 2) / binFactor) * binFactor;
-                displayImage = reshape(double(image2D(1:previewRows, 1:previewCols)), ...
-                    binFactor, previewRows / binFactor, binFactor, previewCols / binFactor);
-                displayImage = squeeze(mean(mean(displayImage, 1), 3));
-            else
-                displayImage = image2D;
-            end
-            obj.liveImage.CData = displayImage;
-            obj.liveImage.XData = [1 size(image2D, 2)];
-            obj.liveImage.YData = [1 size(image2D, 1)];
+            roiAndBin = obj.tlCamera.ROIAndBin;
+            binX = max(1, double(roiAndBin.BinX));
+            binY = max(1, double(roiAndBin.BinY));
+            xOrigin = double(roiAndBin.ROIOriginX_pixels);
+            yOrigin = double(roiAndBin.ROIOriginY_pixels);
+
+            obj.liveImage.CData = image2D;
+            obj.liveImage.XData = xOrigin + [0, max(0, size(image2D, 2) - 1) * binX];
+            obj.liveImage.YData = yOrigin + [0, max(0, size(image2D, 1) - 1) * binY];
             axis(obj.liveAxes, "image");
             obj.liveAxes.XLimMode = "auto";
             obj.liveAxes.YLimMode = "auto";
@@ -626,10 +627,16 @@ classdef instrument_CS165MU < instrumentInterface
                 return;
             end
 
-            x1 = roi(1);
-            y1 = roi(2);
-            x2 = roi(1) + roi(3);
-            y2 = roi(2) + roi(4);
+            roiAndBin = obj.tlCamera.ROIAndBin;
+            binX = max(1, double(roiAndBin.BinX));
+            binY = max(1, double(roiAndBin.BinY));
+            xOrigin = double(roiAndBin.ROIOriginX_pixels);
+            yOrigin = double(roiAndBin.ROIOriginY_pixels);
+
+            x1 = xOrigin + (roi(1) - 1) * binX;
+            y1 = yOrigin + (roi(2) - 1) * binY;
+            x2 = xOrigin + (roi(1) + roi(3) - 1) * binX;
+            y2 = yOrigin + (roi(2) + roi(4) - 1) * binY;
             obj.liveOverlayLine.XData = [x1 x2 x2 x1 x1];
             obj.liveOverlayLine.YData = [y1 y1 y2 y2 y1];
             obj.liveOverlayLine.Visible = "on";
