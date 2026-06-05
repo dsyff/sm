@@ -27,6 +27,7 @@ classdef instrument_ANC300 < instrumentInterface
                 error("instrument_ANC300:UnexpectedDevice", ...
                     "Expected Attocube ANC300 at %s, received: %s", address, versionText);
             end
+            obj.writeCommand("echo off");
 
             for axisId = [obj.axisId_x, obj.axisId_y, obj.axisId_z]
                 obj.writeCommand(sprintf("setm %d stp", axisId));
@@ -165,59 +166,22 @@ classdef instrument_ANC300 < instrumentInterface
         function writeCommand(obj, command)
             handle = obj.communicationHandle;
             writeline(handle, command);
-
-            firstLine = obj.readProtocolLine();
-            if firstLine == command
-                firstLine = obj.readProtocolLine();
-            end
-
-            if startsWith(firstLine, "OK")
-                return;
-            end
-            if startsWith(firstLine, "ERROR")
-                error("instrument_ANC300:CommandFailed", ...
-                    "ANC300 command failed: %s", firstLine);
-            end
-
-            secondLine = obj.readProtocolLine();
-            if startsWith(secondLine, "ERROR")
-                error("instrument_ANC300:CommandFailed", ...
-                    "ANC300 command failed: %s", firstLine);
-            end
-            if ~startsWith(secondLine, "OK")
+            responseLines = obj.readCommandResponse(command);
+            if ~isempty(responseLines)
                 error("instrument_ANC300:UnexpectedResponse", ...
-                    "Unexpected ANC300 response for ""%s"": %s | %s", command, firstLine, secondLine);
+                    "Unexpected ANC300 response for ""%s"": %s", command, strjoin(responseLines, " | "));
             end
         end
 
         function responseLine = queryCommand(obj, command)
             handle = obj.communicationHandle;
             writeline(handle, command);
-
-            responseLine = obj.readProtocolLine();
-            if responseLine == command
-                responseLine = obj.readProtocolLine();
-            end
-
-            statusLine = obj.readProtocolLine();
-            if startsWith(statusLine, "OK")
-                return;
-            end
-            if startsWith(statusLine, "ERROR")
-                error("instrument_ANC300:CommandFailed", ...
-                    "ANC300 query failed: %s", responseLine);
-            end
-
-            responseLine = responseLine + " - " + statusLine;
-            finalStatus = obj.readProtocolLine();
-            if startsWith(finalStatus, "ERROR")
-                error("instrument_ANC300:CommandFailed", ...
-                    "ANC300 query failed: %s", responseLine);
-            end
-            if ~startsWith(finalStatus, "OK")
+            responseLines = obj.readCommandResponse(command);
+            if isempty(responseLines)
                 error("instrument_ANC300:UnexpectedResponse", ...
-                    "Unexpected ANC300 status for ""%s"": %s", command, finalStatus);
+                    "ANC300 query ""%s"" returned OK without data.", command);
             end
+            responseLine = strjoin(responseLines, " | ");
         end
 
         function value = queryScalar(obj, command)
@@ -234,10 +198,51 @@ classdef instrument_ANC300 < instrumentInterface
             end
         end
 
-        function line = readProtocolLine(obj)
-            line = strip(string(readline(obj.communicationHandle)));
-            if startsWith(line, "> ")
-                line = extractAfter(line, 2);
+        function responseLines = readCommandResponse(obj, command)
+            responseLines = strings(512, 1);
+            responseCount = 0;
+            while true
+                line = obj.readProtocolLine(command, responseLines(1:responseCount));
+                if line == "" || line == ">" || line == command
+                    continue;
+                end
+                if startsWith(line, "OK")
+                    responseLines = responseLines(1:responseCount);
+                    return;
+                end
+                if startsWith(line, "ERROR")
+                    if responseCount == 0
+                        detail = line;
+                    else
+                        detail = strjoin([responseLines(1:responseCount); line], " | ");
+                    end
+                    error("instrument_ANC300:CommandFailed", ...
+                        "ANC300 command ""%s"" failed: %s", command, detail);
+                end
+                responseCount = responseCount + 1;
+                if responseCount > numel(responseLines)
+                    error("instrument_ANC300:UnexpectedResponse", ...
+                        "ANC300 response to ""%s"" exceeded %d lines.", command, numel(responseLines));
+                end
+                responseLines(responseCount) = line;
+            end
+        end
+
+        function line = readProtocolLine(obj, command, responseLines)
+            try
+                line = strip(string(readline(obj.communicationHandle)));
+            catch
+                if isempty(responseLines)
+                    lastResponse = "<none>";
+                else
+                    lastResponse = strjoin(responseLines, " | ");
+                end
+                error("instrument_ANC300:Timeout", ...
+                    "Timed out waiting for ANC300 response to ""%s"". Last response: %s", ...
+                    command, lastResponse);
+            end
+            if startsWith(line, ">")
+                line = strip(extractAfter(line, 1));
             end
         end
     end

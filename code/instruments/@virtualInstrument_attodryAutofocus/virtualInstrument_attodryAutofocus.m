@@ -83,7 +83,8 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         zVoltageIncrementFactor (1, 1) double {mustBePositive} = 1.2
         zStepTrialCount (1, 1) double {mustBeInteger, mustBePositive} = 5
 
-        targetStepSizePixel (1, 1) double {mustBePositive} = 2.0
+        targetStepSizePixel (1, 1) double {mustBePositive} = 0.25
+        xyCalibrationTargetDisplacement_px (1, 1) double {mustBePositive} = 2.0
         autoshiftStepRatio (1, 1) double {mustBePositive} = 0.5
         xyResponseMatrixMinRcond (1, 1) double {mustBePositive} = 1e-3
         maxAutoshiftCalibrationSteps (1, 1) double {mustBeInteger, mustBePositive} = 20
@@ -189,7 +190,8 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 NameValueArgs.maxAutofocusIterations (1, 1) double {mustBeInteger, mustBePositive} = 50
                 NameValueArgs.zVoltageIncrementFactor (1, 1) double {mustBePositive} = 1.2
                 NameValueArgs.zStepTrialCount (1, 1) double {mustBeInteger, mustBePositive} = 5
-                NameValueArgs.targetStepSizePixel (1, 1) double {mustBePositive} = 2.0
+                NameValueArgs.targetStepSizePixel (1, 1) double {mustBePositive} = 0.25
+                NameValueArgs.xyCalibrationTargetDisplacement_px (1, 1) double {mustBePositive} = 2.0
                 NameValueArgs.autoshiftStepRatio (1, 1) double {mustBePositive} = 0.5
                 NameValueArgs.xyResponseMatrixMinRcond (1, 1) double {mustBePositive} = 1e-3
                 NameValueArgs.maxAutoshiftCalibrationSteps (1, 1) double {mustBeInteger, mustBePositive} = 20
@@ -292,6 +294,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             obj.zVoltageIncrementFactor = NameValueArgs.zVoltageIncrementFactor;
             obj.zStepTrialCount = NameValueArgs.zStepTrialCount;
             obj.targetStepSizePixel = NameValueArgs.targetStepSizePixel;
+            obj.xyCalibrationTargetDisplacement_px = NameValueArgs.xyCalibrationTargetDisplacement_px;
             obj.autoshiftStepRatio = NameValueArgs.autoshiftStepRatio;
             obj.xyResponseMatrixMinRcond = NameValueArgs.xyResponseMatrixMinRcond;
             obj.maxAutoshiftCalibrationSteps = NameValueArgs.maxAutoshiftCalibrationSteps;
@@ -926,7 +929,14 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             obj.xyPixelPerStepMatrix = NaN(2, 2);
             masterRackProxy = obj.getMasterRackProxy();
             anc = obj.getANC300Handle();
-            targetPx = obj.targetStepSizePixel;
+            stepTargetPx = obj.targetStepSizePixel;
+            calibrationTargetPx = obj.xyCalibrationTargetDisplacement_px;
+            nominalStepCount = min(obj.maxAutoshiftCalibrationSteps, max(1, round(calibrationTargetPx / stepTargetPx)));
+            trialSteps = unique(max(1, round(nominalStepCount * [0.5; 1; 1.5])));
+            trialSteps = trialSteps(trialSteps <= obj.maxAutoshiftCalibrationSteps);
+            if isempty(trialSteps)
+                trialSteps = obj.maxAutoshiftCalibrationSteps;
+            end
             [firstTryVoltages, currentTemperature_K] = obj.getInitialPositionerVoltages();
             axes = ["x"; "y"];
             voltageChannels = [obj.ANC300_voltage_x_ChannelName; obj.ANC300_voltage_y_ChannelName];
@@ -934,51 +944,51 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             finalVoltages = NaN(2, 1);
             for axisIndex = 1:2
                 voltage = firstTryVoltages(1);
-                while true
+                for voltageAttempt = 1:40
                     masterRackProxy.rackSetWrite(voltageChannels(axisIndex), voltage);
-                    obj.runZAutofocus();
-                    [dx0, dy0] = obj.estimateSampleOffset(obj.acquireSampleImageForAutoshift());
-                    offset0 = [dx0; dy0];
-                    for nSteps = 1:obj.maxAutoshiftCalibrationSteps
+                    dSamples = NaN(numel(trialSteps), 2);
+                    for stepIndex = 1:numel(trialSteps)
+                        nSteps = trialSteps(stepIndex);
+                        obj.runZAutofocus();
+                        [dx0, dy0] = obj.estimateSampleOffset(obj.acquireSampleImageForAutoshift());
                         anc.stepAxis(axes(axisIndex), nSteps);
                         obj.runZAutofocus();
                         [dx1, dy1] = obj.estimateSampleOffset(obj.acquireSampleImageForAutoshift());
                         anc.stepAxis(axes(axisIndex), -nSteps);
                         obj.runZAutofocus();
-                        dPx = [dx1; dy1] - offset0;
-                        dPxNorm = norm(dPx);
-                        if nSteps == 1 && dPxNorm > 2 * targetPx && voltage > 1
-                            voltage = max(1, voltage / obj.zVoltageIncrementFactor);
-                            break;
-                        end
-                        if dPxNorm >= targetPx
-                            xyPixelPerStepMatrix(:, axisIndex) = dPx / nSteps;
-                            finalVoltages(axisIndex) = voltage;
-                            break;
-                        end
-                        [dx0, dy0] = obj.estimateSampleOffset(obj.acquireSampleImageForAutoshift());
-                        offset0 = [dx0; dy0];
+                        dSamples(stepIndex, :) = [dx1 - dx0, dy1 - dy0];
                     end
-                    if all(isfinite(xyPixelPerStepMatrix(:, axisIndex))) || voltage <= 1
+                    axisVector = (trialSteps(:) \ dSamples).';
+                    pxPerStep = norm(axisVector);
+                    maxMeasuredPx = max(sqrt(sum(dSamples.^2, 2)));
+                    if pxPerStep > 2 * stepTargetPx
+                        if voltage > 1
+                            voltage = max(1, voltage / obj.zVoltageIncrementFactor);
+                            continue;
+                        end
                         break;
                     end
-                    if nSteps == obj.maxAutoshiftCalibrationSteps
-                        if voltage >= 60
-                            break;
-                        end
+                    if (pxPerStep < stepTargetPx / 2 || maxMeasuredPx < calibrationTargetPx) && voltage < 60
                         voltage = min(60, voltage * obj.zVoltageIncrementFactor);
+                        continue;
                     end
+                    if pxPerStep >= stepTargetPx / 2 && maxMeasuredPx >= calibrationTargetPx
+                        xyPixelPerStepMatrix(:, axisIndex) = axisVector;
+                        finalVoltages(axisIndex) = voltage;
+                        break;
+                    end
+                    break;
                 end
             end
             if any(~isfinite(xyPixelPerStepMatrix(:, 1)))
                 error("virtualInstrument_attodryAutofocus:XAutoshiftCalibrationFailed", ...
-                    "X calibration could not produce a %.6g px shift within %d steps.", ...
-                    obj.targetStepSizePixel, obj.maxAutoshiftCalibrationSteps);
+                    "X calibration could not produce %.6g px displacement with %.6g px/step target within %d steps.", ...
+                    obj.xyCalibrationTargetDisplacement_px, obj.targetStepSizePixel, obj.maxAutoshiftCalibrationSteps);
             end
             if any(~isfinite(xyPixelPerStepMatrix(:, 2)))
                 error("virtualInstrument_attodryAutofocus:YAutoshiftCalibrationFailed", ...
-                    "Y calibration could not produce a %.6g px shift within %d steps.", ...
-                    obj.targetStepSizePixel, obj.maxAutoshiftCalibrationSteps);
+                    "Y calibration could not produce %.6g px displacement with %.6g px/step target within %d steps.", ...
+                    obj.xyCalibrationTargetDisplacement_px, obj.targetStepSizePixel, obj.maxAutoshiftCalibrationSteps);
             end
             matrixRcond = rcond(xyPixelPerStepMatrix);
             if matrixRcond < obj.xyResponseMatrixMinRcond
