@@ -59,7 +59,8 @@ HP34401A_B_GPIB = 21; %dmm B
 
 K10CR1_Serial = ""; % Leave blank to use the first detected device
 
-% Thorlabs CS165CU color camera (TLCamera SDK)
+% Thorlabs CS165 cameras (TLCamera SDK)
+CS165MU_Serial = ""; % Leave blank to use the first detected camera
 CS165CU_Serial = ""; % Leave blank to use the first detected camera
 
 attoDRY2100_Address = "192.168.1.1";
@@ -163,6 +164,7 @@ HP34401A_A_Use = 0;
 HP34401A_B_Use = 0;
 
 K10CR1_Use = 0;
+CS165MU_Use = 0;
 CS165CU_Use = 0;
 Andor_Use = 0;
 ST3215HS_Use = 0;
@@ -207,6 +209,13 @@ recipe.slack_notification_account_email = "";
 % recipe.addVirtualInstrument("handleVar", "virtualInstrument_ClassName", "friendlyName", constructorArgs..., nameValueArgs...);
 % recipe.addStatement("instrumentFriendlyName", "worker-side MATLAB code string");
 % recipe.addChannel("instrumentFriendlyName", "channel", "channelFriendlyName", rampRate, rampThreshold, softwareMin, softwareMax);
+
+if CS165MU_Use && CS165CU_Use
+    error("demo:MultipleCS165Cameras", "Enable only one CS165 camera because both use the shared cam_* aliases.");
+end
+
+AF_cameraInstrumentFriendlyName = "";
+AF_cameraColorChannelName = "";
 
 %% create instruments
 if counter_Use
@@ -870,14 +879,33 @@ if K10CR1_Use
 end
 
 % After smready(recipe), reopen live view with:
+%   engine.evalOnEngine('handle_CS165MU.showLiveView()')
+% or:
 %   engine.evalOnEngine('handle_CS165CU.showLiveView()')
 % Start continuous live mode with smset("cam_live",1). Closing the
 % live-view figure stops continuous acquisition.
 % Set cam_x, cam_y, cam_w, and cam_h before autofocus references; they
 % define the acquired camera ROI image.
-% If red/green/blue planes look swapped, change bayerPattern here.
-% cam_c: 0 red, 1 green, 2 blue, 3 gray, 4 RGB truecolor live view.
+% MU and CU share cam_live/cam_exp/cam_bin/cam_x/cam_y/cam_w/cam_h/cam_q.
+if CS165MU_Use
+    AF_cameraInstrumentFriendlyName = "CS165MU";
+    recipe.addInstrument("handle_CS165MU", "instrument_CS165MU", "CS165MU", CS165MU_Serial);
+    recipe.addStatement("CS165MU", "handle_CS165MU.requireSetCheck = false;");
+    recipe.addChannel("CS165MU", "continuous", "cam_live");
+    recipe.addChannel("CS165MU", "exposure_ms", "cam_exp");
+    recipe.addChannel("CS165MU", "bin", "cam_bin");
+    recipe.addChannel("CS165MU", "roi_origin_x_px", "cam_x");
+    recipe.addChannel("CS165MU", "roi_origin_y_px", "cam_y");
+    recipe.addChannel("CS165MU", "roi_width_px", "cam_w");
+    recipe.addChannel("CS165MU", "roi_height_px", "cam_h");
+    recipe.addChannel("CS165MU", "queued_frames", "cam_q");
+end
+
+% CU only: cam_c selects 0 red, 1 green, 2 blue, 3 gray, 4 RGB truecolor
+% live view. If red/green/blue planes look swapped, change bayerPattern here.
 if CS165CU_Use
+    AF_cameraInstrumentFriendlyName = "CS165CU";
+    AF_cameraColorChannelName = "cam_c";
     recipe.addInstrument("handle_CS165CU", "instrument_CS165CU", "CS165CU", CS165CU_Serial);
     recipe.addStatement("CS165CU", "handle_CS165CU.requireSetCheck = false;");
     recipe.addStatement("CS165CU", "handle_CS165CU.bayerPattern = ""RGGB"";");
@@ -1129,7 +1157,7 @@ end
 
 % Run autofocus with camera continuous acquisition off, for example
 % smset("cam_live",0), because live view and autofocus both consume
-% CS165CU frames.
+% CS165 frames.
 % cam_* ROI channels define the larger acquired camera ROI. Autofocus
 % uses offsetFitRoi_px for the sample feature ROI, while the beamspot is
 % found over the whole camera ROI.
@@ -1140,12 +1168,16 @@ end
 %   engine.evalOnEngine('handle_virtual_attodryAutofocus.selectOffsetFitRoi()')
 % Cooldown with active autofocus:
 %   engine.evalOnEngine('handle_virtual_attodryAutofocus.cooldown()')
+if virtual_attodryAutofocus_Use && strlength(AF_cameraInstrumentFriendlyName) == 0
+    error("demo:AutofocusCameraMissing", "Enable CS165MU_Use or CS165CU_Use before virtual_attodryAutofocus_Use.");
+end
+
 if virtual_attodryAutofocus_Use
     recipe.addVirtualInstrument("handle_virtual_attodryAutofocus", "virtualInstrument_attodryAutofocus", "attodryAutofocus", "attodryAutofocus", ...
         T_channelName = "T", ...
         B_channelName = "B", ...
-        cameraInstrumentFriendlyName = "CS165CU", ...
-        cameraColorChannelName = "cam_c", ...
+        cameraInstrumentFriendlyName = AF_cameraInstrumentFriendlyName, ...
+        cameraColorChannelName = AF_cameraColorChannelName, ...
         block_red_positionChannelName = "blk_r", ...
         block_green_positionChannelName = "blk_g", ...
         ND_red_positionChannelName = "nd_r", ...
