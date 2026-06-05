@@ -447,35 +447,45 @@ classdef instrument_CS165MU < instrumentInterface
         end
 
         function image2D = acquireOneFrameStandalone(obj)
-            % Arms camera for a single frame and returns it, then disarms.
+            % Use the same software-triggered mode as live view, then disarm after one frame.
             obj.tlCamera.OperationMode = Thorlabs.TSI.TLCameraInterfaces.OperationMode.SoftwareTriggered;
-            obj.tlCamera.FramesPerTrigger_zeroForUnlimited = 1;
+            obj.tlCamera.FramesPerTrigger_zeroForUnlimited = 0;
 
             if obj.tlCamera.IsArmed
                 obj.tlCamera.Disarm;
             end
 
+            while obj.tlCamera.NumberOfQueuedFrames > 0
+                staleFrame = obj.tlCamera.GetPendingFrameOrNull;
+                if ~isempty(staleFrame)
+                    delete(staleFrame);
+                end
+            end
+
             obj.tlCamera.Arm;
             cleanup = onCleanup(@() obj.safeDisarm());
+            pause(0.02);
 
             obj.tlCamera.IssueSoftwareTrigger;
 
-            timeout_s = max(1, double(obj.tlCamera.ExposureTime_us) / 1e6 * 5);
-            startTime = datetime("now");
-            timeout = seconds(timeout_s);
+            timeout_s = max(5, double(obj.tlCamera.ExposureTime_us) / 1e6 * 10);
+            startTime = tic;
             imageFrame = [];
-            while datetime("now") - startTime < timeout
+            while toc(startTime) < timeout_s
                 if obj.tlCamera.NumberOfQueuedFrames > 0
                     imageFrame = obj.tlCamera.GetPendingFrameOrNull;
                     if ~isempty(imageFrame)
                         break;
                     end
                 end
-                pause(1E-6);
+                pause(0.001);
             end
 
             if isempty(imageFrame)
-                error("instrument_CS165MU:AcquisitionTimeout", "Timed out waiting for image frame.");
+                error("instrument_CS165MU:AcquisitionTimeout", ...
+                    "Timed out after %.3g s waiting for image frame. Exposure %.3g ms, queued frames %d, armed %d.", ...
+                    timeout_s, double(obj.tlCamera.ExposureTime_us) / 1000, ...
+                    double(obj.tlCamera.NumberOfQueuedFrames), double(obj.tlCamera.IsArmed));
             end
 
             image2D = obj.frameToImage2D(imageFrame);
