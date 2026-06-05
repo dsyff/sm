@@ -985,11 +985,11 @@ function setplotchoices(varargin)
             smscan.disp(i).name = dispName;
             smscan.disp(i).channel = channel_idx;
             if smscan.disp(i).dim==1
-                newoneDvals = [newoneDvals channel_idx];
+                newoneDvals = [newoneDvals channel_idx]; %#ok<AGROW>
             elseif smscan.disp(i).dim == 2
                 mapped_idx = full_to_2d(channel_idx);
                 if mapped_idx > 0
-                    newtwoDvals = [newtwoDvals mapped_idx];
+                    newtwoDvals = [newtwoDvals mapped_idx]; %#ok<AGROW>
                 else
                     valid_disp_mask(i) = false;
                 end
@@ -1716,7 +1716,7 @@ function makeloopchannelset(i,j)
             % Add list of available channels
             if exist('smdata', 'var') && isfield(smdata, 'channels') && ~isempty(smdata.channels)
                 for k = 1:min(10, length(smdata.channels))  % Show first 10 channels
-                    debugMsg = [debugMsg sprintf('  %d: %s\n', k, smdata.channels(k).name)];
+                    debugMsg = [debugMsg sprintf('  %d: %s\n', k, smdata.channels(k).name)]; %#ok<AGROW>
                 end
                 if length(smdata.channels) > 10
                     debugMsg = [debugMsg sprintf('  ... and %d more channels', length(smdata.channels) - 10)];
@@ -1886,7 +1886,7 @@ function makeloopgetchans(i, recordStartY)
             if isempty(chanName)
                 continue;
             end
-            selected_names(end+1) = string(chanName);
+            selected_names(end+1) = string(chanName); %#ok<AGROW>
         end
     end
 
@@ -1899,7 +1899,7 @@ function makeloopgetchans(i, recordStartY)
             available_names = available_names(:);
             if ~isempty(current_name)
                 if ~any(available_names == current_name)
-                    available_names = [current_name; available_names];
+                    available_names = [current_name; available_names]; %#ok<AGROW>
                 end
             end
 
@@ -1928,13 +1928,13 @@ function makeloopgetchans(i, recordStartY)
             % Add list of available channels
             if exist('smdata', 'var') && isfield(smdata, 'channels') && ~isempty(smdata.channels)
                 for k = 1:min(10, length(smdata.channels))  % Show first 10 channels
-                    debugMsg = [debugMsg sprintf('  %d: %s\n', k, smdata.channels(k).name)];
+                    debugMsg = [debugMsg sprintf('  %d: %s\n', k, smdata.channels(k).name)]; %#ok<AGROW>
                 end
                 if length(smdata.channels) > 10
-                    debugMsg = [debugMsg sprintf('  ... and %d more channels', length(smdata.channels) - 10)];
+                    debugMsg = [debugMsg sprintf('  ... and %d more channels', length(smdata.channels) - 10)]; %#ok<AGROW>
                 end
             else
-                debugMsg = [debugMsg '  No channels available - check instrument setup'];
+                debugMsg = [debugMsg '  No channels available - check instrument setup']; %#ok<AGROW>
             end
             
             errordlg(debugMsg, 'Get Channel Lookup Error - Detailed Diagnostics');
@@ -2048,7 +2048,7 @@ function scalarNames = convertVectorToScalarNames(vectorChannelName)
     else
         scalarNames = {};
         for i = 1:channelSize
-            scalarNames{end+1} = sprintf("%s_%d", vectorChannelName, i);
+            scalarNames{end+1} = sprintf("%s_%d", vectorChannelName, i); %#ok<AGROW>
         end
     end
 end
