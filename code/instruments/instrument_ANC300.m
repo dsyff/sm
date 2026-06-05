@@ -6,9 +6,6 @@ classdef instrument_ANC300 < instrumentInterface
         axisId_x (1, 1) double {mustBeInteger, mustBePositive} = 3
         axisId_y (1, 1) double {mustBeInteger, mustBePositive} = 4
         axisId_z (1, 1) double {mustBeInteger, mustBePositive} = 5
-        frequency_x_Hz (1, 1) double {mustBeInteger, mustBePositive} = 50
-        frequency_y_Hz (1, 1) double {mustBeInteger, mustBePositive} = 50
-        frequency_z_Hz (1, 1) double {mustBeInteger, mustBePositive} = 50
     end
 
     methods
@@ -58,18 +55,32 @@ classdef instrument_ANC300 < instrumentInterface
             arguments
                 obj
                 axis
-                nSteps (1, 1) double {mustBeInteger}
+                nSteps (1, 1) double {mustBeInteger, mustBeFinite}
             end
 
             axisId = obj.parseAxis(axis);
             if nSteps == 0
                 return;
             end
+            stepCount = abs(nSteps);
+            frequency_Hz = obj.queryScalar(sprintf("getf %d", axisId));
+            obj.assertValidFrequency(frequency_Hz);
+            handle = obj.communicationHandle;
+            originalTimeout = handle.Timeout;
+            handle.Timeout = max(originalTimeout, stepCount / frequency_Hz + 5);
             if nSteps > 0
-                obj.writeCommand(sprintf("stepu %d %d", axisId, nSteps));
+                stepCommand = sprintf("stepu %d %d", axisId, stepCount);
             else
-                obj.writeCommand(sprintf("stepd %d %d", axisId, -nSteps));
+                stepCommand = sprintf("stepd %d %d", axisId, stepCount);
             end
+            try
+                obj.writeCommand(stepCommand);
+                obj.writeCommand(sprintf("stepw %d", axisId));
+            catch exception
+                handle.Timeout = originalTimeout;
+                rethrow(exception);
+            end
+            handle.Timeout = originalTimeout;
         end
     end
 
@@ -83,11 +94,11 @@ classdef instrument_ANC300 < instrumentInterface
                 case 3
                     obj.pendingValue = obj.queryScalar(sprintf("getv %d", obj.axisId_z));
                 case 4
-                    obj.pendingValue = obj.frequency_x_Hz;
+                    obj.pendingValue = obj.queryScalar(sprintf("getf %d", obj.axisId_x));
                 case 5
-                    obj.pendingValue = obj.frequency_y_Hz;
+                    obj.pendingValue = obj.queryScalar(sprintf("getf %d", obj.axisId_y));
                 case 6
-                    obj.pendingValue = obj.frequency_z_Hz;
+                    obj.pendingValue = obj.queryScalar(sprintf("getf %d", obj.axisId_z));
                 otherwise
                     error("instrument_ANC300:UnsupportedGetChannel", ...
                         "Unsupported get channel index %d.", channelIndex);
@@ -114,15 +125,12 @@ classdef instrument_ANC300 < instrumentInterface
                 case 4
                     frequency_Hz = obj.prepareFrequency(value);
                     obj.writeCommand(sprintf("setf %d %d", obj.axisId_x, frequency_Hz));
-                    obj.frequency_x_Hz = frequency_Hz;
                 case 5
                     frequency_Hz = obj.prepareFrequency(value);
                     obj.writeCommand(sprintf("setf %d %d", obj.axisId_y, frequency_Hz));
-                    obj.frequency_y_Hz = frequency_Hz;
                 case 6
                     frequency_Hz = obj.prepareFrequency(value);
                     obj.writeCommand(sprintf("setf %d %d", obj.axisId_z, frequency_Hz));
-                    obj.frequency_z_Hz = frequency_Hz;
                 otherwise
                     setWriteChannelHelper@instrumentInterface(obj, channelIndex, setValues);
             end
@@ -213,35 +221,37 @@ classdef instrument_ANC300 < instrumentInterface
             responseLines = strings(512, 1);
             responseCount = 0;
             while true
-                line = obj.readProtocolLine(command, responseLines(1:responseCount));
-                if strcmp(line, "") || strcmp(line, ">") || strcmp(line, string(command))
-                    continue;
-                end
-                if startsWith(line, "OK")
-                    responseLines = responseLines(1:responseCount);
-                    return;
-                end
-                if startsWith(line, "ERROR")
-                    if responseCount == 0
-                        detail = line;
-                    else
-                        detail = strjoin([responseLines(1:responseCount); line], " | ");
+                lines = obj.readProtocolLines(command, responseLines(1:responseCount));
+                for line = reshape(lines, 1, [])
+                    if strcmp(line, "") || strcmp(line, ">") || strcmp(line, string(command))
+                        continue;
                     end
-                    error("instrument_ANC300:CommandFailed", ...
-                        "ANC300 command ""%s"" failed: %s", command, detail);
+                    if startsWith(line, "OK")
+                        responseLines = responseLines(1:responseCount);
+                        return;
+                    end
+                    if startsWith(line, "ERROR")
+                        if responseCount == 0
+                            detail = line;
+                        else
+                            detail = strjoin([responseLines(1:responseCount); line], " | ");
+                        end
+                        error("instrument_ANC300:CommandFailed", ...
+                            "ANC300 command ""%s"" failed: %s", command, detail);
+                    end
+                    responseCount = responseCount + 1;
+                    if responseCount > numel(responseLines)
+                        error("instrument_ANC300:UnexpectedResponse", ...
+                            "ANC300 response to ""%s"" exceeded %d lines.", command, numel(responseLines));
+                    end
+                    responseLines(responseCount) = line;
                 end
-                responseCount = responseCount + 1;
-                if responseCount > numel(responseLines)
-                    error("instrument_ANC300:UnexpectedResponse", ...
-                        "ANC300 response to ""%s"" exceeded %d lines.", command, numel(responseLines));
-                end
-                responseLines(responseCount) = line;
             end
         end
 
-        function line = readProtocolLine(obj, command, responseLines)
+        function lines = readProtocolLines(obj, command, responseLines)
             try
-                line = strip(string(readline(obj.communicationHandle)));
+                rawLine = string(readline(obj.communicationHandle));
             catch
                 if isempty(responseLines)
                     lastResponse = "<none>";
@@ -252,7 +262,7 @@ classdef instrument_ANC300 < instrumentInterface
                     "Timed out waiting for ANC300 response to ""%s"". Last response: %s", ...
                     command, lastResponse);
             end
-            if isempty(line) || ~isscalar(line) || ismissing(line)
+            if isempty(rawLine) || ~isscalar(rawLine) || ismissing(rawLine)
                 if isempty(responseLines)
                     lastResponse = "<none>";
                 else
@@ -262,8 +272,13 @@ classdef instrument_ANC300 < instrumentInterface
                     "Timed out waiting for ANC300 response to ""%s"". Last response: %s", ...
                     command, lastResponse);
             end
-            if startsWith(line, ">")
-                line = strip(extractAfter(line, 1));
+            rawLine = replace(rawLine, sprintf("\r\n"), newline);
+            rawLine = replace(rawLine, sprintf("\r"), newline);
+            lines = strip(splitlines(rawLine));
+            for lineIndex = 1:numel(lines)
+                if startsWith(lines(lineIndex), ">")
+                    lines(lineIndex) = strip(extractAfter(lines(lineIndex), 1));
+                end
             end
         end
     end
