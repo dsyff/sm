@@ -3,7 +3,7 @@ classdef instrument_CS165CU < instrument_CS165MU
     % Thorlabs CS165CU color camera using raw Bayer-plane extraction.
 
     properties
-        colorChannel (1, 1) string {mustBeMember(colorChannel, ["red", "green", "blue", "gray", "rgb"])} = "red"
+        colorChannel (1, 1) string {mustBeMember(colorChannel, ["red", "green", "blue", "gray", "RGB"])} = "red"
         bayerPattern (1, 1) string {mustBeMember(bayerPattern, ["RGGB", "BGGR", "GRBG", "GBRG"])} = "RGGB"
     end
 
@@ -28,10 +28,12 @@ classdef instrument_CS165CU < instrument_CS165MU
                 colorChannel (1, 1) string
             end
 
-            colorChannel = lower(colorChannel);
-            if ~ismember(colorChannel, ["red", "green", "blue", "gray", "rgb"])
+            if colorChannel ~= "RGB"
+                colorChannel = lower(colorChannel);
+            end
+            if ~ismember(colorChannel, ["red", "green", "blue", "gray", "RGB"])
                 error("instrument_CS165CU:InvalidColorChannel", ...
-                    "colorChannel must be red, green, blue, gray, or rgb.");
+                    "colorChannel must be red, green, blue, gray, or RGB.");
             end
             obj.colorChannel = colorChannel;
         end
@@ -96,7 +98,7 @@ classdef instrument_CS165CU < instrument_CS165MU
                     green = obj.expandGreen(rawImage, pattern);
                     blue = obj.expandSingleColor(rawImage, pattern, 'B');
                     image2D = uint16(round((double(red) + 2 * double(green) + double(blue)) / 4));
-                case "rgb"
+                case "RGB"
                     image2D = cat(3, obj.expandSingleColor(rawImage, pattern, 'R'), obj.expandGreen(rawImage, pattern), obj.expandSingleColor(rawImage, pattern, 'B'));
             end
         end
@@ -149,7 +151,7 @@ classdef instrument_CS165CU < instrument_CS165MU
                     colorValue = 2;
                 case "gray"
                     colorValue = 3;
-                case "rgb"
+                case "RGB"
                     colorValue = 4;
             end
         end
@@ -157,9 +159,9 @@ classdef instrument_CS165CU < instrument_CS165MU
         function colorChannel = valueToColorChannel(~, colorValue)
             if ~isfinite(colorValue) || colorValue ~= round(colorValue) || colorValue < 0 || colorValue > 4
                 error("instrument_CS165CU:InvalidColorValue", ...
-                    "color channel must be 0 red, 1 green, 2 blue, 3 gray, or 4 rgb.");
+                    "color channel must be 0 red, 1 green, 2 blue, 3 gray, or 4 RGB.");
             end
-            channels = ["red", "green", "blue", "gray", "rgb"];
+            channels = ["red", "green", "blue", "gray", "RGB"];
             colorChannel = channels(colorValue + 1);
         end
     end

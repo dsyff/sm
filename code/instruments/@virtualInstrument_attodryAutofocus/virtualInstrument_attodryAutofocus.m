@@ -25,7 +25,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         BS_LED_positionChannelName (1, 1) string = ""
         BS_camera_setConsistentlyChannelName (1, 1) string = ""
         BS_LED_setConsistentlyChannelName (1, 1) string = ""
-        ledRgbChannelName (1, 1) string = ""
+        LEDRGBChannelName (1, 1) string = ""
 
         block_red_blocked_PositionDeg (1, 1) double = 180
         block_red_unblocked_PositionDeg (1, 1) double = 0
@@ -150,7 +150,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 NameValueArgs.BS_LED_positionChannelName (1, 1) string = ""
                 NameValueArgs.BS_camera_setConsistentlyChannelName (1, 1) string = ""
                 NameValueArgs.BS_LED_setConsistentlyChannelName (1, 1) string = ""
-                NameValueArgs.ledRgbChannelName (1, 1) string = ""
+                NameValueArgs.LEDRGBChannelName (1, 1) string = ""
 
                 NameValueArgs.block_red_blocked_PositionDeg (1, 1) double = 180
                 NameValueArgs.block_red_unblocked_PositionDeg (1, 1) double = 0
@@ -226,7 +226,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             obj.BS_LED_positionChannelName = NameValueArgs.BS_LED_positionChannelName;
             obj.BS_camera_setConsistentlyChannelName = NameValueArgs.BS_camera_setConsistentlyChannelName;
             obj.BS_LED_setConsistentlyChannelName = NameValueArgs.BS_LED_setConsistentlyChannelName;
-            obj.ledRgbChannelName = NameValueArgs.ledRgbChannelName;
+            obj.LEDRGBChannelName = NameValueArgs.LEDRGBChannelName;
 
             obj.block_red_blocked_PositionDeg = NameValueArgs.block_red_blocked_PositionDeg;
             obj.block_red_unblocked_PositionDeg = NameValueArgs.block_red_unblocked_PositionDeg;
@@ -357,25 +357,25 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
 
             [cameraOnDeg, cameraOffDeg] = obj.measureLikelyEndpoints( ...
                 obj.BS_camera_positionChannelName, obj.BS_camera_on_PositionDeg, obj.BS_camera_off_PositionDeg);
-            [ledOnDeg, ledOffDeg] = obj.measureLikelyEndpoints( ...
+            [LEDOnDeg, LEDOffDeg] = obj.measureLikelyEndpoints( ...
                 obj.BS_LED_positionChannelName, obj.BS_LED_on_PositionDeg, obj.BS_LED_off_PositionDeg);
 
             obj.BS_camera_likelyOn_PositionDeg = cameraOnDeg;
             obj.BS_camera_likelyOff_PositionDeg = cameraOffDeg;
-            obj.BS_LED_likelyOn_PositionDeg = ledOnDeg;
-            obj.BS_LED_likelyOff_PositionDeg = ledOffDeg;
+            obj.BS_LED_likelyOn_PositionDeg = LEDOnDeg;
+            obj.BS_LED_likelyOff_PositionDeg = LEDOffDeg;
 
             positions = struct( ...
                 "cameraOnDeg", cameraOnDeg, ...
                 "cameraOffDeg", cameraOffDeg, ...
-                "ledOnDeg", ledOnDeg, ...
-                "ledOffDeg", ledOffDeg);
+                "LEDOnDeg", LEDOnDeg, ...
+                "LEDOffDeg", LEDOffDeg);
         end
 
         function setBeamSplitterState(obj, beamSplitterName, isOn)
             arguments
                 obj
-                beamSplitterName (1, 1) string {mustBeMember(beamSplitterName, ["camera", "led"])}
+                beamSplitterName (1, 1) string {mustBeMember(beamSplitterName, ["camera", "LED"])}
                 isOn (1, 1) logical
             end
 
@@ -390,7 +390,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                         targetLikelyDeg = obj.BS_camera_likelyOff_PositionDeg;
                         commandDeg = obj.BS_camera_off_PositionDeg;
                     end
-                case "led"
+                case "LED"
                     positionChannelName = obj.BS_LED_positionChannelName;
                     setConsistentChannelName = obj.BS_LED_setConsistentlyChannelName;
                     if isOn
@@ -456,8 +456,8 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 "offsetFitRoi_px", obj.offsetFitRoi_px, ...
                 "cameraBsLikelyOnDeg", obj.BS_camera_likelyOn_PositionDeg, ...
                 "cameraBsLikelyOffDeg", obj.BS_camera_likelyOff_PositionDeg, ...
-                "ledBsLikelyOnDeg", obj.BS_LED_likelyOn_PositionDeg, ...
-                "ledBsLikelyOffDeg", obj.BS_LED_likelyOff_PositionDeg);
+                "LEDBsLikelyOnDeg", obj.BS_LED_likelyOn_PositionDeg, ...
+                "LEDBsLikelyOffDeg", obj.BS_LED_likelyOff_PositionDeg);
 
             clear cleanup;
         end
@@ -1113,15 +1113,15 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 obj.setBeamSplitterState("camera", true);
             end
             if abs(currentPositionsDeg(2) - obj.BS_LED_likelyOn_PositionDeg) > obj.bsPositionToleranceDeg
-                obj.setBeamSplitterState("led", true);
+                obj.setBeamSplitterState("LED", true);
             end
         end
 
         function restoreMeasurementOptics(obj)
-            obj.setLedState(false);
+            obj.setLEDState(false);
             obj.setLaserPathState(blocked = true, ndOn = false);
             if obj.turnBeamSplittersOffAfterAutofocus
-                obj.setBeamSplitterState("led", false);
+                obj.setBeamSplitterState("LED", false);
                 obj.setBeamSplitterState("camera", false);
             end
         end
@@ -1132,7 +1132,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
 
         function image2D = acquireSampleImageForAutofocus(obj)
             obj.setLaserPathState(blocked = true, ndOn = false);
-            obj.setLedState(true);
+            obj.setLEDState(true);
             image2D = obj.acquireCameraImage();
         end
 
@@ -1141,7 +1141,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         end
 
         function image2D = acquireLaserSpotImage(obj)
-            obj.setLedState(false);
+            obj.setLEDState(false);
             obj.setLaserPathState(blocked = false, ndOn = true);
             image2D = obj.acquireCameraImage();
         end
@@ -1153,7 +1153,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
 
         function image2D = acquireDiagnosticSampleBeamspotImage(obj)
             obj.prepareAutofocusBeamSplitters();
-            obj.setLedState(true);
+            obj.setLEDState(true);
             obj.setLaserPathState(blocked = false, ndOn = true);
             image2D = obj.acquireCameraImage();
         end
@@ -1424,19 +1424,19 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             masterRackProxy.rackSet([blockChannel; NDChannel], [blockTargetDeg; ndTargetDeg]);
         end
 
-        function setLedState(obj, ledOn)
-            if ledOn
+        function setLEDState(obj, LEDOn)
+            if LEDOn
                 if obj.colorStored == 0
-                    rgb = [1; 0; 0];  % red
+                    RGB = [1; 0; 0];  % red
                 else
-                    rgb = [0; 1; 0];  % green
+                    RGB = [0; 1; 0];  % green
                 end
             else
-                rgb = [0; 0; 0];
+                RGB = [0; 0; 0];
             end
 
             masterRackProxy = obj.getMasterRackProxy();
-            masterRackProxy.rackSet(obj.ledRgbChannelName, rgb);
+            masterRackProxy.rackSet(obj.LEDRGBChannelName, RGB);
         end
 
         function [likelyOnDeg, likelyOffDeg] = measureLikelyEndpoints(obj, positionChannelName, onCommandDeg, offCommandDeg)
@@ -1610,14 +1610,14 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 "BS_LED_positionChannelName"; ...
                 "BS_camera_setConsistentlyChannelName"; ...
                 "BS_LED_setConsistentlyChannelName"; ...
-                "ledRgbChannelName"];
+                "LEDRGBChannelName"];
 
             commonValues = [ ...
                 obj.BS_camera_positionChannelName; ...
                 obj.BS_LED_positionChannelName; ...
                 obj.BS_camera_setConsistentlyChannelName; ...
                 obj.BS_LED_setConsistentlyChannelName; ...
-                obj.ledRgbChannelName];
+                obj.LEDRGBChannelName];
 
             labels = [laserLabels; commonLabels];
             values = [laserValues; commonValues];
