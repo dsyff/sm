@@ -3,7 +3,7 @@ classdef instrument_CS165MU < instrumentInterface
     % Thorlabs CS165MU (TLCamera .NET SDK) integration.
     %
     % - Always opens the first discovered camera; errors if none are found.
-    % - Provides a live-view figure (square pixels) updated with drawnow limitrate.
+    % - Provides a lightweight live-view figure updated at a bounded rate.
     % - Exposes camera settings as numeric instrument channels.
     %
     % Notes:
@@ -18,9 +18,14 @@ classdef instrument_CS165MU < instrumentInterface
         liveFigure;
         liveAxes;
         liveImage;
+        liveStatusLabel;
+        liveOverlayLine;
+        liveOverlayRoi_px (1, 4) double = [NaN, NaN, NaN, NaN];
 
         liveTimer;
         liveEnabled (1, 1) logical = false;
+        liveFrameRate_Hz (1, 1) double {mustBePositive} = 15;
+        livePreviewMaxPixels (1, 1) double {mustBeInteger, mustBePositive} = 512;
 
         pendingValue double = NaN;
     end
@@ -146,6 +151,42 @@ classdef instrument_CS165MU < instrumentInterface
             end
 
             obj.updateLiveFigure(image2D);
+        end
+
+        function showLiveView(obj)
+            if isempty(obj.tlCamera)
+                error("instrument_CS165MU:NoCamera", "Camera is not open.");
+            end
+
+            obj.ensureLiveFigure();
+            if ~obj.liveEnabled
+                image2D = obj.acquireOneFrameStandalone();
+                obj.updateLiveFigure(image2D);
+            end
+            drawnow;
+        end
+
+        function stopContinuousAcquisitionForAutofocus(obj)
+            obj.stopContinuousAcquisition();
+        end
+
+        function setLiveOverlayRoi(obj, roi_px)
+            arguments
+                obj
+                roi_px (1, 4) double
+            end
+            if ~(all(isnan(roi_px)) || (all(isfinite(roi_px)) && roi_px(3) > 0 && roi_px(4) > 0))
+                error("instrument_CS165MU:InvalidLiveOverlayRoi", ...
+                    "Live overlay ROI must be [x, y, width, height] with finite positive width and height, or all NaN.");
+            end
+
+            obj.liveOverlayRoi_px = roi_px;
+            obj.updateLiveOverlay();
+        end
+
+        function clearLiveOverlayRoi(obj)
+            obj.liveOverlayRoi_px = [NaN, NaN, NaN, NaN];
+            obj.updateLiveOverlay();
         end
     end
 
@@ -323,15 +364,25 @@ classdef instrument_CS165MU < instrumentInterface
             obj.liveFigure = figure( ...
                 Name = "CS165MU Live", ...
                 NumberTitle = "off", ...
+                MenuBar = "none", ...
+                ToolBar = "none", ...
+                DockControls = "off", ...
+                IntegerHandle = "off", ...
                 Color = "w", ...
                 HandleVisibility = "callback", ...
                 CloseRequestFcn = @(h, e) obj.onLiveFigureCloseRequest(h, e));
 
-            obj.liveAxes = axes(obj.liveFigure);
+            obj.liveAxes = axes(obj.liveFigure, Units = "normalized", Position = [0 0.06 1 0.94]);
             colormap(obj.liveAxes, gray(256));
-            obj.liveAxes.Box = "on";
-            obj.liveAxes.XLabel.String = "x (px)";
-            obj.liveAxes.YLabel.String = "y (px)";
+            obj.liveAxes.Visible = "off";
+            obj.liveStatusLabel = uicontrol(obj.liveFigure, ...
+                Style = "text", ...
+                Units = "normalized", ...
+                Position = [0 0 1 0.06], ...
+                String = "SNAPSHOT - no image acquired", ...
+                HorizontalAlignment = "left", ...
+                BackgroundColor = "w", ...
+                ForegroundColor = [0.1 0.1 0.1]);
 
             % Initialize image object
             obj.liveImage = imagesc(obj.liveAxes, zeros(10, 10, "uint16"));
@@ -339,6 +390,7 @@ classdef instrument_CS165MU < instrumentInterface
             axis(obj.liveAxes, "image"); % square pixels
             obj.liveAxes.Toolbar.Visible = "off";
             applyCompactTickFormat(obj.liveAxes);
+            obj.updateLiveOverlay();
             obj.liveFigure.Visible = "on";
             drawnow;
         end
@@ -361,7 +413,7 @@ classdef instrument_CS165MU < instrumentInterface
             if isempty(obj.liveTimer) || ~isvalid(obj.liveTimer)
                 obj.liveTimer = timer( ...
                     ExecutionMode = "fixedSpacing", ...
-                    Period = 0.05, ...
+                    Period = 1 / obj.liveFrameRate_Hz, ...
                     BusyMode = "drop", ...
                     TimerFcn = @(~, ~) obj.liveTick());
             end
@@ -397,6 +449,7 @@ classdef instrument_CS165MU < instrumentInterface
                 catch
                 end
             end
+            obj.updateLiveStatusText("SNAPSHOT");
         end
 
         function liveTick(obj)
@@ -409,13 +462,20 @@ classdef instrument_CS165MU < instrumentInterface
             end
 
             try
-                if obj.tlCamera.NumberOfQueuedFrames > 0
+                newestFrame = [];
+                while obj.tlCamera.NumberOfQueuedFrames > 0
                     imageFrame = obj.tlCamera.GetPendingFrameOrNull;
                     if ~isempty(imageFrame)
-                        image2D = obj.frameToImage2D(imageFrame);
-                        obj.updateLiveFigure(image2D);
-                        delete(imageFrame);
+                        if ~isempty(newestFrame)
+                            delete(newestFrame);
+                        end
+                        newestFrame = imageFrame;
                     end
+                end
+                if ~isempty(newestFrame)
+                    image2D = obj.frameToImage2D(newestFrame);
+                    obj.updateLiveFigure(image2D);
+                    delete(newestFrame);
                 end
                 drawnow limitrate;
             catch
@@ -518,10 +578,61 @@ classdef instrument_CS165MU < instrumentInterface
                 return;
             end
 
-            obj.liveImage.CData = image2D;
+            binFactor = max(1, ceil(max(size(image2D)) / obj.livePreviewMaxPixels));
+            if binFactor > 1
+                previewRows = floor(size(image2D, 1) / binFactor) * binFactor;
+                previewCols = floor(size(image2D, 2) / binFactor) * binFactor;
+                displayImage = reshape(double(image2D(1:previewRows, 1:previewCols)), ...
+                    binFactor, previewRows / binFactor, binFactor, previewCols / binFactor);
+                displayImage = squeeze(mean(mean(displayImage, 1), 3));
+            else
+                displayImage = image2D;
+            end
+            obj.liveImage.CData = displayImage;
+            obj.liveImage.XData = [1 size(image2D, 2)];
+            obj.liveImage.YData = [1 size(image2D, 1)];
             axis(obj.liveAxes, "image");
             obj.liveAxes.XLimMode = "auto";
             obj.liveAxes.YLimMode = "auto";
+            obj.updateLiveOverlay();
+            if obj.liveEnabled
+                obj.updateLiveStatusText("LIVE");
+            else
+                obj.updateLiveStatusText("SNAPSHOT");
+            end
+        end
+
+        function updateLiveStatusText(obj, modeText)
+            if isempty(obj.liveStatusLabel) || ~isvalid(obj.liveStatusLabel)
+                return;
+            end
+            timestampText = char(datetime("now", Format = "yyyy-MM-dd HH:mm:ss.SSS"));
+            obj.liveStatusLabel.String = sprintf("%s - %s", char(modeText), timestampText);
+        end
+
+        function updateLiveOverlay(obj)
+            if isempty(obj.liveFigure) || ~isvalid(obj.liveFigure) || isempty(obj.liveAxes)
+                return;
+            end
+
+            if isempty(obj.liveOverlayLine) || ~isvalid(obj.liveOverlayLine)
+                obj.liveOverlayLine = line(obj.liveAxes, NaN, NaN, ...
+                    Color = [0 1 0], LineStyle = "--", LineWidth = 1.5, HitTest = "off");
+            end
+
+            roi = obj.liveOverlayRoi_px;
+            if all(isnan(roi))
+                obj.liveOverlayLine.Visible = "off";
+                return;
+            end
+
+            x1 = roi(1);
+            y1 = roi(2);
+            x2 = roi(1) + roi(3);
+            y2 = roi(2) + roi(4);
+            obj.liveOverlayLine.XData = [x1 x2 x2 x1 x1];
+            obj.liveOverlayLine.YData = [y1 y1 y2 y2 y1];
+            obj.liveOverlayLine.Visible = "on";
         end
 
         function safeDisarm(obj)

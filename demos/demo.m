@@ -869,17 +869,23 @@ if K10CR1_Use
     recipe.addChannel("K10CR1", "position_deg", "K10CR1_position_deg");
 end
 
+% After smready(recipe), reopen live view with:
+%   engine.evalOnEngine('handle_CS165MU.showLiveView()')
+% Start continuous live mode with smset("cam_live",1). Closing the
+% live-view figure stops continuous acquisition.
+% Set cam_x, cam_y, cam_w, and cam_h before autofocus references; they
+% define the acquired camera ROI image.
 if CS165MU_Use
     recipe.addInstrument("handle_CS165MU", "instrument_CS165MU", "CS165MU", CS165MU_Serial);
     recipe.addStatement("CS165MU", "handle_CS165MU.requireSetCheck = false;");
-    recipe.addChannel("CS165MU", "continuous", "CS165MU_continuous");
-    recipe.addChannel("CS165MU", "exposure_ms", "CS165MU_exposure_ms");
-    recipe.addChannel("CS165MU", "bin", "CS165MU_bin");
-    recipe.addChannel("CS165MU", "roi_origin_x_px", "CS165MU_roi_x_px");
-    recipe.addChannel("CS165MU", "roi_origin_y_px", "CS165MU_roi_y_px");
-    recipe.addChannel("CS165MU", "roi_width_px", "CS165MU_roi_w_px");
-    recipe.addChannel("CS165MU", "roi_height_px", "CS165MU_roi_h_px");
-    recipe.addChannel("CS165MU", "queued_frames", "CS165MU_queued_frames");
+    recipe.addChannel("CS165MU", "continuous", "cam_live");
+    recipe.addChannel("CS165MU", "exposure_ms", "cam_exp");
+    recipe.addChannel("CS165MU", "bin", "cam_bin");
+    recipe.addChannel("CS165MU", "roi_origin_x_px", "cam_x");
+    recipe.addChannel("CS165MU", "roi_origin_y_px", "cam_y");
+    recipe.addChannel("CS165MU", "roi_width_px", "cam_w");
+    recipe.addChannel("CS165MU", "roi_height_px", "cam_h");
+    recipe.addChannel("CS165MU", "queued_frames", "cam_q");
 end
 
 if Andor_Use
@@ -910,12 +916,12 @@ end
 if ANC300_Use
     recipe.addInstrument("handle_ANC300", "instrument_ANC300", "ANC300", ANC300_Serial);
     recipe.addStatement("ANC300", "handle_ANC300.requireSetCheck = false;");
-    recipe.addChannel("ANC300", "voltage_x", "ANC300_Vx", [], [], 0, 60);
-    recipe.addChannel("ANC300", "voltage_y", "ANC300_Vy", [], [], 0, 60);
-    recipe.addChannel("ANC300", "voltage_z", "ANC300_Vz", [], [], 0, 60);
-    recipe.addChannel("ANC300", "frequency_x", "ANC300_fx", [], [], 1, 10000);
-    recipe.addChannel("ANC300", "frequency_y", "ANC300_fy", [], [], 1, 10000);
-    recipe.addChannel("ANC300", "frequency_z", "ANC300_fz", [], [], 1, 10000);
+    recipe.addChannel("ANC300", "voltage_x", "Vx", [], [], 0, 60);
+    recipe.addChannel("ANC300", "voltage_y", "Vy", [], [], 0, 60);
+    recipe.addChannel("ANC300", "voltage_z", "Vz", [], [], 0, 60);
+    recipe.addChannel("ANC300", "frequency_x", "fx", [], [], 1, 10000);
+    recipe.addChannel("ANC300", "frequency_y", "fy", [], [], 1, 10000);
+    recipe.addChannel("ANC300", "frequency_z", "fz", [], [], 1, 10000);
     % Optional one-shot step command:
     % recipe.addStatement("ANC300", "handle_ANC300.stepAxis(""x"", 100);");
 end
@@ -939,12 +945,12 @@ end
 if ST3215HS_BS_Use
     recipe.addInstrument("handle_ST3215HS_BS", "instrument_ST3215HS", "ST3215HS_BS", ST3215HS_BS_Serial, servoId_1 = 10, servoId_2 = 11);
     recipe.addStatement("ST3215HS_BS", "handle_ST3215HS_BS.requireSetCheck = true;");
-    recipe.addChannel("ST3215HS_BS", "position_1_deg", "BS_camera_pos_deg");
-    recipe.addChannel("ST3215HS_BS", "load_1_percent", "BS_camera_load_percent");
-    recipe.addChannel("ST3215HS_BS", "setConsistently_1", "BS_camera_setConsistently", [], [], 0, 1);
-    recipe.addChannel("ST3215HS_BS", "position_2_deg", "BS_LED_pos_deg");
-    recipe.addChannel("ST3215HS_BS", "load_2_percent", "BS_LED_load_percent");
-    recipe.addChannel("ST3215HS_BS", "setConsistently_2", "BS_LED_setConsistently", [], [], 0, 1);
+    recipe.addChannel("ST3215HS_BS", "position_1_deg", "bs_cam");
+    recipe.addChannel("ST3215HS_BS", "load_1_percent", "bs_cam_load");
+    recipe.addChannel("ST3215HS_BS", "setConsistently_1", "bs_cam_c", [], [], 0, 1);
+    recipe.addChannel("ST3215HS_BS", "position_2_deg", "bs_led");
+    recipe.addChannel("ST3215HS_BS", "load_2_percent", "bs_led_load");
+    recipe.addChannel("ST3215HS_BS", "setConsistently_2", "bs_led_c", [], [], 0, 1);
     % recipe.addStatement("ST3215HS_BS", "handle_ST3215HS_BS.calibrateSoftLimits(1, loadThreshold_percent = 6);");
     % recipe.addStatement("ST3215HS_BS", "handle_ST3215HS_BS.calibrateSoftLimits(2, loadThreshold_percent = 6);");
 end
@@ -953,12 +959,12 @@ end
 if ST3215HS_red_Use
     recipe.addInstrument("handle_ST3215HS_red", "instrument_ST3215HS", "ST3215HS_red", ST3215HS_red_Serial, servoId_1 = 20, servoId_2 = 21);
     recipe.addStatement("ST3215HS_red", "handle_ST3215HS_red.requireSetCheck = true;");
-    recipe.addChannel("ST3215HS_red", "position_1_deg", "block_red_pos_deg");
-    recipe.addChannel("ST3215HS_red", "load_1_percent", "block_red_load_percent");
-    recipe.addChannel("ST3215HS_red", "setConsistently_1", "block_red_setConsistently", [], [], 0, 1);
-    recipe.addChannel("ST3215HS_red", "position_2_deg", "ND_red_pos_deg");
-    recipe.addChannel("ST3215HS_red", "load_2_percent", "ND_red_load_percent");
-    recipe.addChannel("ST3215HS_red", "setConsistently_2", "ND_red_setConsistently", [], [], 0, 1);
+    recipe.addChannel("ST3215HS_red", "position_1_deg", "blk_r");
+    recipe.addChannel("ST3215HS_red", "load_1_percent", "blk_r_load");
+    recipe.addChannel("ST3215HS_red", "setConsistently_1", "blk_r_c", [], [], 0, 1);
+    recipe.addChannel("ST3215HS_red", "position_2_deg", "nd_r");
+    recipe.addChannel("ST3215HS_red", "load_2_percent", "nd_r_load");
+    recipe.addChannel("ST3215HS_red", "setConsistently_2", "nd_r_c", [], [], 0, 1);
     % recipe.addStatement("ST3215HS_red", "handle_ST3215HS_red.calibrateSoftLimits(1, loadThreshold_percent = 6);");
     % recipe.addStatement("ST3215HS_red", "handle_ST3215HS_red.calibrateSoftLimits(2, loadThreshold_percent = 6);");
 end
@@ -967,12 +973,12 @@ end
 if ST3215HS_green_Use
     recipe.addInstrument("handle_ST3215HS_green", "instrument_ST3215HS", "ST3215HS_green", ST3215HS_green_Serial, servoId_1 = 22, servoId_2 = 23);
     recipe.addStatement("ST3215HS_green", "handle_ST3215HS_green.requireSetCheck = true;");
-    recipe.addChannel("ST3215HS_green", "position_1_deg", "block_green_pos_deg");
-    recipe.addChannel("ST3215HS_green", "load_1_percent", "block_green_load_percent");
-    recipe.addChannel("ST3215HS_green", "setConsistently_1", "block_green_setConsistently", [], [], 0, 1);
-    recipe.addChannel("ST3215HS_green", "position_2_deg", "ND_green_pos_deg");
-    recipe.addChannel("ST3215HS_green", "load_2_percent", "ND_green_load_percent");
-    recipe.addChannel("ST3215HS_green", "setConsistently_2", "ND_green_setConsistently", [], [], 0, 1);
+    recipe.addChannel("ST3215HS_green", "position_1_deg", "blk_g");
+    recipe.addChannel("ST3215HS_green", "load_1_percent", "blk_g_load");
+    recipe.addChannel("ST3215HS_green", "setConsistently_1", "blk_g_c", [], [], 0, 1);
+    recipe.addChannel("ST3215HS_green", "position_2_deg", "nd_g");
+    recipe.addChannel("ST3215HS_green", "load_2_percent", "nd_g_load");
+    recipe.addChannel("ST3215HS_green", "setConsistently_2", "nd_g_c", [], [], 0, 1);
     % recipe.addStatement("ST3215HS_green", "handle_ST3215HS_green.calibrateSoftLimits(1, loadThreshold_percent = 6);");
     % recipe.addStatement("ST3215HS_green", "handle_ST3215HS_green.calibrateSoftLimits(2, loadThreshold_percent = 6);");
 end
@@ -980,10 +986,10 @@ end
 if colorLED_Use
     recipe.addInstrument("handle_colorLED", "instrument_colorLED", "colorLED", colorLED_Serial);
     recipe.addStatement("colorLED", "handle_colorLED.requireSetCheck = false;");
-    recipe.addChannel("colorLED", "R", "colorLED_R", [], [], 0, 1);
-    recipe.addChannel("colorLED", "G", "colorLED_G", [], [], 0, 1);
-    recipe.addChannel("colorLED", "B", "colorLED_B", [], [], 0, 1);
-    recipe.addChannel("colorLED", "RGB", "colorLED_RGB", [], [], 0, 1);
+    recipe.addChannel("colorLED", "R", "led_r", [], [], 0, 1);
+    recipe.addChannel("colorLED", "G", "led_g", [], [], 0, 1);
+    recipe.addChannel("colorLED", "B", "led_b", [], [], 0, 1);
+    recipe.addChannel("colorLED", "RGB", "led_rgb", [], [], 0, 1);
 end
 
 if USB6001_Use
@@ -1116,28 +1122,42 @@ if virtual_nE_Use
     recipe.addChannel("virtual_nE", "nFast0EFast1", "nFast0EFast1", [], [], 0, 1);
 end
 
+% Run autofocus with camera continuous acquisition off, for example
+% smset("cam_live",0), because live view and autofocus both consume
+% CS165MU frames.
+% cam_* ROI channels define the larger acquired camera ROI. Autofocus
+% uses offsetFitRoi_px for the sample feature ROI, while the beamspot is
+% found over the whole camera ROI.
+% T_af/B_af/cooldown diagnostics save .png + .mat files every 5 min and at
+% convergence under temp/attodry_autofocus_diagnostics by default.
+% After smready(recipe), take a reference and then select the offset-fit ROI:
+%   engine.evalOnEngine('handle_virtual_attodryAutofocus.takeReferenceData()')
+%   engine.evalOnEngine('handle_virtual_attodryAutofocus.selectOffsetFitRoi()')
+% Cooldown with active autofocus:
+%   engine.evalOnEngine('handle_virtual_attodryAutofocus.cooldown()')
 if virtual_attodryAutofocus_Use
     recipe.addVirtualInstrument("handle_virtual_attodryAutofocus", "virtualInstrument_attodryAutofocus", "attodryAutofocus", "attodryAutofocus", ...
         T_channelName = "T", ...
         B_channelName = "B", ...
         cameraInstrumentFriendlyName = "CS165MU", ...
-        block_red_positionChannelName = "block_red_pos_deg", ...
-        block_green_positionChannelName = "block_green_pos_deg", ...
-        ND_red_positionChannelName = "ND_red_pos_deg", ...
-        ND_green_positionChannelName = "ND_green_pos_deg", ...
-        BS_camera_positionChannelName = "BS_camera_pos_deg", ...
-        BS_LED_positionChannelName = "BS_LED_pos_deg", ...
-        BS_camera_setConsistentlyChannelName = "BS_camera_setConsistently", ...
-        BS_LED_setConsistentlyChannelName = "BS_LED_setConsistently", ...
-        ledRgbChannelName = "colorLED_RGB", ...
+        block_red_positionChannelName = "blk_r", ...
+        block_green_positionChannelName = "blk_g", ...
+        ND_red_positionChannelName = "nd_r", ...
+        ND_green_positionChannelName = "nd_g", ...
+        BS_camera_positionChannelName = "bs_cam", ...
+        BS_LED_positionChannelName = "bs_led", ...
+        BS_camera_setConsistentlyChannelName = "bs_cam_c", ...
+        BS_LED_setConsistentlyChannelName = "bs_led_c", ...
+        ledRgbChannelName = "led_rgb", ...
+        attoDRYInstrumentFriendlyName = "attoDRY2100", ...
         ANC300InstrumentFriendlyName = "ANC300", ...
-        ANC300_voltage_x_ChannelName = "ANC300_Vx", ...
-        ANC300_voltage_y_ChannelName = "ANC300_Vy", ...
-        ANC300_voltage_z_ChannelName = "ANC300_Vz");
+        ANC300_voltage_x_ChannelName = "Vx", ...
+        ANC300_voltage_y_ChannelName = "Vy", ...
+        ANC300_voltage_z_ChannelName = "Vz");
     recipe.addStatement("attodryAutofocus", "handle_virtual_attodryAutofocus.requireSetCheck = true;");
     recipe.addChannel("attodryAutofocus", "T", "T_af", [], [], 0, 400);
     recipe.addChannel("attodryAutofocus", "B", "B_af", [], [], -1, 1);
-    recipe.addChannel("attodryAutofocus", "color", "attodry_color", [], [], 0, 1);
+    recipe.addChannel("attodryAutofocus", "color", "af_color", [], [], 0, 1);
 end
 
 if virtual_hysteresis_gate_Use
