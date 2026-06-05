@@ -1552,13 +1552,14 @@ function m = smguiLayoutMetrics()
     m.titlePad = 20;
     m.bottomPad = 8;
     m.maxContentRows = 5;
-    m.constCols = 3;
+    m.constCols = 4;
     m.constPopupW = 120;
     m.constEditW = 44;
     m.constCheckW = 16;
-    m.recordCols = 4;
+    m.recordCols = 6;
     m.recordX = 60;
-    m.recordW = 120;
+    m.recordW = 110;
+    m.recordGap = 6;
 end
 
 function loops = normalizeLoopFields(loops)
@@ -1967,12 +1968,8 @@ function pos = smguiRecordPopupPosition(j, recordStartY, m)
     idx = j - 1;
     col = mod(idx, m.recordCols);
     row = floor(idx / m.recordCols);
-    if m.recordCols > 1
-        colGap = (m.rowViewW - m.recordX - m.recordW) / (m.recordCols - 1);
-    else
-        colGap = 0;
-    end
-    pos = [m.recordX + colGap * col, recordStartY - m.rowH * row, m.recordW, m.ctrlH];
+    colStep = m.recordW + m.recordGap;
+    pos = [m.recordX + colStep * col, recordStartY - m.rowH * row, m.recordW, m.ctrlH];
 end
 
 %Helper functions for context-aware channel name selection
