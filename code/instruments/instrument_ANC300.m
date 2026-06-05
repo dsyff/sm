@@ -3,6 +3,9 @@ classdef instrument_ANC300 < instrumentInterface
 
     properties (Access = private)
         pendingValue double = NaN
+        axisId_x (1, 1) double {mustBeInteger, mustBePositive} = 3
+        axisId_y (1, 1) double {mustBeInteger, mustBePositive} = 4
+        axisId_z (1, 1) double {mustBeInteger, mustBePositive} = 5
     end
 
     methods
@@ -25,7 +28,7 @@ classdef instrument_ANC300 < instrumentInterface
                     "Expected Attocube ANC300 at %s, received: %s", address, versionText);
             end
 
-            for axisId = 1:3
+            for axisId = [obj.axisId_x, obj.axisId_y, obj.axisId_z]
                 obj.writeCommand(sprintf("setm %d stp", axisId));
                 obj.writeCommand(sprintf("setf %d %d", axisId, 50));
             end
@@ -70,17 +73,17 @@ classdef instrument_ANC300 < instrumentInterface
         function getWriteChannelHelper(obj, channelIndex)
             switch channelIndex
                 case 1
-                    obj.pendingValue = obj.queryScalar(sprintf("getv %d", 3)); % x -> axis 3
+                    obj.pendingValue = obj.queryScalar(sprintf("getv %d", obj.axisId_x));
                 case 2
-                    obj.pendingValue = obj.queryScalar(sprintf("getv %d", 2)); % y -> axis 2
+                    obj.pendingValue = obj.queryScalar(sprintf("getv %d", obj.axisId_y));
                 case 3
-                    obj.pendingValue = obj.queryScalar(sprintf("getv %d", 1)); % z -> axis 1
+                    obj.pendingValue = obj.queryScalar(sprintf("getv %d", obj.axisId_z));
                 case 4
-                    obj.pendingValue = obj.queryScalar(sprintf("getf %d", 3)); % x -> axis 3
+                    obj.pendingValue = obj.queryScalar(sprintf("getf %d", obj.axisId_x));
                 case 5
-                    obj.pendingValue = obj.queryScalar(sprintf("getf %d", 2)); % y -> axis 2
+                    obj.pendingValue = obj.queryScalar(sprintf("getf %d", obj.axisId_y));
                 case 6
-                    obj.pendingValue = obj.queryScalar(sprintf("getf %d", 1)); % z -> axis 1
+                    obj.pendingValue = obj.queryScalar(sprintf("getf %d", obj.axisId_z));
                 otherwise
                     error("instrument_ANC300:UnsupportedGetChannel", ...
                         "Unsupported get channel index %d.", channelIndex);
@@ -97,22 +100,22 @@ classdef instrument_ANC300 < instrumentInterface
             switch channelIndex
                 case 1
                     obj.assertFiniteVoltage(value);
-                    obj.writeCommand(sprintf("setv %d %.9g", 3, value)); % x -> axis 3
+                    obj.writeCommand(sprintf("setv %d %.9g", obj.axisId_x, value));
                 case 2
                     obj.assertFiniteVoltage(value);
-                    obj.writeCommand(sprintf("setv %d %.9g", 2, value)); % y -> axis 2
+                    obj.writeCommand(sprintf("setv %d %.9g", obj.axisId_y, value));
                 case 3
                     obj.assertFiniteVoltage(value);
-                    obj.writeCommand(sprintf("setv %d %.9g", 1, value)); % z -> axis 1
+                    obj.writeCommand(sprintf("setv %d %.9g", obj.axisId_z, value));
                 case 4
                     obj.assertValidFrequency(value);
-                    obj.writeCommand(sprintf("setf %d %d", 3, round(value))); % x -> axis 3
+                    obj.writeCommand(sprintf("setf %d %d", obj.axisId_x, round(value)));
                 case 5
                     obj.assertValidFrequency(value);
-                    obj.writeCommand(sprintf("setf %d %d", 2, round(value))); % y -> axis 2
+                    obj.writeCommand(sprintf("setf %d %d", obj.axisId_y, round(value)));
                 case 6
                     obj.assertValidFrequency(value);
-                    obj.writeCommand(sprintf("setf %d %d", 1, round(value))); % z -> axis 1
+                    obj.writeCommand(sprintf("setf %d %d", obj.axisId_z, round(value)));
                 otherwise
                     setWriteChannelHelper@instrumentInterface(obj, channelIndex, setValues);
             end
@@ -120,11 +123,13 @@ classdef instrument_ANC300 < instrumentInterface
     end
 
     methods (Access = private)
-        function axisId = parseAxis(~, axis)
+        function axisId = parseAxis(obj, axis)
             if isnumeric(axis)
-                if ~(isscalar(axis) && isfinite(axis) && axis == round(axis) && any(axis == [1, 2, 3]))
+                axisIds = [obj.axisId_z, obj.axisId_y, obj.axisId_x];
+                if ~(isscalar(axis) && isfinite(axis) && axis == round(axis) && any(axis == axisIds))
                     error("instrument_ANC300:InvalidAxisId", ...
-                        "Axis ID must be 1 (z), 2 (y), or 3 (x).");
+                        "Axis ID must be one of z=%d, y=%d, or x=%d.", ...
+                        obj.axisId_z, obj.axisId_y, obj.axisId_x);
                 end
                 axisId = double(axis);
                 return;
@@ -132,14 +137,14 @@ classdef instrument_ANC300 < instrumentInterface
 
             axisName = lower(string(axis));
             if axisName == "x"
-                axisId = 3;
+                axisId = obj.axisId_x;
             elseif axisName == "y"
-                axisId = 2;
+                axisId = obj.axisId_y;
             elseif axisName == "z"
-                axisId = 1;
+                axisId = obj.axisId_z;
             else
                 error("instrument_ANC300:InvalidAxisName", ...
-                    "Axis must be ""x"", ""y"", ""z"", or numeric ID 1/2/3.");
+                    "Axis must be ""x"", ""y"", ""z"", or configured numeric ID.");
             end
         end
 
