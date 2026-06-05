@@ -564,10 +564,6 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 "correctionStepsMax", 0, ...
                 "zSteps", 0);
 
-            if isempty(obj.referenceSampleImage)
-                error("virtualInstrument_attodryAutofocus:MissingReferenceData", ...
-                    "Call takeReferenceData() before performAutofocusOnly().");
-            end
             if ~obj.anc300Configured()
                 error("virtualInstrument_attodryAutofocus:ANC300NotConfigured", ...
                     "ANC300 channels must be configured before performAutofocusOnly().");
@@ -860,18 +856,14 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             [firstTryVoltages, currentTemperature_K] = obj.getInitialPositionerVoltages();
             vz = firstTryVoltages(2);
 
-            refSharp = obj.tenengradSharpness(obj.referenceSampleImage);
-            thresh = obj.tenengradThreshold * refSharp;
-            if thresh <= 0
-                thresh = 1e-4;
-            end
-
             vZ = vz;
+            threshold = 1e-4;
             for nTrial = 1:obj.zStepTrialCount
                 while true
                     masterRackProxy.rackSetWrite(obj.ANC300_voltage_z_ChannelName, vZ);
                     img0 = obj.acquireSampleImageForAutofocus();
                     s0 = obj.tenengradSharpness(img0);
+                    threshold = max(obj.tenengradThreshold * max(abs(s0), eps), 1e-4);
                     anc.stepAxis("z", nTrial);
                     imgPlus = obj.acquireSampleImageForAutofocus();
                     sPlus = obj.tenengradSharpness(imgPlus);
@@ -879,7 +871,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                     imgMinus = obj.acquireSampleImageForAutofocus();
                     sMinus = obj.tenengradSharpness(imgMinus);
                     anc.stepAxis("z", nTrial);
-                    if max(abs([sPlus - s0, sMinus - s0])) < thresh
+                    if max(abs([sPlus - s0, sMinus - s0])) < threshold
                         if vZ >= 60
                             break;
                         end
@@ -906,7 +898,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             end
             error("virtualInstrument_attodryAutofocus:ZFocusResponseMissing", ...
                 "Z sweeps up to %d steps did not change Tenengrad by at least %.6g at %.6g V.", ...
-                obj.zStepTrialCount, thresh, vZ);
+                obj.zStepTrialCount, threshold, vZ);
         end
 
         function [nStepX, nStepY] = runAutoshift(obj, dx_px, dy_px)

@@ -370,6 +370,9 @@ classdef instrument_CS165MU < instrumentInterface
                 Color = "w", ...
                 HandleVisibility = "callback", ...
                 CloseRequestFcn = @(h, e) obj.onLiveFigureCloseRequest(h, e));
+            if isprop(obj.liveFigure, "GraphicsSmoothing")
+                obj.liveFigure.GraphicsSmoothing = "on";
+            end
 
             obj.liveAxes = axes(obj.liveFigure, Units = "normalized", Position = [0.08 0.12 0.9 0.82]);
             colormap(obj.liveAxes, gray(256));
@@ -389,7 +392,9 @@ classdef instrument_CS165MU < instrumentInterface
 
             % Initialize image object
             obj.liveImage = imagesc(obj.liveAxes, zeros(10, 10, "uint16"));
+            obj.liveImage.CDataMapping = "scaled";
             obj.liveImage.Interpolation = "bilinear";
+            colormap(obj.liveAxes, gray(256));
             obj.liveAxes.YDir = "normal";
             axis(obj.liveAxes, "image"); % square pixels
             obj.liveAxes.Toolbar.Visible = "off";
@@ -592,6 +597,7 @@ classdef instrument_CS165MU < instrumentInterface
             obj.liveImage.CData = image2D;
             obj.liveImage.XData = xOrigin + [0, max(0, size(image2D, 2) - 1) * binX];
             obj.liveImage.YData = yOrigin + [0, max(0, size(image2D, 1) - 1) * binY];
+            colormap(obj.liveAxes, gray(256));
             axis(obj.liveAxes, "image");
             obj.liveAxes.XLimMode = "auto";
             obj.liveAxes.YLimMode = "auto";
