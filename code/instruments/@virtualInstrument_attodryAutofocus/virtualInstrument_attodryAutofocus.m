@@ -1,5 +1,14 @@
 classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
-    % Virtual instrument for Attodry T/B control with optics references.
+    % Virtual instrument for Attodry T/B control with laser-referenced autofocus/autoshift.
+    %
+    % Coordinate convention:
+    %   - Beamspot coordinates are stored as [x; y] = [column; row] in camera pixels.
+    %   - Sample-offset fit coordinates are stored as [rowShift; columnShift], matching
+    %     estimateSampleOffset() and the existing XY response matrix calibration.
+    %
+    % The sample reference is never automatically updated during autofocus. Live XY
+    % compensation uses the original sample reference plus the live laser beamspot
+    % displacement from the original reference beamspot.
 
     properties
         T_channelName (1, 1) string
@@ -46,6 +55,17 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         shiftFitTrimRatio (2, 1) double = [0.2; 0.2]
         offsetFitRoi_px (1, 4) double = [NaN, NaN, NaN, NaN]  % [x, y, width, height]
 
+        % Beamspot fit ROI and circular center-of-mass settings. Coordinates may be fractional.
+        beamspotFitRoi_px (1, 4) double = [NaN, NaN, NaN, NaN]  % [x, y, width, height]
+        beamspotCircleRadius_px (1, 1) double = NaN             % NaN => 0.45 * min(ROI width, ROI height)
+        beamspotBackgroundPercentile (1, 1) double = 20
+        beamspotWeightPower (1, 1) double = 1
+        beamspotCenterIterations (1, 1) double {mustBeInteger, mustBePositive} = 5
+        beamspotCenterTolerance_px (1, 1) double {mustBePositive} = 0.01
+
+        % After successful autofocus during a T/B ramp, restore the optics state expected by measurements.
+        turnBeamSplittersOffAfterAutofocus (1, 1) logical = true
+
         % ANC300 nanopositioner (optional). Empty = no autofocus/autoshift actuation.
         ANC300InstrumentFriendlyName (1, 1) string = ""
         ANC300_voltage_x_ChannelName (1, 1) string = ""
@@ -63,8 +83,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         zVoltageIncrementFactor (1, 1) double {mustBePositive} = 1.2
         zStepTrialCount (1, 1) double {mustBeInteger, mustBePositive} = 5
 
-        targetStepSizePixel (1, 1) double {mustBePositive} = 0.5
-        cameraVerifiableStepSizePixel (1, 1) double {mustBePositive} = 1.0
+        targetStepSizePixel (1, 1) double {mustBePositive} = 2.0
         autoshiftStepRatio (1, 1) double {mustBePositive} = 0.5
         xyResponseMatrixMinRcond (1, 1) double {mustBePositive} = 1e-3
         maxAutoshiftCalibrationSteps (1, 1) double {mustBeInteger, mustBePositive} = 20
@@ -78,8 +97,13 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         referenceSampleImage
         referenceLaserOnSampleImage
         referenceLaserOnlyImage
+        referenceBeamspot_px (2, 1) double = [NaN; NaN]  % [x; y] = [column; row]
 
-        lastEstimatedOffset_px (2, 1) double = [0; 0]
+        lastBeamspot_px (2, 1) double = [NaN; NaN]        % [x; y] = [column; row]
+        lastBeamspotDelta_px (2, 1) double = [NaN; NaN]   % live - reference, [x; y]
+        lastRawSampleOffset_px (2, 1) double = [NaN; NaN] % [rowShift; columnShift]
+        lastBeamReferencedOffset_px (2, 1) double = [NaN; NaN]
+        lastEstimatedOffset_px (2, 1) double = [0; 0]     % compatibility alias for beam-referenced offset
     end
 
     properties (Access = private)
@@ -94,7 +118,6 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         referenceFitTrim_px (1, 2) double = [NaN, NaN]
 
         xyPixelPerStepMatrix (2, 2) double = NaN(2, 2)
-        nextCorrectionKind (1, 1) string = "xy"
         voltageProfileMinTemperatureSpacing_K (1, 1) double {mustBePositive} = 5
         voltageProfileUpdateFractionThreshold (1, 1) double {mustBePositive} = 0.20
     end
@@ -141,11 +164,18 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
 
                 NameValueArgs.bsCalibrationCycles (1, 1) double {mustBeInteger, mustBePositive} = 6
                 NameValueArgs.bsSetMaxAttempts (1, 1) double {mustBeInteger, mustBePositive} = 20
-                NameValueArgs.bsPositionToleranceDeg (1, 1) double {mustBePositive} = 0.08
+                NameValueArgs.bsPositionToleranceDeg (1, 1) double {mustBePositive} = 0.3
                 NameValueArgs.bsQuantizationDeg (1, 1) double {mustBePositive} = 360 / 4096
 
                 NameValueArgs.shiftFitTrimRatio (2, 1) double = [0.2; 0.2]
                 NameValueArgs.offsetFitRoi_px (1, 4) double = [NaN, NaN, NaN, NaN]
+                NameValueArgs.beamspotFitRoi_px (1, 4) double = [NaN, NaN, NaN, NaN]
+                NameValueArgs.beamspotCircleRadius_px (1, 1) double = NaN
+                NameValueArgs.beamspotBackgroundPercentile (1, 1) double = 20
+                NameValueArgs.beamspotWeightPower (1, 1) double = 1
+                NameValueArgs.beamspotCenterIterations (1, 1) double {mustBeInteger, mustBePositive} = 5
+                NameValueArgs.beamspotCenterTolerance_px (1, 1) double {mustBePositive} = 0.01
+                NameValueArgs.turnBeamSplittersOffAfterAutofocus (1, 1) logical = true
 
                 NameValueArgs.ANC300InstrumentFriendlyName (1, 1) string = ""
                 NameValueArgs.ANC300_voltage_x_ChannelName (1, 1) string = ""
@@ -159,8 +189,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 NameValueArgs.maxAutofocusIterations (1, 1) double {mustBeInteger, mustBePositive} = 50
                 NameValueArgs.zVoltageIncrementFactor (1, 1) double {mustBePositive} = 1.2
                 NameValueArgs.zStepTrialCount (1, 1) double {mustBeInteger, mustBePositive} = 5
-                NameValueArgs.targetStepSizePixel (1, 1) double {mustBePositive} = 0.5
-                NameValueArgs.cameraVerifiableStepSizePixel (1, 1) double {mustBePositive} = 1.0
+                NameValueArgs.targetStepSizePixel (1, 1) double {mustBePositive} = 2.0
                 NameValueArgs.autoshiftStepRatio (1, 1) double {mustBePositive} = 0.5
                 NameValueArgs.xyResponseMatrixMinRcond (1, 1) double {mustBePositive} = 1e-3
                 NameValueArgs.maxAutoshiftCalibrationSteps (1, 1) double {mustBeInteger, mustBePositive} = 20
@@ -215,6 +244,26 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             obj.shiftFitTrimRatio = NameValueArgs.shiftFitTrimRatio;
             obj.offsetFitRoi_px = NameValueArgs.offsetFitRoi_px;
 
+            if NameValueArgs.beamspotBackgroundPercentile < 0 || NameValueArgs.beamspotBackgroundPercentile > 100
+                error("virtualInstrument_attodryAutofocus:InvalidBeamspotBackgroundPercentile", ...
+                    "beamspotBackgroundPercentile must be within [0, 100].");
+            end
+            if NameValueArgs.beamspotWeightPower <= 0 || ~isfinite(NameValueArgs.beamspotWeightPower)
+                error("virtualInstrument_attodryAutofocus:InvalidBeamspotWeightPower", ...
+                    "beamspotWeightPower must be finite and positive.");
+            end
+            if isfinite(NameValueArgs.beamspotCircleRadius_px) && NameValueArgs.beamspotCircleRadius_px <= 0
+                error("virtualInstrument_attodryAutofocus:InvalidBeamspotCircleRadius", ...
+                    "beamspotCircleRadius_px must be positive or NaN.");
+            end
+            obj.beamspotFitRoi_px = NameValueArgs.beamspotFitRoi_px;
+            obj.beamspotCircleRadius_px = NameValueArgs.beamspotCircleRadius_px;
+            obj.beamspotBackgroundPercentile = NameValueArgs.beamspotBackgroundPercentile;
+            obj.beamspotWeightPower = NameValueArgs.beamspotWeightPower;
+            obj.beamspotCenterIterations = NameValueArgs.beamspotCenterIterations;
+            obj.beamspotCenterTolerance_px = NameValueArgs.beamspotCenterTolerance_px;
+            obj.turnBeamSplittersOffAfterAutofocus = NameValueArgs.turnBeamSplittersOffAfterAutofocus;
+
             obj.ANC300InstrumentFriendlyName = NameValueArgs.ANC300InstrumentFriendlyName;
             obj.ANC300_voltage_x_ChannelName = NameValueArgs.ANC300_voltage_x_ChannelName;
             obj.ANC300_voltage_y_ChannelName = NameValueArgs.ANC300_voltage_y_ChannelName;
@@ -228,7 +277,12 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             end
             obj.temperatureRegime = tr;
             if strlength(NameValueArgs.positionerVoltageProfileCsvPath) == 0
-                obj.positionerVoltageProfileCsvPath = fullfile(fileparts(mfilename("fullpath")), ...
+                classFilePath = string(which(class(obj)));
+                if strlength(classFilePath) == 0
+                    error("virtualInstrument_attodryAutofocus:ClassFileNotFound", ...
+                        "Unable to resolve class folder with which(class(obj)).");
+                end
+                obj.positionerVoltageProfileCsvPath = fullfile(fileparts(classFilePath), ...
                     "attodry_autofocus_positioner_voltage_profile.csv");
             else
                 obj.positionerVoltageProfileCsvPath = NameValueArgs.positionerVoltageProfileCsvPath;
@@ -238,7 +292,6 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             obj.zVoltageIncrementFactor = NameValueArgs.zVoltageIncrementFactor;
             obj.zStepTrialCount = NameValueArgs.zStepTrialCount;
             obj.targetStepSizePixel = NameValueArgs.targetStepSizePixel;
-            obj.cameraVerifiableStepSizePixel = NameValueArgs.cameraVerifiableStepSizePixel;
             obj.autoshiftStepRatio = NameValueArgs.autoshiftStepRatio;
             obj.xyResponseMatrixMinRcond = NameValueArgs.xyResponseMatrixMinRcond;
             obj.maxAutoshiftCalibrationSteps = NameValueArgs.maxAutoshiftCalibrationSteps;
@@ -335,45 +388,40 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
 
         function references = takeReferenceData(obj)
             obj.characterizeBeamSplitterEndpoints();
+            cleanup = onCleanup(@() obj.blockLaserOnly());
 
-            % 1) Sample image: laser blocked, both BS on, LED on
-            obj.setBeamSplitterState("camera", true);
-            obj.setBeamSplitterState("led", true);
-            obj.setLaserPathState(blocked = true, ndOn = false);
-            obj.setLedState(true);
-            sampleImage = obj.acquireCameraImage();
+            % Reference sample image: camera BS on, LED BS on, laser blocked, LED on.
+            obj.prepareAutofocusBeamSplitters();
+            sampleImage = obj.acquireSampleImageForAutofocus();
 
-            % 2) Laser on sample: ND on, blocker open
-            obj.setBeamSplitterState("camera", true);
-            obj.setBeamSplitterState("led", true);
-            obj.setLaserPathState(blocked = false, ndOn = true);
-            obj.setLedState(true);
-            laserOnSampleImage = obj.acquireCameraImage();
-
-            % 3) Laser only: LED BS off, LED off
-            obj.setBeamSplitterState("camera", true);
-            obj.setBeamSplitterState("led", false);
-            obj.setLaserPathState(blocked = false, ndOn = true);
-            obj.setLedState(false);
-            laserOnlyImage = obj.acquireCameraImage();
+            % Reference laser image: keep camera BS and LED BS on; turn off LED; open laser path with ND on.
+            laserOnlyImage = obj.acquireLaserSpotImage();
+            [referenceBeamspotPx, beamspotStats] = obj.estimateBeamspotCenterInternal(laserOnlyImage, [NaN; NaN]);
 
             obj.referenceSampleImage = sampleImage;
-            obj.referenceLaserOnSampleImage = laserOnSampleImage;
+            obj.referenceLaserOnSampleImage = [];
             obj.referenceLaserOnlyImage = laserOnlyImage;
+            obj.referenceBeamspot_px = referenceBeamspotPx;
+            obj.lastBeamspot_px = referenceBeamspotPx;
+            obj.lastBeamspotDelta_px = [0; 0];
             obj.buildReferenceFitModel();
 
-            obj.setLaserPathState(blocked = true, ndOn = false);
-            obj.setLedState(false);
+            obj.restoreMeasurementOptics();
 
             references = struct( ...
                 "sampleImage", sampleImage, ...
-                "laserOnSampleImage", laserOnSampleImage, ...
+                "laserOnSampleImage", [], ...
                 "laserOnlyImage", laserOnlyImage, ...
+                "referenceBeamspot_px", referenceBeamspotPx, ...
+                "beamspotStats", beamspotStats, ...
                 "offsetFitRoi_px", obj.offsetFitRoi_px, ...
+                "beamspotFitRoi_px", obj.beamspotFitRoi_px, ...
                 "cameraBsLikelyOnDeg", obj.BS_camera_likelyOn_PositionDeg, ...
                 "cameraBsLikelyOffDeg", obj.BS_camera_likelyOff_PositionDeg, ...
                 "ledBsLikelyOnDeg", obj.BS_LED_likelyOn_PositionDeg, ...
                 "ledBsLikelyOffDeg", obj.BS_LED_likelyOff_PositionDeg);
+
+            clear cleanup;
         end
 
         function roi_px = selectOffsetFitRoi(obj)
@@ -396,7 +444,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 initialPosition = [1 + marginX, 1 + marginY, imageSize(2) - 2 * marginX, imageSize(1) - 2 * marginY];
             end
 
-            fig = figure(Name = "Attodry Autofocus Offset ROI", NumberTitle = "off", Color = "w");
+            fig = figure(Name = "Attodry Autofocus Sample-Shift ROI", NumberTitle = "off", Color = "w");
             ax = axes(fig);
             imagesc(ax, obj.referenceSampleImage);
             colormap(ax, gray(256));
@@ -413,6 +461,60 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             obj.offsetFitRoi_px = roi_px;
             obj.getOffsetFitRoiIndices(imageSize);
             obj.buildReferenceFitModel();
+            if isvalid(fig)
+                close(fig);
+            end
+        end
+
+        function roi_px = selectBeamspotFitRoi(obj)
+            if isempty(obj.referenceLaserOnlyImage)
+                error("virtualInstrument_attodryAutofocus:MissingReferenceData", ...
+                    "Call takeReferenceData() before selecting beamspot fit ROI.");
+            end
+            if exist("drawrectangle", "file") ~= 2
+                error("virtualInstrument_attodryAutofocus:MissingRoiTool", ...
+                    "selectBeamspotFitRoi requires drawrectangle.");
+            end
+
+            imageSize = size(obj.referenceLaserOnlyImage);
+            if all(isfinite(obj.beamspotFitRoi_px))
+                initialPosition = obj.beamspotFitRoi_px;
+                obj.getBeamspotFitRoiIndices(imageSize);
+            else
+                centerGuess = obj.referenceBeamspot_px;
+                if all(isfinite(centerGuess))
+                    side = 0.25 * min(imageSize(1), imageSize(2));
+                    initialPosition = [centerGuess(1) - side / 2, centerGuess(2) - side / 2, side, side];
+                    initialPosition(1) = max(1, initialPosition(1));
+                    initialPosition(2) = max(1, initialPosition(2));
+                    initialPosition(3) = min(initialPosition(3), imageSize(2) - initialPosition(1) + 1);
+                    initialPosition(4) = min(initialPosition(4), imageSize(1) - initialPosition(2) + 1);
+                else
+                    marginX = floor(0.25 * imageSize(2));
+                    marginY = floor(0.25 * imageSize(1));
+                    initialPosition = [1 + marginX, 1 + marginY, imageSize(2) - 2 * marginX, imageSize(1) - 2 * marginY];
+                end
+            end
+
+            fig = figure(Name = "Attodry Autofocus Beamspot ROI", NumberTitle = "off", Color = "w");
+            ax = axes(fig);
+            imagesc(ax, obj.referenceLaserOnlyImage);
+            colormap(ax, gray(256));
+            axis(ax, "image");
+            ax.YDir = "normal";
+            roiHandle = drawrectangle(ax, Position = initialPosition);
+            wait(roiHandle);
+            if ~isvalid(roiHandle)
+                error("virtualInstrument_attodryAutofocus:RoiSelectionCanceled", ...
+                    "Beamspot ROI selection was canceled.");
+            end
+
+            roi_px = roiHandle.Position;
+            obj.beamspotFitRoi_px = roi_px;
+            obj.getBeamspotFitRoiIndices(imageSize);
+            [obj.referenceBeamspot_px, ~] = obj.estimateBeamspotCenterInternal(obj.referenceLaserOnlyImage, obj.referenceBeamspot_px);
+            obj.lastBeamspot_px = obj.referenceBeamspot_px;
+            obj.lastBeamspotDelta_px = [0; 0];
             if isvalid(fig)
                 close(fig);
             end
@@ -461,40 +563,103 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             dy = fitResult.dy;
         end
 
-        function result = performAutofocusAndAutoshift(obj)
-            result = struct("didApplyCorrection", false, "correctionKind", "none", ...
-                "correctionStepsMax", 0, "dx_px", NaN, "dy_px", NaN);
+        function [center_px, stats] = estimateBeamspotCenter(obj, image2D)
+            [center_px, stats] = obj.estimateBeamspotCenterInternal(image2D, [NaN; NaN]);
+        end
+
+        function result = performAutofocusOnly(obj)
+            result = struct( ...
+                "didApplyCorrection", false, ...
+                "correctionKind", "z", ...
+                "correctionStepsMax", 0, ...
+                "zSteps", 0);
 
             if isempty(obj.referenceSampleImage)
+                error("virtualInstrument_attodryAutofocus:MissingReferenceData", ...
+                    "Call takeReferenceData() before performAutofocusOnly().");
+            end
+            if ~obj.anc300Configured()
+                error("virtualInstrument_attodryAutofocus:ANC300NotConfigured", ...
+                    "ANC300 channels must be configured before performAutofocusOnly().");
+            end
+
+            cleanup = onCleanup(@() obj.blockLaserOnly());
+            obj.prepareAutofocusBeamSplitters();
+
+            nStepZ = obj.runZAutofocus();
+            result.zSteps = nStepZ;
+            result.correctionStepsMax = abs(nStepZ);
+            result.didApplyCorrection = result.correctionStepsMax >= 1;
+
+            clear cleanup;
+        end
+
+        function result = performAutofocusAndAutoshift(obj)
+            result = struct( ...
+                "didApplyCorrection", false, ...
+                "correctionKind", "cycle", ...
+                "correctionStepsMax", 0, ...
+                "dx_px", NaN, ...
+                "dy_px", NaN, ...
+                "raw_dx_px", NaN, ...
+                "raw_dy_px", NaN, ...
+                "beamspot_x_px", NaN, ...
+                "beamspot_y_px", NaN, ...
+                "beamspotDelta_x_px", NaN, ...
+                "beamspotDelta_y_px", NaN, ...
+                "zSteps", 0, ...
+                "xySteps", [0; 0]);
+
+            if isempty(obj.referenceSampleImage) || any(~isfinite(obj.referenceBeamspot_px))
                 error("virtualInstrument_attodryAutofocus:MissingReferenceData", ...
                     "Call takeReferenceData() before performAutofocusAndAutoshift().");
             end
 
-            if ~obj.anc300Configured()
-                liveImage = obj.acquireCameraImage();
-                [dx, dy] = obj.estimateSampleOffset(liveImage);
-                obj.lastEstimatedOffset_px = [dx; dy];
-                result.dx_px = dx;
-                result.dy_px = dy;
-                return;
-            end
+            cleanup = onCleanup(@() obj.blockLaserOnly());
+            obj.prepareAutofocusBeamSplitters();
 
-            if obj.nextCorrectionKind == "xy"
-                result.correctionKind = "xy";
-                liveImage = obj.acquireCameraImage();
-                [dx, dy] = obj.estimateSampleOffset(liveImage);
-                obj.lastEstimatedOffset_px = [dx; dy];
-                result.dx_px = dx;
-                result.dy_px = dy;
-                [nStepX, nStepY] = obj.runAutoshift(dx, dy);
-                result.correctionStepsMax = max(abs([nStepX, nStepY]));
-                obj.nextCorrectionKind = "z";
+            if obj.anc300Configured()
+                nStepZ = obj.runZAutofocus();
             else
-                result.correctionKind = "z";
-                result.correctionStepsMax = abs(obj.runZAutofocus());
-                obj.nextCorrectionKind = "xy";
+                nStepZ = 0;
+                obj.acquireSampleImageForAutofocus();
             end
+            result.zSteps = nStepZ;
+
+            [beamspotImage, beamspot_px] = obj.acquireLaserSpotImageAndCenter(); %#ok<ASGLU>
+            beamDelta_px = beamspot_px - obj.referenceBeamspot_px;
+            obj.lastBeamspot_px = beamspot_px;
+            obj.lastBeamspotDelta_px = beamDelta_px;
+
+            sampleImage = obj.acquireSampleImageForAutoshift();
+            [rawDx, rawDy] = obj.estimateSampleOffset(sampleImage);
+            rawOffset_px = [rawDx; rawDy];
+            correctedOffset_px = obj.computeBeamReferencedSampleOffset(rawOffset_px, beamspot_px);
+
+            obj.lastRawSampleOffset_px = rawOffset_px;
+            obj.lastBeamReferencedOffset_px = correctedOffset_px;
+            obj.lastEstimatedOffset_px = correctedOffset_px;
+
+            result.dx_px = correctedOffset_px(1);
+            result.dy_px = correctedOffset_px(2);
+            result.raw_dx_px = rawDx;
+            result.raw_dy_px = rawDy;
+            result.beamspot_x_px = beamspot_px(1);
+            result.beamspot_y_px = beamspot_px(2);
+            result.beamspotDelta_x_px = beamDelta_px(1);
+            result.beamspotDelta_y_px = beamDelta_px(2);
+
+            if obj.anc300Configured()
+                [nStepX, nStepY] = obj.runAutoshift(correctedOffset_px(1), correctedOffset_px(2));
+            else
+                nStepX = 0;
+                nStepY = 0;
+            end
+            result.xySteps = [nStepX; nStepY];
+            result.correctionStepsMax = max(abs([nStepZ, nStepX, nStepY]));
             result.didApplyCorrection = result.correctionStepsMax >= 1;
+
+            clear cleanup;
         end
     end
 
@@ -553,16 +718,21 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
 
     methods (Access = private)
         function waitForTargetsWithCompensation(obj)
+            cleanup = onCleanup(@() obj.blockLaserOnly());
+            obj.prepareAutofocusBeamSplitters();
+            obj.acquireSampleImageForAutofocus();
+
             masterRackProxy = obj.getMasterRackProxy();
             masterRackProxy.rackSetWrite([obj.T_channelName; obj.B_channelName], [obj.targetT; obj.targetB]);
 
             deadline = datetime("now") + obj.targetWaitTimeout;
             noCorrectionStart = NaT;
-            quietAxes = [false; false];  % [xy; z]
             sampleCapacity = max(3, ceil(seconds(obj.temperatureStableWindow) / max(seconds(obj.compensationInterval), 1)) + 2);
             temperatureTimes = NaT(sampleCapacity, 1);
             temperatureSamples_K = NaN(sampleCapacity, 1);
             temperatureSampleCount = 0;
+            settledCorrectionCount = 0;
+
             while true
                 nowTime = datetime("now");
                 currentTB = obj.getCurrentTB();
@@ -584,24 +754,27 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 correction = obj.performAutofocusAndAutoshift();
                 targetsSettled = obj.targetsReached(currentTB) ...
                     && obj.temperatureIsStable(temperatureTimes(1:temperatureSampleCount), temperatureSamples_K(1:temperatureSampleCount));
+
                 if targetsSettled && ~correction.didApplyCorrection
-                    if correction.correctionKind == "xy"
-                        quietAxes(1) = true;
-                    elseif correction.correctionKind == "z"
-                        quietAxes(2) = true;
-                    else
-                        quietAxes(:) = true;
-                    end
-                    if all(quietAxes)
-                        if isnat(noCorrectionStart)
-                            noCorrectionStart = nowTime;
-                        elseif nowTime - noCorrectionStart >= obj.noCorrectionQuietDuration
-                            return;
-                        end
+                    if isnat(noCorrectionStart)
+                        noCorrectionStart = nowTime;
+                    elseif nowTime - noCorrectionStart >= obj.noCorrectionQuietDuration
+                        obj.restoreMeasurementOptics();
+                        clear cleanup;
+                        return;
                     end
                 else
                     noCorrectionStart = NaT;
-                    quietAxes(:) = false;
+                end
+
+                if targetsSettled && correction.didApplyCorrection
+                    settledCorrectionCount = settledCorrectionCount + 1;
+                    if settledCorrectionCount >= obj.maxAutofocusIterations
+                        error("virtualInstrument_attodryAutofocus:AutofocusConvergenceFailed", ...
+                            "Autofocus/autoshift still required correction after %d cycles at settled T/B.", obj.maxAutofocusIterations);
+                    end
+                elseif ~targetsSettled || ~correction.didApplyCorrection
+                    settledCorrectionCount = 0;
                 end
 
                 if nowTime >= deadline
@@ -686,13 +859,13 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             for nTrial = 1:obj.zStepTrialCount
                 while true
                     masterRackProxy.rackSetWrite(obj.ANC300_voltage_z_ChannelName, vZ);
-                    img0 = obj.acquireCameraImage();
+                    img0 = obj.acquireSampleImageForAutofocus();
                     s0 = obj.tenengradSharpness(img0);
                     anc.stepAxis("z", nTrial);
-                    imgPlus = obj.acquireCameraImage();
+                    imgPlus = obj.acquireSampleImageForAutofocus();
                     sPlus = obj.tenengradSharpness(imgPlus);
                     anc.stepAxis("z", -2 * nTrial);
-                    imgMinus = obj.acquireCameraImage();
+                    imgMinus = obj.acquireSampleImageForAutofocus();
                     sMinus = obj.tenengradSharpness(imgMinus);
                     anc.stepAxis("z", nTrial);
                     if max(abs([sPlus - s0, sMinus - s0])) < thresh
@@ -753,7 +926,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             obj.xyPixelPerStepMatrix = NaN(2, 2);
             masterRackProxy = obj.getMasterRackProxy();
             anc = obj.getANC300Handle();
-            verifyPx = obj.cameraVerifiableStepSizePixel;
+            targetPx = obj.targetStepSizePixel;
             [firstTryVoltages, currentTemperature_K] = obj.getInitialPositionerVoltages();
             axes = ["x"; "y"];
             voltageChannels = [obj.ANC300_voltage_x_ChannelName; obj.ANC300_voltage_y_ChannelName];
@@ -763,23 +936,28 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 voltage = firstTryVoltages(1);
                 while true
                     masterRackProxy.rackSetWrite(voltageChannels(axisIndex), voltage);
-                    [dx0, dy0] = obj.estimateSampleOffset(obj.acquireCameraImage());
+                    obj.runZAutofocus();
+                    [dx0, dy0] = obj.estimateSampleOffset(obj.acquireSampleImageForAutoshift());
                     offset0 = [dx0; dy0];
                     for nSteps = 1:obj.maxAutoshiftCalibrationSteps
                         anc.stepAxis(axes(axisIndex), nSteps);
-                        [dx1, dy1] = obj.estimateSampleOffset(obj.acquireCameraImage());
+                        obj.runZAutofocus();
+                        [dx1, dy1] = obj.estimateSampleOffset(obj.acquireSampleImageForAutoshift());
                         anc.stepAxis(axes(axisIndex), -nSteps);
+                        obj.runZAutofocus();
                         dPx = [dx1; dy1] - offset0;
                         dPxNorm = norm(dPx);
-                        if nSteps == 1 && dPxNorm > 2 * verifyPx && voltage > 1
+                        if nSteps == 1 && dPxNorm > 2 * targetPx && voltage > 1
                             voltage = max(1, voltage / obj.zVoltageIncrementFactor);
                             break;
                         end
-                        if dPxNorm >= verifyPx * 0.5
+                        if dPxNorm >= targetPx
                             xyPixelPerStepMatrix(:, axisIndex) = dPx / nSteps;
                             finalVoltages(axisIndex) = voltage;
                             break;
                         end
+                        [dx0, dy0] = obj.estimateSampleOffset(obj.acquireSampleImageForAutoshift());
+                        offset0 = [dx0; dy0];
                     end
                     if all(isfinite(xyPixelPerStepMatrix(:, axisIndex))) || voltage <= 1
                         break;
@@ -794,11 +972,13 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             end
             if any(~isfinite(xyPixelPerStepMatrix(:, 1)))
                 error("virtualInstrument_attodryAutofocus:XAutoshiftCalibrationFailed", ...
-                    "X calibration could not produce a camera-verifiable shift within %d steps.", obj.maxAutoshiftCalibrationSteps);
+                    "X calibration could not produce a %.6g px shift within %d steps.", ...
+                    obj.targetStepSizePixel, obj.maxAutoshiftCalibrationSteps);
             end
             if any(~isfinite(xyPixelPerStepMatrix(:, 2)))
                 error("virtualInstrument_attodryAutofocus:YAutoshiftCalibrationFailed", ...
-                    "Y calibration could not produce a camera-verifiable shift within %d steps.", obj.maxAutoshiftCalibrationSteps);
+                    "Y calibration could not produce a %.6g px shift within %d steps.", ...
+                    obj.targetStepSizePixel, obj.maxAutoshiftCalibrationSteps);
             end
             matrixRcond = rcond(xyPixelPerStepMatrix);
             if matrixRcond < obj.xyResponseMatrixMinRcond
@@ -881,6 +1061,179 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 error("virtualInstrument_attodryAutofocus:VoltageProfileTemperatureOutOfRange", ...
                     "Current temperature %.6g K is outside voltage profile range [%.6g, %.6g] K.", ...
                     currentTemperature_K, profile.temperature_K(1), profile.temperature_K(end));
+            end
+        end
+
+        function prepareAutofocusBeamSplitters(obj)
+            obj.assertOpticsChannelsConfigured();
+            if any(~isfinite([obj.BS_camera_likelyOn_PositionDeg, obj.BS_camera_likelyOff_PositionDeg, ...
+                    obj.BS_LED_likelyOn_PositionDeg, obj.BS_LED_likelyOff_PositionDeg]))
+                obj.characterizeBeamSplitterEndpoints();
+            end
+            masterRackProxy = obj.getMasterRackProxy();
+            currentPositionsDeg = masterRackProxy.rackGet([obj.BS_camera_positionChannelName; obj.BS_LED_positionChannelName]);
+            currentPositionsDeg = currentPositionsDeg(:);
+            if numel(currentPositionsDeg) ~= 2 || any(~isfinite(currentPositionsDeg))
+                error("virtualInstrument_attodryAutofocus:InvalidBeamSplitterPositionRead", ...
+                    "Expected finite camera and LED beam splitter position reads.");
+            end
+            if abs(currentPositionsDeg(1) - obj.BS_camera_likelyOn_PositionDeg) > obj.bsPositionToleranceDeg
+                obj.setBeamSplitterState("camera", true);
+            end
+            if abs(currentPositionsDeg(2) - obj.BS_LED_likelyOn_PositionDeg) > obj.bsPositionToleranceDeg
+                obj.setBeamSplitterState("led", true);
+            end
+        end
+
+        function restoreMeasurementOptics(obj)
+            obj.setLedState(false);
+            obj.setLaserPathState(blocked = true, ndOn = false);
+            if obj.turnBeamSplittersOffAfterAutofocus
+                obj.setBeamSplitterState("led", false);
+                obj.setBeamSplitterState("camera", false);
+            end
+        end
+
+        function blockLaserOnly(obj)
+            obj.setLaserPathState(blocked = true, ndOn = false);
+        end
+
+        function image2D = acquireSampleImageForAutofocus(obj)
+            obj.setLaserPathState(blocked = true, ndOn = false);
+            obj.setLedState(true);
+            image2D = obj.acquireCameraImage();
+        end
+
+        function image2D = acquireSampleImageForAutoshift(obj)
+            image2D = obj.acquireSampleImageForAutofocus();
+        end
+
+        function image2D = acquireLaserSpotImage(obj)
+            obj.setLedState(false);
+            obj.setLaserPathState(blocked = false, ndOn = true);
+            image2D = obj.acquireCameraImage();
+        end
+
+        function [image2D, center_px, stats] = acquireLaserSpotImageAndCenter(obj)
+            image2D = obj.acquireLaserSpotImage();
+            [center_px, stats] = obj.estimateBeamspotCenterInternal(image2D, obj.referenceBeamspot_px);
+        end
+
+        function correctedOffset_px = computeBeamReferencedSampleOffset(obj, rawOffset_px, liveBeamspot_px)
+            if any(~isfinite(obj.referenceBeamspot_px)) || any(~isfinite(liveBeamspot_px))
+                error("virtualInstrument_attodryAutofocus:InvalidBeamspotReference", ...
+                    "Reference and live beamspot coordinates must be finite.");
+            end
+            beamDelta_xy = liveBeamspot_px(:) - obj.referenceBeamspot_px(:); % [x; y] = [column; row]
+            % estimateSampleOffset() returns [rowShift; columnShift] with sign opposite to
+            % camera-coordinate feature displacement. Remove the camera-BS displacement by
+            % subtracting that sign-converted beamspot drift.
+            commonFitOffset_px = [-beamDelta_xy(2); -beamDelta_xy(1)];
+            correctedOffset_px = rawOffset_px(:) - commonFitOffset_px;
+        end
+
+        function [center_px, stats] = estimateBeamspotCenterInternal(obj, image2D, startCenter_px)
+            if isempty(image2D)
+                error("virtualInstrument_attodryAutofocus:EmptyBeamspotImage", ...
+                    "Beamspot image is empty.");
+            end
+            img = double(image2D);
+            if any(~isfinite(img(:)))
+                error("virtualInstrument_attodryAutofocus:InvalidBeamspotImage", ...
+                    "Beamspot image must contain only finite values.");
+            end
+
+            [rows, cols] = size(img);
+            [fitRows, fitCols, roi_px] = obj.getBeamspotFitRoiIndices([rows, cols]);
+            roiImg = img(fitRows, fitCols);
+            [xGrid, yGrid] = meshgrid(fitCols, fitRows);
+
+            background = obj.percentileValue(roiImg(:), obj.beamspotBackgroundPercentile);
+            signal = roiImg - background;
+            signal(signal < 0) = 0;
+            if obj.beamspotWeightPower ~= 1
+                signal = signal .^ obj.beamspotWeightPower;
+            end
+            totalSignal = sum(signal(:));
+            if totalSignal <= 0
+                error("virtualInstrument_attodryAutofocus:BeamspotSignalMissing", ...
+                    "Beamspot signal is zero after background subtraction.");
+            end
+
+            if numel(startCenter_px) == 2 && all(isfinite(startCenter_px)) ...
+                    && startCenter_px(1) >= min(fitCols) && startCenter_px(1) <= max(fitCols) ...
+                    && startCenter_px(2) >= min(fitRows) && startCenter_px(2) <= max(fitRows)
+                centerX = startCenter_px(1);
+                centerY = startCenter_px(2);
+            else
+                centerX = sum(xGrid(:) .* signal(:)) / totalSignal;
+                centerY = sum(yGrid(:) .* signal(:)) / totalSignal;
+            end
+
+            radius_px = obj.beamspotCircleRadius_px;
+            if ~isfinite(radius_px)
+                radius_px = 0.45 * min(numel(fitRows), numel(fitCols));
+            end
+            if radius_px <= 0
+                error("virtualInstrument_attodryAutofocus:InvalidBeamspotCircleRadius", ...
+                    "Computed beamspot circular ROI radius must be positive.");
+            end
+
+            for iterationIndex = 1:obj.beamspotCenterIterations
+                circularMask = (xGrid - centerX).^2 + (yGrid - centerY).^2 <= radius_px.^2;
+                weights = signal;
+                weights(~circularMask) = 0;
+                weightSum = sum(weights(:));
+                if weightSum <= 0
+                    error("virtualInstrument_attodryAutofocus:BeamspotSignalMissingInCircle", ...
+                        "Beamspot circular ROI contains no positive signal.");
+                end
+                nextCenterX = sum(xGrid(:) .* weights(:)) / weightSum;
+                nextCenterY = sum(yGrid(:) .* weights(:)) / weightSum;
+                if hypot(nextCenterX - centerX, nextCenterY - centerY) <= obj.beamspotCenterTolerance_px
+                    centerX = nextCenterX;
+                    centerY = nextCenterY;
+                    break;
+                end
+                centerX = nextCenterX;
+                centerY = nextCenterY;
+            end
+
+            center_px = [centerX; centerY];
+            beamDeltaFromStart_px = [NaN; NaN];
+            if numel(startCenter_px) == 2 && all(isfinite(startCenter_px))
+                beamDeltaFromStart_px = center_px - startCenter_px(:);
+            end
+            stats = struct( ...
+                "background", background, ...
+                "totalSignal", totalSignal, ...
+                "radius_px", radius_px, ...
+                "roi_px", roi_px, ...
+                "deltaFromStart_px", beamDeltaFromStart_px);
+        end
+
+        function p = percentileValue(~, values, percentile)
+            values = sort(values(:));
+            n = numel(values);
+            if n == 0
+                p = NaN;
+                return;
+            end
+            if percentile <= 0
+                p = values(1);
+                return;
+            elseif percentile >= 100
+                p = values(end);
+                return;
+            end
+            idx = 1 + (n - 1) * percentile / 100;
+            lo = floor(idx);
+            hi = ceil(idx);
+            if lo == hi
+                p = values(lo);
+            else
+                alpha = idx - lo;
+                p = (1 - alpha) * values(lo) + alpha * values(hi);
             end
         end
 
@@ -1021,6 +1374,34 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             end
             fitRows = y1:y2;
             fitCols = x1:x2;
+        end
+
+        function [fitRows, fitCols, roi_px] = getBeamspotFitRoiIndices(obj, imageSize)
+            rows = imageSize(1);
+            cols = imageSize(2);
+            roi = obj.beamspotFitRoi_px;
+            if all(isnan(roi))
+                fitRows = 1:rows;
+                fitCols = 1:cols;
+                roi_px = [1, 1, cols, rows];
+                return;
+            end
+            if any(isnan(roi)) || any(~isfinite(roi)) || roi(3) <= 0 || roi(4) <= 0
+                error("virtualInstrument_attodryAutofocus:InvalidBeamspotFitRoi", ...
+                    "beamspotFitRoi_px must be [x, y, width, height] with finite positive width and height, or all NaN.");
+            end
+
+            x1 = floor(roi(1));
+            y1 = floor(roi(2));
+            x2 = ceil(roi(1) + roi(3) - 1);
+            y2 = ceil(roi(2) + roi(4) - 1);
+            if x1 < 1 || y1 < 1 || x2 > cols || y2 > rows || x2 < x1 || y2 < y1
+                error("virtualInstrument_attodryAutofocus:BeamspotFitRoiOutOfBounds", ...
+                    "beamspotFitRoi_px must lie inside image bounds [height=%d, width=%d].", rows, cols);
+            end
+            fitRows = y1:y2;
+            fitCols = x1:x2;
+            roi_px = [x1, y1, x2 - x1 + 1, y2 - y1 + 1];
         end
 
         function assertReferenceFitReady(obj)
