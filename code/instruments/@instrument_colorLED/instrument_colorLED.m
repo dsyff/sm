@@ -2,7 +2,7 @@ classdef instrument_colorLED < instrumentInterface
     % USB CDC WS2811 color LED controller
 
     properties (Access = private)
-        cachedRgb double = [0; 0; 0];
+        cachedRGB double = [0; 0; 0];
     end
 
     methods
@@ -21,7 +21,7 @@ classdef instrument_colorLED < instrumentInterface
             obj.addChannel("RGB", 3);
 
             obj.requireSetCheck = false;
-            obj.cachedRgb = obj.queryRgb();
+            obj.cachedRGB = obj.queryRGB();
         end
 
         function delete(obj)
@@ -43,17 +43,17 @@ classdef instrument_colorLED < instrumentInterface
 
         function getValues = getReadChannelHelper(obj, channelIndex)
             response = strip(readline(obj.communicationHandle));
-            rgb = obj.parseRgbResponse(response);
-            obj.cachedRgb = rgb;
+            RGB = obj.parseRGBResponse(response);
+            obj.cachedRGB = RGB;
             switch channelIndex
                 case 1
-                    getValues = rgb(1);
+                    getValues = RGB(1);
                 case 2
-                    getValues = rgb(2);
+                    getValues = RGB(2);
                 case 3
-                    getValues = rgb(3);
+                    getValues = RGB(3);
                 case 4
-                    getValues = rgb;
+                    getValues = RGB;
             end
         end
 
@@ -62,38 +62,38 @@ classdef instrument_colorLED < instrumentInterface
                 error("instrument_colorLED:ValueOutOfRange", "R/G/B values must be in [0,1].");
             end
 
-            rgb = obj.cachedRgb;
+            RGB = obj.cachedRGB;
             switch channelIndex
                 case 1
-                    rgb(1) = setValues(1);
+                    RGB(1) = setValues(1);
                 case 2
-                    rgb(2) = setValues(1);
+                    RGB(2) = setValues(1);
                 case 3
-                    rgb(3) = setValues(1);
+                    RGB(3) = setValues(1);
                 case 4
-                    rgb = setValues;
+                    RGB = setValues;
             end
 
-            rgbInt = round(rgb * 255);
-            command = compose("COLOR %d,%d,%d", rgbInt(1), rgbInt(2), rgbInt(3));
+            RGBInt = round(RGB * 255);
+            command = compose("COLOR %d,%d,%d", RGBInt(1), RGBInt(2), RGBInt(3));
             writeline(obj.communicationHandle, command);
             response = strip(readline(obj.communicationHandle));
             if ~strcmpi(response, "OK")
                 error("instrument_colorLED:CommandFailed", "COLOR command failed with response: " + response);
             end
 
-            obj.cachedRgb = rgbInt(:) / 255;
+            obj.cachedRGB = RGBInt(:) / 255;
         end
     end
 
     methods (Access = private)
-        function rgb = queryRgb(obj)
+        function RGB = queryRGB(obj)
             writeline(obj.communicationHandle, "GET");
             response = strip(readline(obj.communicationHandle));
-            rgb = obj.parseRgbResponse(response);
+            RGB = obj.parseRGBResponse(response);
         end
 
-        function rgb = parseRgbResponse(~, response)
+        function RGB = parseRGBResponse(~, response)
             if ~startsWith(upper(response), "COLOR")
                 error("instrument_colorLED:BadResponse", "Expected COLOR response, received: " + response);
             end
@@ -103,11 +103,11 @@ classdef instrument_colorLED < instrumentInterface
                 error("instrument_colorLED:BadResponse", "Expected 3 color values, received: " + response);
             end
 
-            rgbInt = str2double(numbers);
-            if any(isnan(rgbInt)) || any(rgbInt < 0 | rgbInt > 255)
+            RGBInt = str2double(numbers);
+            if any(isnan(RGBInt)) || any(RGBInt < 0 | RGBInt > 255)
                 error("instrument_colorLED:BadResponse", "Color values must be integers 0..255. Received: " + response);
             end
-            rgb = rgbInt(:) / 255;
+            RGB = RGBInt(:) / 255;
         end
     end
 end
