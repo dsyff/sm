@@ -165,7 +165,7 @@ end
     
     
     leftX = 3;
-    leftW = 210;
+    leftW = 254;
     leftPad = 5;
     rowTextYOffset = layoutMetrics.textYOffset;
     topPad = 6;
@@ -1536,7 +1536,7 @@ function y = smguiLeftPanelRowY(panelHeight, row, m)
 end
 
 function m = smguiLayoutMetrics()
-    m.bodyX = 223;
+    m.bodyX = 267;
     m.panelW = 794;
     m.rowViewW = 774;
     m.internalSliderX = 778;
@@ -1553,12 +1553,12 @@ function m = smguiLayoutMetrics()
     m.bottomPad = 8;
     m.maxContentRows = 5;
     m.constCols = 3;
-    m.constPopupW = 164;
+    m.constPopupW = 120;
     m.constEditW = 44;
     m.constCheckW = 16;
     m.recordCols = 4;
     m.recordX = 60;
-    m.recordW = 164;
+    m.recordW = 120;
 end
 
 function loops = normalizeLoopFields(loops)
