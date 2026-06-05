@@ -91,6 +91,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
 
         targetStepSizePixel (1, 1) double {mustBePositive} = 0.25
         xyCalibrationTargetDisplacement_px (1, 1) double {mustBePositive} = 2.0
+        xyCalibrationMinFitRsquare (1, 1) double {mustBeGreaterThanOrEqual(xyCalibrationMinFitRsquare, 0), mustBeLessThanOrEqual(xyCalibrationMinFitRsquare, 1)} = 0.90
         autoshiftStepRatio (1, 1) double {mustBePositive} = 0.5
         xyResponseMatrixMinRcond (1, 1) double {mustBePositive} = 1e-3
         maxAutoshiftCalibrationSteps (1, 1) double {mustBeInteger, mustBePositive} = 20
@@ -201,6 +202,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 NameValueArgs.zStepTrialCount (1, 1) double {mustBeInteger, mustBePositive} = 5
                 NameValueArgs.targetStepSizePixel (1, 1) double {mustBePositive} = 0.25
                 NameValueArgs.xyCalibrationTargetDisplacement_px (1, 1) double {mustBePositive} = 2.0
+                NameValueArgs.xyCalibrationMinFitRsquare (1, 1) double {mustBeGreaterThanOrEqual(NameValueArgs.xyCalibrationMinFitRsquare, 0), mustBeLessThanOrEqual(NameValueArgs.xyCalibrationMinFitRsquare, 1)} = 0.90
                 NameValueArgs.autoshiftStepRatio (1, 1) double {mustBePositive} = 0.5
                 NameValueArgs.xyResponseMatrixMinRcond (1, 1) double {mustBePositive} = 1e-3
                 NameValueArgs.maxAutoshiftCalibrationSteps (1, 1) double {mustBeInteger, mustBePositive} = 20
@@ -321,6 +323,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             obj.zStepTrialCount = NameValueArgs.zStepTrialCount;
             obj.targetStepSizePixel = NameValueArgs.targetStepSizePixel;
             obj.xyCalibrationTargetDisplacement_px = NameValueArgs.xyCalibrationTargetDisplacement_px;
+            obj.xyCalibrationMinFitRsquare = NameValueArgs.xyCalibrationMinFitRsquare;
             obj.autoshiftStepRatio = NameValueArgs.autoshiftStepRatio;
             obj.xyResponseMatrixMinRcond = NameValueArgs.xyResponseMatrixMinRcond;
             obj.maxAutoshiftCalibrationSteps = NameValueArgs.maxAutoshiftCalibrationSteps;
@@ -947,16 +950,29 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 for voltageAttempt = 1:40
                     masterRackProxy.rackSetWrite(voltageChannels(axisIndex), voltage);
                     dSamples = NaN(numel(trialSteps), 2);
+                    fitQualityOk = true;
                     for stepIndex = 1:numel(trialSteps)
                         nSteps = trialSteps(stepIndex);
                         obj.runZAutofocus();
-                        [dx0, dy0] = obj.estimateSampleOffset(obj.acquireSampleImageForAutoshift());
+                        [dx0, dy0, gof0] = obj.estimateSampleOffset(obj.acquireSampleImageForAutoshift());
                         anc.stepAxis(axes(axisIndex), nSteps);
                         obj.runZAutofocus();
-                        [dx1, dy1] = obj.estimateSampleOffset(obj.acquireSampleImageForAutoshift());
+                        [dx1, dy1, gof1] = obj.estimateSampleOffset(obj.acquireSampleImageForAutoshift());
                         anc.stepAxis(axes(axisIndex), -nSteps);
                         obj.runZAutofocus();
+                        fitRsquare = [gof0.rsquare, gof1.rsquare];
+                        if any(~isfinite(fitRsquare)) || min(fitRsquare) < obj.xyCalibrationMinFitRsquare
+                            fitQualityOk = false;
+                            break;
+                        end
                         dSamples(stepIndex, :) = [dx1 - dx0, dy1 - dy0];
+                    end
+                    if ~fitQualityOk
+                        if voltage > 1
+                            voltage = max(1, voltage / obj.zVoltageIncrementFactor);
+                            continue;
+                        end
+                        break;
                     end
                     axisVector = (trialSteps(:) \ dSamples).';
                     pxPerStep = norm(axisVector);
