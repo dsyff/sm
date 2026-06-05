@@ -553,7 +553,9 @@ function GetChannel(hObject,eventdata,i,j)
 global smaux smscan smdata bridge;
     val = get(smaux.smgui.loopvars_getchans_pmh(i,j),'Value');
     if val==1
-        smscan.loops(i).getchan(j)=[];
+        if j <= length(smscan.loops(i).getchan)
+            smscan.loops(i).getchan(j)=[];
+        end
     else
         popupStrings = get(smaux.smgui.loopvars_getchans_pmh(i,j), "String");
         if iscell(popupStrings)
@@ -565,13 +567,17 @@ global smaux smscan smdata bridge;
         if val <= numel(popupStrings)
             selectedVectorChannel = popupStrings(val);
             if selectedVectorChannel == "none"
-                smscan.loops(i).getchan(j) = [];
+                if j <= length(smscan.loops(i).getchan)
+                    smscan.loops(i).getchan(j) = [];
+                end
             else
                 % Store the vector channel name - setplotchoices will handle expansion
                 smscan.loops(i).getchan{j} = selectedVectorChannel;
             end
         else
-            smscan.loops(i).getchan(j) = [];
+            if j <= length(smscan.loops(i).getchan)
+                smscan.loops(i).getchan(j) = [];
+            end
         end
     end
     makescanbody;
@@ -588,23 +594,29 @@ global smaux smscan smdata bridge;
         popupStrings = string(popupStrings);
     end
     if val==1
-        smscan.consts(i)=[];
+        if i <= length(smscan.consts)
+            smscan.consts(i)=[];
+        end
     elseif val <= numel(popupStrings)
         selectedScalarChannel = popupStrings(val);
         if selectedScalarChannel == "none"
-            smscan.consts(i)=[];
+            if i <= length(smscan.consts)
+                smscan.consts(i)=[];
+            end
             makescanbody;
             return;
         end
         smscan.consts(i).setchan = selectedScalarChannel;
-        if ~isfield(smscan.consts(i),'val')
+        if ~isfield(smscan.consts(i),'val') || isempty(smscan.consts(i).val)
             smscan.consts(i).val=0;
         end
-        if ~isfield(smscan.consts(i),'set')
+        if ~isfield(smscan.consts(i),'set') || isempty(smscan.consts(i).set)
             smscan.consts(i).set=1;
         end
     else
-        smscan.consts(i)=[];
+        if i <= length(smscan.consts)
+            smscan.consts(i)=[];
+        end
     end
     makescanbody;
 end
