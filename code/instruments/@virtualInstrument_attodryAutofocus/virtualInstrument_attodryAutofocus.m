@@ -127,8 +127,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         BS_LED_likelyOn_PositionDeg (1, 1) double = NaN
         BS_LED_likelyOff_PositionDeg (1, 1) double = NaN
 
-        referenceSampleInterpolant
-        referenceShiftFitModel
+        referenceFilteredImage
         referenceFitSize_px (1, 2) double = [NaN, NaN]
         referenceFitTrim_px (1, 2) double = [NaN, NaN]
 
@@ -552,8 +551,10 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             filtered = log(double(image2D) + 1);
             [rows, cols] = size(filtered);
             [fitRows, fitCols] = obj.getOffsetFitRoiIndices([rows, cols], roiShift_xy);
+            [fullRows, fullCols] = ndgrid(1:rows, 1:cols);
+            currentInterpolant = griddedInterpolant(fullRows, fullCols, filtered, "spline", "none");
             [xGrid, yGrid] = ndgrid(fitRows, fitCols);
-            zGrid = filtered(fitRows, fitCols);
+            zGrid = obj.referenceFilteredImage(fitRows, fitCols);
 
             xTrim = ceil(obj.shiftFitTrimRatio(1) / 2 * numel(fitRows));
             yTrim = ceil(obj.shiftFitTrimRatio(2) / 2 * numel(fitCols));
@@ -571,7 +572,8 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             yColumn = yGridTrimmed(:);
             zColumn = zGridTrimmed(:);
 
-            [fitResult, gof] = fit([xColumn, yColumn], zColumn, obj.referenceShiftFitModel, ...
+            currentShiftFitModel = @(dx, dy, x, y) currentInterpolant(x + dx, y + dy);
+            [fitResult, gof] = fit([xColumn, yColumn], zColumn, currentShiftFitModel, ...
                 StartPoint = [0, 0], ...
                 Lower = [-xTrim, -yTrim], ...
                 Upper = [xTrim, yTrim], ...
@@ -1358,11 +1360,8 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                     "Reference and live beamspot coordinates must be finite.");
             end
             beamDelta_xy = liveBeamspot_px(:) - obj.referenceBeamspot_px(:); % [x; y] = [column; row]
-            % estimateSampleOffset() returns [rowShift; columnShift] with sign opposite to
-            % camera-coordinate feature displacement. Remove the camera-BS displacement by
-            % subtracting that sign-converted beamspot drift.
-            commonFitOffset_px = [-beamDelta_xy(2); -beamDelta_xy(1)];
-            correctedOffset_px = rawOffset_px(:) - commonFitOffset_px;
+            commonImageOffset_px = [beamDelta_xy(2); beamDelta_xy(1)];
+            correctedOffset_px = rawOffset_px(:) - commonImageOffset_px;
         end
 
         function [center_px, stats] = estimateBeamspotCenterInternal(obj, image2D, startCenter_px)
@@ -1595,9 +1594,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                     "shiftFitTrimRatio trims away the full offset fit ROI.");
             end
 
-            [xGrid, yGrid] = ndgrid(1:rows, 1:cols);
-            obj.referenceSampleInterpolant = griddedInterpolant(xGrid, yGrid, referenceFiltered, "spline", "none");
-            obj.referenceShiftFitModel = @(dx, dy, x, y) obj.referenceSampleInterpolant(x + dx, y + dy);
+            obj.referenceFilteredImage = referenceFiltered;
             obj.referenceFitSize_px = [rows, cols];
             obj.referenceFitTrim_px = [xTrim, yTrim];
         end
@@ -1665,7 +1662,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         end
 
         function assertReferenceFitReady(obj)
-            if isempty(obj.referenceSampleImage) || isempty(obj.referenceShiftFitModel)
+            if isempty(obj.referenceSampleImage) || isempty(obj.referenceFilteredImage)
                 error("virtualInstrument_attodryAutofocus:MissingReferenceData", ...
                     "Call takeReferenceData() before estimating sample offsets.");
             end
