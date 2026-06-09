@@ -92,13 +92,14 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         zVoltageIncrementFactor (1, 1) double {mustBePositive} = 1.05
         zStepTrialCount (1, 1) double {mustBeInteger, mustBePositive} = 5
 
-        targetStepSizePixel (1, 1) double {mustBePositive} = 1.0
-        xyCalibrationTargetDisplacement_px (1, 1) double {mustBePositive} = 2.0
-        xyCalibrationInitialVoltageScale (1, 1) double {mustBePositive} = 1.0
-        xyCalibrationMaxVoltageFactor (1, 1) double {mustBeGreaterThanOrEqual(xyCalibrationMaxVoltageFactor, 1)} = 1.10
+        targetStepSizePixel (1, 1) double {mustBePositive} = 0.5
+        xyCalibrationTargetDisplacement_px (1, 1) double {mustBePositive} = 1.0
+        xyCalibrationInitialVoltageScale (1, 1) double {mustBePositive} = 0.9
+        xyCalibrationMaxVoltageFactor (1, 1) double {mustBeGreaterThanOrEqual(xyCalibrationMaxVoltageFactor, 1)} = 1.20
         xyCalibrationMinBracketWidth_V (1, 1) double {mustBePositive} = 0.25
-        xyCalibrationOscillationCycles (1, 1) double {mustBeInteger, mustBePositive} = 6
+        xyCalibrationOscillationCycles (1, 1) double {mustBeInteger, mustBePositive} = 1
         xyCalibrationStepSizeToleranceFraction (1, 1) double {mustBeNonnegative} = 0.20
+        xyCalibrationMinUsablePxPerStep (1, 1) double {mustBeNonnegative} = 0.2
         xyCalibrationMinFitRsquare (1, 1) double {mustBeGreaterThanOrEqual(xyCalibrationMinFitRsquare, 0), mustBeLessThanOrEqual(xyCalibrationMinFitRsquare, 1)} = 0.90
         autoshiftStepRatio (1, 1) double {mustBePositive} = 0.5
         xyResponseMatrixMinRcond (1, 1) double {mustBePositive} = 1e-3
@@ -107,6 +108,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         xyCalibrationMinSlopeRsquare (1, 1) double {mustBeGreaterThanOrEqual(xyCalibrationMinSlopeRsquare, 0), mustBeLessThanOrEqual(xyCalibrationMinSlopeRsquare, 1)} = 0.20
         xyCalibrationMaxResidual_px (1, 1) double {mustBePositive} = 3.0
         xyCalibrationReturnTolerance_px (1, 1) double {mustBePositive} = 1.0
+        xyCalibrationHistoryDriftThreshold_pxPerStep (1, 1) double {mustBePositive} = 0.1
         maxAutoshiftCorrectionStepsPerAxis (1, 1) double {mustBeInteger, mustBePositive} = 5
     end
 
@@ -142,8 +144,12 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         xyCalibrationVoltages_V (2, 1) double = [NaN; NaN]
         zCalibrationTemperature_K (1, 1) double = NaN
         zCalibrationVoltage_V (1, 1) double = NaN
-        lastAutoshiftRawSteps (2, 1) double = [NaN; NaN]
-        lastAutoshiftAppliedSteps (2, 1) double = [0; 0]
+        xyCalibrationHistoryVoltage_V (20, 2) double = NaN(20, 2)
+        xyCalibrationHistoryPxPerStep (20, 2) double = NaN(20, 2)
+        xyCalibrationHistoryCount (2, 1) double = [0; 0]
+        lastAutoshiftOffset_px (2, 1) double = [NaN; NaN]
+        lastAutoshiftSteps (2, 1) double = [0; 0]
+        lastAutoshiftVoltages_V (2, 1) double = [NaN; NaN]
         voltageProfileMinTemperatureSpacing_K (1, 1) double {mustBePositive} = 5
         voltageProfileUpdateFractionThreshold (1, 1) double {mustBePositive} = 0.20
     end
@@ -221,13 +227,14 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 NameValueArgs.maxAutofocusIterations (1, 1) double {mustBeInteger, mustBePositive} = 50
                 NameValueArgs.zVoltageIncrementFactor (1, 1) double {mustBePositive} = 1.05
                 NameValueArgs.zStepTrialCount (1, 1) double {mustBeInteger, mustBePositive} = 5
-                NameValueArgs.targetStepSizePixel (1, 1) double {mustBePositive} = 1.0
-                NameValueArgs.xyCalibrationTargetDisplacement_px (1, 1) double {mustBePositive} = 2.0
-                NameValueArgs.xyCalibrationInitialVoltageScale (1, 1) double {mustBePositive} = 1.0
-                NameValueArgs.xyCalibrationMaxVoltageFactor (1, 1) double {mustBeGreaterThanOrEqual(NameValueArgs.xyCalibrationMaxVoltageFactor, 1)} = 1.10
+                NameValueArgs.targetStepSizePixel (1, 1) double {mustBePositive} = 0.5
+                NameValueArgs.xyCalibrationTargetDisplacement_px (1, 1) double {mustBePositive} = 1.0
+                NameValueArgs.xyCalibrationInitialVoltageScale (1, 1) double {mustBePositive} = 0.9
+                NameValueArgs.xyCalibrationMaxVoltageFactor (1, 1) double {mustBeGreaterThanOrEqual(NameValueArgs.xyCalibrationMaxVoltageFactor, 1)} = 1.20
                 NameValueArgs.xyCalibrationMinBracketWidth_V (1, 1) double {mustBePositive} = 0.25
-                NameValueArgs.xyCalibrationOscillationCycles (1, 1) double {mustBeInteger, mustBePositive} = 6
+                NameValueArgs.xyCalibrationOscillationCycles (1, 1) double {mustBeInteger, mustBePositive} = 1
                 NameValueArgs.xyCalibrationStepSizeToleranceFraction (1, 1) double {mustBeNonnegative} = 0.20
+                NameValueArgs.xyCalibrationMinUsablePxPerStep (1, 1) double {mustBeNonnegative} = 0.2
                 NameValueArgs.xyCalibrationMinFitRsquare (1, 1) double {mustBeGreaterThanOrEqual(NameValueArgs.xyCalibrationMinFitRsquare, 0), mustBeLessThanOrEqual(NameValueArgs.xyCalibrationMinFitRsquare, 1)} = 0.90
                 NameValueArgs.autoshiftStepRatio (1, 1) double {mustBePositive} = 0.5
                 NameValueArgs.xyResponseMatrixMinRcond (1, 1) double {mustBePositive} = 1e-3
@@ -236,6 +243,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 NameValueArgs.xyCalibrationMinSlopeRsquare (1, 1) double {mustBeGreaterThanOrEqual(NameValueArgs.xyCalibrationMinSlopeRsquare, 0), mustBeLessThanOrEqual(NameValueArgs.xyCalibrationMinSlopeRsquare, 1)} = 0.20
                 NameValueArgs.xyCalibrationMaxResidual_px (1, 1) double {mustBePositive} = 3.0
                 NameValueArgs.xyCalibrationReturnTolerance_px (1, 1) double {mustBePositive} = 1.0
+                NameValueArgs.xyCalibrationHistoryDriftThreshold_pxPerStep (1, 1) double {mustBePositive} = 0.1
                 NameValueArgs.maxAutoshiftCorrectionStepsPerAxis (1, 1) double {mustBeInteger, mustBePositive} = 5
             end
 
@@ -299,6 +307,10 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             if NameValueArgs.xyCalibrationStepSizeToleranceFraction >= 1
                 error("virtualInstrument_attodryAutofocus:InvalidXYStepSizeTolerance", ...
                     "xyCalibrationStepSizeToleranceFraction must be less than 1.");
+            end
+            if NameValueArgs.xyCalibrationMinUsablePxPerStep >= NameValueArgs.targetStepSizePixel
+                error("virtualInstrument_attodryAutofocus:InvalidXYUsableThreshold", ...
+                    "xyCalibrationMinUsablePxPerStep must be less than targetStepSizePixel.");
             end
             obj.shiftFitTrimRatio = NameValueArgs.shiftFitTrimRatio;
             obj.offsetFitRoi_px = NameValueArgs.offsetFitRoi_px;
@@ -375,6 +387,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             obj.xyCalibrationMinBracketWidth_V = NameValueArgs.xyCalibrationMinBracketWidth_V;
             obj.xyCalibrationOscillationCycles = NameValueArgs.xyCalibrationOscillationCycles;
             obj.xyCalibrationStepSizeToleranceFraction = NameValueArgs.xyCalibrationStepSizeToleranceFraction;
+            obj.xyCalibrationMinUsablePxPerStep = NameValueArgs.xyCalibrationMinUsablePxPerStep;
             obj.xyCalibrationMinFitRsquare = NameValueArgs.xyCalibrationMinFitRsquare;
             obj.autoshiftStepRatio = NameValueArgs.autoshiftStepRatio;
             obj.xyResponseMatrixMinRcond = NameValueArgs.xyResponseMatrixMinRcond;
@@ -383,6 +396,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             obj.xyCalibrationMinSlopeRsquare = NameValueArgs.xyCalibrationMinSlopeRsquare;
             obj.xyCalibrationMaxResidual_px = NameValueArgs.xyCalibrationMaxResidual_px;
             obj.xyCalibrationReturnTolerance_px = NameValueArgs.xyCalibrationReturnTolerance_px;
+            obj.xyCalibrationHistoryDriftThreshold_pxPerStep = NameValueArgs.xyCalibrationHistoryDriftThreshold_pxPerStep;
             obj.maxAutoshiftCorrectionStepsPerAxis = NameValueArgs.maxAutoshiftCorrectionStepsPerAxis;
 
             if strlength(obj.ANC300InstrumentFriendlyName) > 0
@@ -976,7 +990,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                     obj.zCalibrationTemperature_K = currentTemperature_K;
                     obj.zCalibrationVoltage_V = vZ;
                     obj.appendPositionerCalibrationLog("z", vZ, nTrial, nStepApplied, ...
-                        max(abs([sPlus - s0, sMinus - s0])), NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN);
+                        max(abs([sPlus - s0, sMinus - s0])), NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, "apply");
                     obj.updatePositionerVoltageProfile("z_voltage_V", currentTemperature_K, vZ);
                     return;
                 end
@@ -993,9 +1007,12 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             end
             anc = obj.getANC300Handle();
             currentTB = obj.getCurrentTB();
+            currentOffset_px = [dx_px; dy_px];
+            obj.recordObservedAutoshiftResponse(currentOffset_px);
             if any(~isfinite(obj.xyPixelPerStepMatrix(:))) ...
                     || ~isfinite(obj.xyCalibrationTemperature_K) ...
-                    || abs(currentTB(1) - obj.xyCalibrationTemperature_K) > obj.voltageProfileMinTemperatureSpacing_K
+                    || abs(currentTB(1) - obj.xyCalibrationTemperature_K) > obj.voltageProfileMinTemperatureSpacing_K ...
+                    || obj.xyCalibrationHistoryNeedsRefresh()
                 xyMatrix = obj.calibrateXYPixelPerStepMatrix();
             else
                 xyMatrix = obj.xyPixelPerStepMatrix;
@@ -1006,18 +1023,24 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 error("virtualInstrument_attodryAutofocus:InvalidXYCorrection", ...
                     "Computed XY correction steps must be finite.");
             end
-            promoteToTwoSteps = correctionSteps ~= 0 ...
-                & obj.lastAutoshiftAppliedSteps ~= 0 ...
-                & sign(correctionSteps) == sign(obj.lastAutoshiftAppliedSteps) ...
-                & sign(rawCorrectionSteps) == sign(correctionSteps) ...
-                & abs(rawCorrectionSteps) >= 0.9;
-            correctionSteps(promoteToTwoSteps) = correctionSteps(promoteToTwoSteps) + sign(correctionSteps(promoteToTwoSteps));
+            offsetNorm_px = hypot(dx_px, dy_px);
+            for axisIndex = 1:2
+                if abs(correctionSteps(axisIndex)) > 1
+                    if offsetNorm_px > norm(2 * xyMatrix(:, axisIndex))
+                        correctionSteps(axisIndex) = 2 * sign(correctionSteps(axisIndex));
+                    else
+                        correctionSteps(axisIndex) = sign(correctionSteps(axisIndex));
+                    end
+                end
+            end
             correctionSteps = max(min(correctionSteps, obj.maxAutoshiftCorrectionStepsPerAxis), -obj.maxAutoshiftCorrectionStepsPerAxis);
             nStepX = correctionSteps(1);
             nStepY = correctionSteps(2);
             obj.stepXYInSmallChunks(anc, nStepX, nStepY);
-            obj.lastAutoshiftRawSteps = rawCorrectionSteps;
-            obj.lastAutoshiftAppliedSteps = correctionSteps;
+            currentVoltages = obj.getMasterRackProxy().rackGet([obj.ANC300_voltage_x_ChannelName; obj.ANC300_voltage_y_ChannelName]);
+            obj.lastAutoshiftOffset_px = currentOffset_px;
+            obj.lastAutoshiftSteps = correctionSteps;
+            obj.lastAutoshiftVoltages_V = currentVoltages(:);
         end
 
         function xyPixelPerStepMatrix = calibrateXYPixelPerStepMatrix(obj)
@@ -1037,64 +1060,92 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             finalVoltages = NaN(2, 1);
             for axisIndex = 1:2
                 voltage = max(1, firstTryVoltages(axisIndex) * obj.xyCalibrationInitialVoltageScale);
-                lowVoltage = NaN;
-                highVoltage = NaN;
+                triedVoltages = NaN(40, 1);
+                usableVoltages = NaN(40, 1);
+                usableResponses = NaN(40, 1);
+                usableCount = 0;
+                queuedVoltages = zeros(0, 1);
                 for voltageAttempt = 1:40
+                    if ~isempty(queuedVoltages)
+                        voltage = queuedVoltages(1);
+                        queuedVoltages(1) = [];
+                    end
                     masterRackProxy.rackSetWrite(voltageChannels(axisIndex), voltage);
                     [axisVector, maxMeasuredPx, scanRsquare, residualRms_px, returnDrift_px, minFitRsquare] = ...
                         obj.measureAxisOscillationResponse(anc, axes(axisIndex), oscillationSteps);
                     pxPerStep = norm(axisVector);
+                    triedVoltages(voltageAttempt) = voltage;
 
-                    if minFitRsquare < obj.xyCalibrationMinFitRsquare
-                        if voltage > 1
-                            voltage = max(1, voltage / obj.zVoltageIncrementFactor);
-                            continue;
-                        end
-                        break;
+                    if scanRsquare < obj.xyCalibrationMinSlopeRsquare ...
+                            || residualRms_px > obj.xyCalibrationMaxResidual_px ...
+                            || returnDrift_px > obj.xyCalibrationReturnTolerance_px ...
+                            || minFitRsquare < obj.xyCalibrationMinFitRsquare
+                        obj.appendPositionerCalibrationLog(axes(axisIndex), voltage, voltageAttempt, NaN, ...
+                            NaN, pxPerStep, axisVector(1), axisVector(2), maxMeasuredPx, ...
+                            scanRsquare, residualRms_px, returnDrift_px, minFitRsquare, "discard_fit");
+                        voltage = min(60, voltage * obj.xyCalibrationMaxVoltageFactor);
+                        continue;
                     end
-                    if pxPerStep > maxAcceptedPxPerStep
-                        if voltage > 1
-                            highVoltage = voltage;
-                            if obj.xyCalibrationBracketReady(lowVoltage, highVoltage)
-                                voltage = obj.bracketXYCalibrationVoltage(lowVoltage, highVoltage);
-                            else
-                                lowVoltage = NaN;
-                                voltage = obj.adjustXYCalibrationVoltage(voltage, pxPerStep, -1);
-                            end
-                            continue;
-                        end
-                        break;
-                    end
-                    if (pxPerStep < minAcceptedPxPerStep || maxMeasuredPx < minAcceptedDisplacementPx) && voltage < 60
-                        currentPxPerStep = min(pxPerStep, maxMeasuredPx / oscillationSteps);
-                        lowVoltage = voltage;
-                        if obj.xyCalibrationBracketReady(lowVoltage, highVoltage)
-                            voltage = obj.bracketXYCalibrationVoltage(lowVoltage, highVoltage);
+                    if pxPerStep < obj.xyCalibrationMinUsablePxPerStep
+                        obj.appendPositionerCalibrationLog(axes(axisIndex), voltage, voltageAttempt, NaN, ...
+                            NaN, pxPerStep, axisVector(1), axisVector(2), maxMeasuredPx, ...
+                            scanRsquare, residualRms_px, returnDrift_px, minFitRsquare, "discard_low_response");
+                        if usableCount >= 2
+                            maxTriedVoltage = max(triedVoltages(1:voltageAttempt));
+                            queuedVoltages = [maxTriedVoltage; min(60, maxTriedVoltage * 1.1)];
+                            voltage = queuedVoltages(1);
+                            queuedVoltages(1) = [];
                         else
-                            highVoltage = NaN;
-                            voltage = obj.adjustXYCalibrationVoltage(voltage, currentPxPerStep, 1);
+                            voltage = min(60, voltage * obj.xyCalibrationMaxVoltageFactor);
                         end
                         continue;
                     end
-                    if scanRsquare < obj.xyCalibrationMinSlopeRsquare ...
-                            || residualRms_px > obj.xyCalibrationMaxResidual_px ...
-                            || returnDrift_px > obj.xyCalibrationReturnTolerance_px
-                        if voltage > 1
-                            voltage = max(1, voltage / obj.zVoltageIncrementFactor);
-                            continue;
-                        end
-                        break;
-                    end
+                    usableCount = usableCount + 1;
+                    usableVoltages(usableCount) = voltage;
+                    usableResponses(usableCount) = pxPerStep;
                     if pxPerStep >= minAcceptedPxPerStep && pxPerStep <= maxAcceptedPxPerStep ...
                             && maxMeasuredPx >= minAcceptedDisplacementPx
                         xyPixelPerStepMatrix(:, axisIndex) = axisVector;
                         finalVoltages(axisIndex) = voltage;
+                        obj.recordXYCalibrationHistory(axisIndex, voltage, pxPerStep);
                         obj.appendPositionerCalibrationLog(axes(axisIndex), voltage, voltageAttempt, NaN, ...
                             NaN, pxPerStep, axisVector(1), axisVector(2), maxMeasuredPx, ...
-                            scanRsquare, residualRms_px, returnDrift_px, minFitRsquare);
+                            scanRsquare, residualRms_px, returnDrift_px, minFitRsquare, "accept");
                         break;
                     end
-                    break;
+                    obj.appendPositionerCalibrationLog(axes(axisIndex), voltage, voltageAttempt, NaN, ...
+                        NaN, pxPerStep, axisVector(1), axisVector(2), maxMeasuredPx, ...
+                        scanRsquare, residualRms_px, returnDrift_px, minFitRsquare, "use_fit");
+                    if usableCount == 1
+                        if pxPerStep > stepTargetPx
+                            voltage = max(1, voltage / 1.1);
+                        else
+                            voltage = min(60, voltage * obj.xyCalibrationMaxVoltageFactor);
+                        end
+                    else
+                        fitCoefficients = polyfit(usableVoltages(1:usableCount), usableResponses(1:usableCount), 1);
+                        if fitCoefficients(1) <= 0
+                            if pxPerStep > stepTargetPx
+                                voltage = max(1, voltage / 1.1);
+                            else
+                                voltage = min(60, voltage * obj.xyCalibrationMaxVoltageFactor);
+                            end
+                        else
+                            voltage = (stepTargetPx - fitCoefficients(2)) / fitCoefficients(1);
+                            if ~isfinite(voltage)
+                                error("virtualInstrument_attodryAutofocus:InvalidXYLinearFitVoltage", ...
+                                    "%s XY calibration linear fit produced a non-finite voltage.", axes(axisIndex));
+                            end
+                            voltage = min(60, max(1, voltage));
+                            if any(abs(triedVoltages(1:voltageAttempt) - voltage) < obj.xyCalibrationMinBracketWidth_V)
+                                if pxPerStep > stepTargetPx
+                                    voltage = max(1, voltage / 1.1);
+                                else
+                                    voltage = min(60, max(triedVoltages(1:voltageAttempt)) * 1.1);
+                                end
+                            end
+                        end
+                    end
                 end
             end
             if any(~isfinite(xyPixelPerStepMatrix(:, 1)))
@@ -1180,35 +1231,46 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             end
         end
 
-        function voltage = adjustXYCalibrationVoltage(obj, voltage, currentPxPerStep, direction)
-            if ~(isfinite(currentPxPerStep) && currentPxPerStep >= 0)
-                error("virtualInstrument_attodryAutofocus:InvalidCalibrationResponse", ...
-                    "XY calibration px/step response must be finite and nonnegative.");
-            end
-            if direction ~= 1 && direction ~= -1
-                error("virtualInstrument_attodryAutofocus:InvalidVoltageDirection", ...
-                    "XY calibration voltage direction must be +1 or -1.");
-            end
-            fractionalError = abs(currentPxPerStep - obj.targetStepSizePixel) / obj.targetStepSizePixel;
-            factor = 1 + min(obj.xyCalibrationMaxVoltageFactor - 1, fractionalError);
-            if direction > 0
-                voltage = min(60, voltage * factor);
-            else
-                voltage = max(1, voltage / factor);
-            end
+        function recordXYCalibrationHistory(obj, axisIndex, voltage_V, pxPerStep)
+            writeIndex = mod(obj.xyCalibrationHistoryCount(axisIndex), 20) + 1;
+            obj.xyCalibrationHistoryVoltage_V(writeIndex, axisIndex) = voltage_V;
+            obj.xyCalibrationHistoryPxPerStep(writeIndex, axisIndex) = pxPerStep;
+            obj.xyCalibrationHistoryCount(axisIndex) = obj.xyCalibrationHistoryCount(axisIndex) + 1;
         end
 
-        function isReady = xyCalibrationBracketReady(obj, lowVoltage, highVoltage)
-            isReady = isfinite(lowVoltage) && isfinite(highVoltage) ...
-                && highVoltage - lowVoltage > obj.xyCalibrationMinBracketWidth_V;
+        function recordObservedAutoshiftResponse(obj, currentOffset_px)
+            movedAxis = find(obj.lastAutoshiftSteps ~= 0);
+            if numel(movedAxis) ~= 1 || any(~isfinite(obj.lastAutoshiftOffset_px))
+                return;
+            end
+            axisIndex = movedAxis(1);
+            pxPerStep = norm(obj.lastAutoshiftOffset_px - currentOffset_px(:)) / abs(obj.lastAutoshiftSteps(axisIndex));
+            if pxPerStep < obj.xyCalibrationMinUsablePxPerStep
+                return;
+            end
+            voltage_V = obj.lastAutoshiftVoltages_V(axisIndex);
+            if ~isfinite(voltage_V)
+                return;
+            end
+            obj.recordXYCalibrationHistory(axisIndex, voltage_V, pxPerStep);
+            axes = ["x"; "y"];
+            obj.appendPositionerCalibrationLog(axes(axisIndex), voltage_V, NaN, ...
+                obj.lastAutoshiftSteps(axisIndex), NaN, pxPerStep, NaN, NaN, NaN, NaN, NaN, NaN, NaN, "observed_correction");
         end
 
-        function voltage = bracketXYCalibrationVoltage(~, lowVoltage, highVoltage)
-            if ~(isfinite(lowVoltage) && isfinite(highVoltage) && lowVoltage < highVoltage)
-                error("virtualInstrument_attodryAutofocus:InvalidVoltageBracket", ...
-                    "XY calibration voltage bracket must be finite with lowVoltage < highVoltage.");
+        function TF = xyCalibrationHistoryNeedsRefresh(obj)
+            TF = false;
+            for axisIndex = 1:2
+                count = min(obj.xyCalibrationHistoryCount(axisIndex), 20);
+                if count < 3
+                    continue;
+                end
+                recent = obj.xyCalibrationHistoryPxPerStep(1:count, axisIndex);
+                if abs(median(recent, "omitnan") - obj.targetStepSizePixel) > obj.xyCalibrationHistoryDriftThreshold_pxPerStep
+                    TF = true;
+                    return;
+                end
             end
-            voltage = (lowVoltage + highVoltage) / 2;
         end
 
         function stepAxisInSmallChunks(obj, anc, axisName, nSteps)
@@ -1283,7 +1345,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             end
         end
 
-        function appendPositionerCalibrationLog(obj, axisName, voltage_V, nTrial, appliedSteps, response, pxPerStep, rowPxPerStep, colPxPerStep, maxMeasuredPx, scanRsquare, residualRms_px, returnDrift_px, minFitRsquare)
+        function appendPositionerCalibrationLog(obj, axisName, voltage_V, nTrial, appliedSteps, response, pxPerStep, rowPxPerStep, colPxPerStep, maxMeasuredPx, scanRsquare, residualRms_px, returnDrift_px, minFitRsquare, action)
             csvPath = obj.positionerCalibrationLogCsvPath;
             logFolder = string(fileparts(csvPath));
             if strlength(logFolder) > 0 && ~isfolder(logFolder)
@@ -1297,13 +1359,20 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             row = table(datetime("now"), currentTB(1), currentTB(2), obj.targetT, obj.targetB, ...
                 string(axisName), voltage_V, nTrial, appliedSteps, response, pxPerStep, ...
                 rowPxPerStep, colPxPerStep, maxMeasuredPx, scanRsquare, residualRms_px, ...
-                returnDrift_px, minFitRsquare, ...
+                returnDrift_px, minFitRsquare, string(action), ...
                 VariableNames = ["timestamp", "temperature_K", "magneticField_T", "targetT_K", ...
                 "targetB_T", "axis", "voltage_V", "n_trial", "applied_steps", ...
                 "response", "px_per_step", "row_px_per_step", "col_px_per_step", ...
                 "max_measured_px", "scan_rsquare", "residual_rms_px", "return_drift_px", ...
-                "min_fit_rsquare"]);
+                "min_fit_rsquare", "action"]);
             try
+                if isfile(csvPath)
+                    opts = detectImportOptions(csvPath);
+                    if ~isequal(string(opts.VariableNames), string(row.Properties.VariableNames))
+                        error("virtualInstrument_attodryAutofocus:CalibrationLogSchemaMismatch", ...
+                            "Existing calibration log columns do not match current schema.");
+                    end
+                end
                 writetable(row, csvPath, WriteMode = "append", WriteVariableNames = ~isfile(csvPath));
             catch err
                 error("virtualInstrument_attodryAutofocus:CalibrationLogWriteFailed", ...
