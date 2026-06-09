@@ -508,7 +508,9 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             imagesc(ax, obj.referenceSampleImage);
             colormap(ax, gray(256));
             axis(ax, "image");
-            ax.YDir = "normal";
+            ax.YDir = "reverse";
+            xlabel(ax, "x pixel (horizontal)");
+            ylabel(ax, "y pixel (vertical, origin top-left)");
             roiHandle = drawrectangle(ax, Position = initialPosition);
             wait(roiHandle);
             if ~isvalid(roiHandle)
