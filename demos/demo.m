@@ -67,6 +67,7 @@ attoDRY2100_Address = "192.168.1.1";
 ANC300_Serial = "COM6";
 
 % ST3215-HS bus servos via Waveshare Bus Servo Adapter (A)
+% ids = instrument_ST3215HS.pingAllServoIds("COM4");
 ST3215HS_Serial = "COM4";
 % Attodry autofocus optics: 3 sets (camera BS + LED BS; red block + red ND; green block + green ND)
 ST3215HS_BS_Serial = "COM4";       % camera BS (servo 1), LED BS (servo 2)
