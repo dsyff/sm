@@ -21,6 +21,7 @@ classdef instrument_CS165MU < instrumentInterface
         liveStatusLabel;
         liveOverlayLine;
         liveOverlayRoi_px (1, 4) double = [NaN, NaN, NaN, NaN];
+        liveOverlayEnabled (1, 1) logical = false;
 
         liveTimer;
         liveEnabled (1, 1) logical = false;
@@ -70,6 +71,9 @@ classdef instrument_CS165MU < instrumentInterface
 
             % Read-only status helpers
             obj.addChannel("queued_frames");
+
+            % Software-only live-view overlay box. This does not change camera ROI.
+            obj.addChannel("live_overlay_enabled");
         end
 
         function delete(obj)
@@ -187,8 +191,14 @@ classdef instrument_CS165MU < instrumentInterface
             obj.updateLiveOverlay();
         end
 
+        function setLiveOverlayEnabled(obj, enabled)
+            obj.liveOverlayEnabled = logical(enabled);
+            obj.updateLiveOverlay();
+        end
+
         function clearLiveOverlayRoi(obj)
             obj.liveOverlayRoi_px = [NaN, NaN, NaN, NaN];
+            obj.liveOverlayEnabled = false;
             obj.updateLiveOverlay();
         end
     end
@@ -212,7 +222,7 @@ classdef instrument_CS165MU < instrumentInterface
             end
 
             switch channelIndex
-                case {1, 2, 3, 4, 5, 6, 7}
+                case {1, 2, 3, 4, 5, 6, 7, 9}
                     obj.setWriteCameraChannelHelper(channelIndex, setValues);
                 otherwise
                     setWriteChannelHelper@instrumentInterface(obj, channelIndex, setValues);
@@ -559,6 +569,8 @@ classdef instrument_CS165MU < instrumentInterface
                     obj.pendingValue = double(roiAndBin.BinX);
                 case 8 % queued_frames
                     obj.pendingValue = double(obj.tlCamera.NumberOfQueuedFrames);
+                case 9 % live_overlay_enabled
+                    obj.pendingValue = double(obj.liveOverlayEnabled);
                 otherwise
                     error("instrument_CS165MU:UnknownChannelIndex", "Unknown channelIndex %d", channelIndex);
             end
@@ -566,7 +578,7 @@ classdef instrument_CS165MU < instrumentInterface
 
         function getValues = getReadCameraChannelHelper(obj, channelIndex)
             switch channelIndex
-                case {1, 2, 3, 4, 5, 6, 7, 8}
+                case {1, 2, 3, 4, 5, 6, 7, 8, 9}
                     getValues = obj.pendingValue;
                     obj.pendingValue = NaN;
                 otherwise
@@ -600,6 +612,9 @@ classdef instrument_CS165MU < instrumentInterface
 
                 case {3, 4, 5, 6, 7}
                     obj.setRoiOrBinScalarChannel(channelIndex, setValues(1));
+
+                case 9 % live_overlay_enabled
+                    obj.setLiveOverlayEnabled(setValues(1) ~= 0);
 
                 otherwise
                     error("instrument_CS165MU:UnknownSetChannelIndex", ...
@@ -683,6 +698,11 @@ classdef instrument_CS165MU < instrumentInterface
             if isempty(obj.liveOverlayLine) || ~isvalid(obj.liveOverlayLine)
                 obj.liveOverlayLine = line(obj.liveAxes, NaN, NaN, ...
                     Color = [0 1 0], LineStyle = "--", LineWidth = 1.5, HitTest = "off");
+            end
+
+            if ~obj.liveOverlayEnabled
+                obj.liveOverlayLine.Visible = "off";
+                return;
             end
 
             roi = obj.liveOverlayRoi_px;
@@ -777,6 +797,6 @@ classdef instrument_CS165MU < instrumentInterface
                 obj.startContinuousAcquisition();
             end
         end
+
     end
 end
-

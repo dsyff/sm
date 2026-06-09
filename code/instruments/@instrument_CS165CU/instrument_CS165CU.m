@@ -9,6 +9,7 @@ classdef instrument_CS165CU < instrument_CS165MU
 
     properties (Access = private)
         pendingColorValue double = NaN;
+        colorChannelIndex (1, 1) double = NaN;
     end
 
     methods
@@ -20,6 +21,7 @@ classdef instrument_CS165CU < instrument_CS165MU
             obj@instrument_CS165MU(address);
             obj.isColorCamera = true;
             obj.addChannel("color"); % 0 red, 1 green, 2 blue, 3 gray, 4 RGB live view/acquisition
+            obj.colorChannelIndex = obj.findChannelIndex("color");
         end
 
         function setAcquisitionColorChannel(obj, colorChannel)
@@ -45,7 +47,7 @@ classdef instrument_CS165CU < instrument_CS165MU
 
     methods (Access = ?instrumentInterface)
         function getWriteChannelHelper(obj, channelIndex)
-            if channelIndex == 9
+            if channelIndex == obj.colorChannelIndex
                 obj.pendingColorValue = obj.colorChannelToValue(obj.colorChannel);
             else
                 obj.getWriteCameraChannelHelper(channelIndex);
@@ -53,7 +55,7 @@ classdef instrument_CS165CU < instrument_CS165MU
         end
 
         function getValues = getReadChannelHelper(obj, channelIndex)
-            if channelIndex == 9
+            if channelIndex == obj.colorChannelIndex
                 getValues = obj.pendingColorValue;
                 obj.pendingColorValue = NaN;
             else
@@ -62,7 +64,7 @@ classdef instrument_CS165CU < instrument_CS165MU
         end
 
         function setWriteChannelHelper(obj, channelIndex, setValues)
-            if channelIndex == 9
+            if channelIndex == obj.colorChannelIndex
                 obj.colorChannel = obj.valueToColorChannel(setValues(1));
             else
                 obj.setWriteCameraChannelHelper(channelIndex, setValues);
