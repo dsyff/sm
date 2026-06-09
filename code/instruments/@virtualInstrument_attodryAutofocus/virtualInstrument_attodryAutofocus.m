@@ -93,7 +93,8 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
 
         targetStepSizePixel (1, 1) double {mustBePositive} = 1.0
         xyCalibrationTargetDisplacement_px (1, 1) double {mustBePositive} = 2.0
-        xyCalibrationInitialVoltageScale (1, 1) double {mustBePositive} = 0.90
+        xyCalibrationInitialVoltageScale (1, 1) double {mustBePositive} = 1.0
+        xyCalibrationMaxVoltageFactor (1, 1) double {mustBeGreaterThanOrEqual(xyCalibrationMaxVoltageFactor, 1)} = 1.5
         xyCalibrationOscillationCycles (1, 1) double {mustBeInteger, mustBePositive} = 10
         xyCalibrationStepSizeToleranceFraction (1, 1) double {mustBeNonnegative} = 0.20
         xyCalibrationMinFitRsquare (1, 1) double {mustBeGreaterThanOrEqual(xyCalibrationMinFitRsquare, 0), mustBeLessThanOrEqual(xyCalibrationMinFitRsquare, 1)} = 0.90
@@ -213,7 +214,8 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 NameValueArgs.zStepTrialCount (1, 1) double {mustBeInteger, mustBePositive} = 5
                 NameValueArgs.targetStepSizePixel (1, 1) double {mustBePositive} = 1.0
                 NameValueArgs.xyCalibrationTargetDisplacement_px (1, 1) double {mustBePositive} = 2.0
-                NameValueArgs.xyCalibrationInitialVoltageScale (1, 1) double {mustBePositive} = 0.90
+                NameValueArgs.xyCalibrationInitialVoltageScale (1, 1) double {mustBePositive} = 1.0
+                NameValueArgs.xyCalibrationMaxVoltageFactor (1, 1) double {mustBeGreaterThanOrEqual(NameValueArgs.xyCalibrationMaxVoltageFactor, 1)} = 1.5
                 NameValueArgs.xyCalibrationOscillationCycles (1, 1) double {mustBeInteger, mustBePositive} = 10
                 NameValueArgs.xyCalibrationStepSizeToleranceFraction (1, 1) double {mustBeNonnegative} = 0.20
                 NameValueArgs.xyCalibrationMinFitRsquare (1, 1) double {mustBeGreaterThanOrEqual(NameValueArgs.xyCalibrationMinFitRsquare, 0), mustBeLessThanOrEqual(NameValueArgs.xyCalibrationMinFitRsquare, 1)} = 0.90
@@ -353,6 +355,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             obj.targetStepSizePixel = NameValueArgs.targetStepSizePixel;
             obj.xyCalibrationTargetDisplacement_px = NameValueArgs.xyCalibrationTargetDisplacement_px;
             obj.xyCalibrationInitialVoltageScale = NameValueArgs.xyCalibrationInitialVoltageScale;
+            obj.xyCalibrationMaxVoltageFactor = NameValueArgs.xyCalibrationMaxVoltageFactor;
             obj.xyCalibrationOscillationCycles = NameValueArgs.xyCalibrationOscillationCycles;
             obj.xyCalibrationStepSizeToleranceFraction = NameValueArgs.xyCalibrationStepSizeToleranceFraction;
             obj.xyCalibrationMinFitRsquare = NameValueArgs.xyCalibrationMinFitRsquare;
@@ -1009,13 +1012,14 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                     end
                     if pxPerStep > maxAcceptedPxPerStep
                         if voltage > 1
-                            voltage = max(1, voltage / obj.zVoltageIncrementFactor);
+                            voltage = obj.adjustXYCalibrationVoltage(voltage, pxPerStep, -1);
                             continue;
                         end
                         break;
                     end
                     if (pxPerStep < minAcceptedPxPerStep || maxMeasuredPx < minAcceptedDisplacementPx) && voltage < 60
-                        voltage = min(60, voltage * obj.zVoltageIncrementFactor);
+                        currentPxPerStep = min(pxPerStep, maxMeasuredPx / oscillationSteps);
+                        voltage = obj.adjustXYCalibrationVoltage(voltage, currentPxPerStep, 1);
                         continue;
                     end
                     if scanRsquare < obj.xyCalibrationMinSlopeRsquare ...
@@ -1100,17 +1104,38 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         end
 
         function [axisVector, scanRsquare, residualRms_px] = fitAxisScanResponse(~, scanPositions, offsets)
-            designMatrix = scanPositions(:);
-            coefficients = designMatrix \ offsets;
-            axisVector = coefficients.';
-            residuals = offsets - designMatrix * coefficients;
+            if any(scanPositions(:) == 0)
+                error("virtualInstrument_attodryAutofocus:InvalidCalibrationScan", ...
+                    "XY calibration scan positions must be nonzero.");
+            end
+            perStepResponse = offsets ./ scanPositions(:);
+            axisVector = median(perStepResponse, 1, "omitnan").';
+            residuals = offsets - scanPositions(:) * axisVector.';
             residualRms_px = sqrt(mean(sum(residuals.^2, 2)));
-            centered = offsets - mean(offsets, 1);
+            centered = offsets - median(offsets, 1, "omitnan");
             totalVariance = sum(centered(:).^2);
             if totalVariance > 0
                 scanRsquare = 1 - sum(residuals(:).^2) / totalVariance;
             else
                 scanRsquare = 0;
+            end
+        end
+
+        function voltage = adjustXYCalibrationVoltage(obj, voltage, currentPxPerStep, direction)
+            if ~(isfinite(currentPxPerStep) && currentPxPerStep >= 0)
+                error("virtualInstrument_attodryAutofocus:InvalidCalibrationResponse", ...
+                    "XY calibration px/step response must be finite and nonnegative.");
+            end
+            if direction ~= 1 && direction ~= -1
+                error("virtualInstrument_attodryAutofocus:InvalidVoltageDirection", ...
+                    "XY calibration voltage direction must be +1 or -1.");
+            end
+            fractionalError = abs(currentPxPerStep - obj.targetStepSizePixel) / obj.targetStepSizePixel;
+            factor = 1 + min(obj.xyCalibrationMaxVoltageFactor - 1, fractionalError);
+            if direction > 0
+                voltage = min(60, voltage * factor);
+            else
+                voltage = max(1, voltage / factor);
             end
         end
 
