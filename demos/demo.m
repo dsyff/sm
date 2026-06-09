@@ -26,6 +26,8 @@ sminit; % shared setup script keeps demo logic concise
 Montana1_IP = "136.167.55.127";
 Montana2_IP = "136.167.55.165";
 OptiCool_IP = "127.0.0.1";
+FourNine_Host = "127.0.0.1";
+FourNine_Port = 5050;
 MPMS3_IP = "136.167.49.54";
 MPMS3_Port = uint16(11000);
 LS336_GPIB = 27;
@@ -110,6 +112,7 @@ strain_innerCurrentLimit = 2e-7; % A, K2450_B :SOURce:VOLTage:ILIMit
 Montana1_Use = 0;
 Montana2_Use = 0;
 OptiCool_Use = 0;
+FourNine_Use = 0;
 MPMS3_Use = 0;
 LS336_Use = 0;
 GMPS4_Use = 0;
@@ -292,6 +295,15 @@ if OptiCool_Use
         recipe.addChannel("OptiCool", "T", "T");
     end
     recipe.addChannel("OptiCool", "B", "B");
+end
+
+if FourNine_Use
+    recipe.addInstrument("handle_FourNine", "instrument_fournine", "FourNine", FourNine_Host, FourNine_Port);
+    recipe.addStatement("FourNine", "handle_FourNine.requireSetCheck = true;");
+    recipe.addChannel("FourNine", "T", "T");
+    recipe.addChannel("FourNine", "T_target", "T_target");
+    recipe.addChannel("FourNine", "heater", "heater");
+    recipe.addChannel("FourNine", "stable", "T_stable");
 end
 
 if MPMS3_Use
