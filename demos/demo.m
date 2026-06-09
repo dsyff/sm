@@ -888,6 +888,8 @@ end
 % Set cam_x, cam_y, cam_w, and cam_h before autofocus references; they
 % define the acquired camera ROI image in native top-left camera coordinates.
 % MU and CU share cam_live/cam_exp/cam_bin/cam_x/cam_y/cam_w/cam_h/cam_q.
+% cam_box toggles the software-only live-view autofocus ROI box. Autofocus
+% sets the box location directly; cam_box only controls display on/off.
 if CS165MU_Use
     AF_cameraInstrumentFriendlyName = "CS165MU";
     recipe.addInstrument("handle_CS165MU", "instrument_CS165MU", "CS165MU", CS165MU_Serial);
@@ -900,6 +902,7 @@ if CS165MU_Use
     recipe.addChannel("CS165MU", "roi_width_px", "cam_w");
     recipe.addChannel("CS165MU", "roi_height_px", "cam_h");
     recipe.addChannel("CS165MU", "queued_frames", "cam_q");
+    recipe.addChannel("CS165MU", "live_overlay_enabled", "cam_box", [], [], 0, 1);
 end
 
 % CU only: cam_c selects 0 red, 1 green, 2 blue, 3 gray, 4 RGB truecolor
@@ -920,6 +923,7 @@ if CS165CU_Use
     recipe.addChannel("CS165CU", "roi_width_px", "cam_w");
     recipe.addChannel("CS165CU", "roi_height_px", "cam_h");
     recipe.addChannel("CS165CU", "queued_frames", "cam_q");
+    recipe.addChannel("CS165CU", "live_overlay_enabled", "cam_box", [], [], 0, 1);
 end
 
 if Andor_Use
@@ -1163,6 +1167,8 @@ end
 % camera coordinates. Autofocus uses offsetFitRoi_px = [x,y,width,height]
 % inside the acquired image for the sample feature ROI, while the beamspot
 % is found over the whole camera ROI.
+% Autofocus publishes offsetFitRoi_px to the camera's software live-view box
+% and turns cam_box on automatically.
 % T_af/B_af/cooldown diagnostics save .png + .mat files every 5 min and at
 % convergence under temp/attodry_autofocus_diagnostics by default.
 % After smready(recipe), take a reference and then select the offset-fit ROI:

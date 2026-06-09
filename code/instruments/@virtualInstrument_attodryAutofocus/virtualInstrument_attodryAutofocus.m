@@ -1690,6 +1690,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             roi_px = obj.offsetFitRoi_px;
             roi_px(1:2) = roi_px(1:2) + reshape(roiShift_xy, 1, 2);
             cameraHandle.setLiveOverlayRoi(roi_px);
+            cameraHandle.setLiveOverlayEnabled(true);
         end
 
         function assertReferenceFitReady(obj)
