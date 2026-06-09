@@ -91,7 +91,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         zVoltageIncrementFactor (1, 1) double {mustBePositive} = 1.05
         zStepTrialCount (1, 1) double {mustBeInteger, mustBePositive} = 5
 
-        targetStepSizePixel (1, 1) double {mustBePositive} = 0.25
+        targetStepSizePixel (1, 1) double {mustBePositive} = 1.0
         xyCalibrationTargetDisplacement_px (1, 1) double {mustBePositive} = 2.0
         xyCalibrationInitialVoltageScale (1, 1) double {mustBePositive} = 0.90
         xyCalibrationOscillationCycles (1, 1) double {mustBeInteger, mustBePositive} = 10
@@ -211,7 +211,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 NameValueArgs.maxAutofocusIterations (1, 1) double {mustBeInteger, mustBePositive} = 50
                 NameValueArgs.zVoltageIncrementFactor (1, 1) double {mustBePositive} = 1.05
                 NameValueArgs.zStepTrialCount (1, 1) double {mustBeInteger, mustBePositive} = 5
-                NameValueArgs.targetStepSizePixel (1, 1) double {mustBePositive} = 0.25
+                NameValueArgs.targetStepSizePixel (1, 1) double {mustBePositive} = 1.0
                 NameValueArgs.xyCalibrationTargetDisplacement_px (1, 1) double {mustBePositive} = 2.0
                 NameValueArgs.xyCalibrationInitialVoltageScale (1, 1) double {mustBePositive} = 0.90
                 NameValueArgs.xyCalibrationOscillationCycles (1, 1) double {mustBeInteger, mustBePositive} = 10
