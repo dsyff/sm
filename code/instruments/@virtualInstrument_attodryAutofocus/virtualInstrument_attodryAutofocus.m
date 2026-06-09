@@ -91,11 +91,12 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         zVoltageIncrementFactor (1, 1) double {mustBePositive} = 1.05
         zStepTrialCount (1, 1) double {mustBeInteger, mustBePositive} = 5
 
-        targetStepSizePixel (1, 1) double {mustBePositive} = 1.0
+        targetStepSizePixel (1, 1) double {mustBePositive} = 0.5
         xyCalibrationTargetDisplacement_px (1, 1) double {mustBePositive} = 2.0
         xyCalibrationInitialVoltageScale (1, 1) double {mustBePositive} = 1.0
         xyCalibrationMaxVoltageFactor (1, 1) double {mustBeGreaterThanOrEqual(xyCalibrationMaxVoltageFactor, 1)} = 1.5
-        xyCalibrationOscillationCycles (1, 1) double {mustBeInteger, mustBePositive} = 10
+        xyCalibrationMinBracketWidth_V (1, 1) double {mustBePositive} = 1.0
+        xyCalibrationOscillationCycles (1, 1) double {mustBeInteger, mustBePositive} = 5
         xyCalibrationStepSizeToleranceFraction (1, 1) double {mustBeNonnegative} = 0.20
         xyCalibrationMinFitRsquare (1, 1) double {mustBeGreaterThanOrEqual(xyCalibrationMinFitRsquare, 0), mustBeLessThanOrEqual(xyCalibrationMinFitRsquare, 1)} = 0.90
         autoshiftStepRatio (1, 1) double {mustBePositive} = 0.5
@@ -212,11 +213,12 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 NameValueArgs.maxAutofocusIterations (1, 1) double {mustBeInteger, mustBePositive} = 50
                 NameValueArgs.zVoltageIncrementFactor (1, 1) double {mustBePositive} = 1.05
                 NameValueArgs.zStepTrialCount (1, 1) double {mustBeInteger, mustBePositive} = 5
-                NameValueArgs.targetStepSizePixel (1, 1) double {mustBePositive} = 1.0
+                NameValueArgs.targetStepSizePixel (1, 1) double {mustBePositive} = 0.5
                 NameValueArgs.xyCalibrationTargetDisplacement_px (1, 1) double {mustBePositive} = 2.0
                 NameValueArgs.xyCalibrationInitialVoltageScale (1, 1) double {mustBePositive} = 1.0
                 NameValueArgs.xyCalibrationMaxVoltageFactor (1, 1) double {mustBeGreaterThanOrEqual(NameValueArgs.xyCalibrationMaxVoltageFactor, 1)} = 1.5
-                NameValueArgs.xyCalibrationOscillationCycles (1, 1) double {mustBeInteger, mustBePositive} = 10
+                NameValueArgs.xyCalibrationMinBracketWidth_V (1, 1) double {mustBePositive} = 1.0
+                NameValueArgs.xyCalibrationOscillationCycles (1, 1) double {mustBeInteger, mustBePositive} = 5
                 NameValueArgs.xyCalibrationStepSizeToleranceFraction (1, 1) double {mustBeNonnegative} = 0.20
                 NameValueArgs.xyCalibrationMinFitRsquare (1, 1) double {mustBeGreaterThanOrEqual(NameValueArgs.xyCalibrationMinFitRsquare, 0), mustBeLessThanOrEqual(NameValueArgs.xyCalibrationMinFitRsquare, 1)} = 0.90
                 NameValueArgs.autoshiftStepRatio (1, 1) double {mustBePositive} = 0.5
@@ -356,6 +358,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             obj.xyCalibrationTargetDisplacement_px = NameValueArgs.xyCalibrationTargetDisplacement_px;
             obj.xyCalibrationInitialVoltageScale = NameValueArgs.xyCalibrationInitialVoltageScale;
             obj.xyCalibrationMaxVoltageFactor = NameValueArgs.xyCalibrationMaxVoltageFactor;
+            obj.xyCalibrationMinBracketWidth_V = NameValueArgs.xyCalibrationMinBracketWidth_V;
             obj.xyCalibrationOscillationCycles = NameValueArgs.xyCalibrationOscillationCycles;
             obj.xyCalibrationStepSizeToleranceFraction = NameValueArgs.xyCalibrationStepSizeToleranceFraction;
             obj.xyCalibrationMinFitRsquare = NameValueArgs.xyCalibrationMinFitRsquare;
@@ -1015,9 +1018,10 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                     if pxPerStep > maxAcceptedPxPerStep
                         if voltage > 1
                             highVoltage = voltage;
-                            if isfinite(lowVoltage)
+                            if obj.xyCalibrationBracketReady(lowVoltage, highVoltage)
                                 voltage = obj.bracketXYCalibrationVoltage(lowVoltage, highVoltage);
                             else
+                                lowVoltage = NaN;
                                 voltage = obj.adjustXYCalibrationVoltage(voltage, pxPerStep, -1);
                             end
                             continue;
@@ -1027,9 +1031,10 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                     if (pxPerStep < minAcceptedPxPerStep || maxMeasuredPx < minAcceptedDisplacementPx) && voltage < 60
                         currentPxPerStep = min(pxPerStep, maxMeasuredPx / oscillationSteps);
                         lowVoltage = voltage;
-                        if isfinite(highVoltage)
+                        if obj.xyCalibrationBracketReady(lowVoltage, highVoltage)
                             voltage = obj.bracketXYCalibrationVoltage(lowVoltage, highVoltage);
                         else
+                            highVoltage = NaN;
                             voltage = obj.adjustXYCalibrationVoltage(voltage, currentPxPerStep, 1);
                         end
                         continue;
@@ -1148,6 +1153,11 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             else
                 voltage = max(1, voltage / factor);
             end
+        end
+
+        function isReady = xyCalibrationBracketReady(obj, lowVoltage, highVoltage)
+            isReady = isfinite(lowVoltage) && isfinite(highVoltage) ...
+                && highVoltage - lowVoltage > obj.xyCalibrationMinBracketWidth_V;
         end
 
         function voltage = bracketXYCalibrationVoltage(~, lowVoltage, highVoltage)
