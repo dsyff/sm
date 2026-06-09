@@ -1080,8 +1080,8 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             sampleIndex = 0;
             fitIndex = 0;
             try
+                obj.runZAutofocus();
                 for cycleIndex = 1:obj.xyCalibrationOscillationCycles
-                    obj.runZAutofocus();
                     [baselineDx, baselineDy, baselineGof] = obj.estimateSampleOffset(obj.acquireSampleImageForAutoshift());
                     baselineOffset = [baselineDx, baselineDy];
                     fitIndex = fitIndex + 1;
@@ -1090,7 +1090,6 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                         stepDelta = direction * oscillationSteps;
                         anc.stepAxis(axisName, stepDelta);
                         currentCommandedStep = currentCommandedStep + stepDelta;
-                        obj.runZAutofocus();
                         [dx, dy, gof] = obj.estimateSampleOffset(obj.acquireSampleImageForAutoshift());
                         sampleIndex = sampleIndex + 1;
                         signedSteps(sampleIndex) = stepDelta;
