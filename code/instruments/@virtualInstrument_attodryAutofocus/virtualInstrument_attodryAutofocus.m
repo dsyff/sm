@@ -59,7 +59,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         % Binning step (deg) in pickLikelyPosition when finding BS endpoint from repeated reads. Default = 1 tick (4096 ticks/360°).
         bsQuantizationDeg (1, 1) double {mustBePositive} = 360 / 4096
 
-        shiftFitTrimRatio (2, 1) double = [0.2; 0.2]
+        shiftFitTrimRatio (2, 1) double = [0.3; 0.3]
         offsetFitRoi_px (1, 4) double = [NaN, NaN, NaN, NaN]  % [x, y, width, height]
         sampleOffsetEstimatorMode (1, 1) string = "spline_shift"
 
@@ -88,11 +88,14 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
 
         tenengradThreshold (1, 1) double {mustBeNonnegative} = 1e-4
         maxAutofocusIterations (1, 1) double {mustBeInteger, mustBePositive} = 50
-        zVoltageIncrementFactor (1, 1) double {mustBePositive} = 1.2
+        zVoltageIncrementFactor (1, 1) double {mustBePositive} = 1.05
         zStepTrialCount (1, 1) double {mustBeInteger, mustBePositive} = 5
 
         targetStepSizePixel (1, 1) double {mustBePositive} = 0.25
         xyCalibrationTargetDisplacement_px (1, 1) double {mustBePositive} = 2.0
+        xyCalibrationInitialVoltageScale (1, 1) double {mustBePositive} = 0.90
+        xyCalibrationOscillationCycles (1, 1) double {mustBeInteger, mustBePositive} = 10
+        xyCalibrationStepSizeToleranceFraction (1, 1) double {mustBeNonnegative} = 0.20
         xyCalibrationMinFitRsquare (1, 1) double {mustBeGreaterThanOrEqual(xyCalibrationMinFitRsquare, 0), mustBeLessThanOrEqual(xyCalibrationMinFitRsquare, 1)} = 0.90
         autoshiftStepRatio (1, 1) double {mustBePositive} = 0.5
         xyResponseMatrixMinRcond (1, 1) double {mustBePositive} = 1e-3
@@ -185,7 +188,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 NameValueArgs.bsPositionToleranceDeg (1, 1) double {mustBePositive} = 0.3
                 NameValueArgs.bsQuantizationDeg (1, 1) double {mustBePositive} = 360 / 4096
 
-                NameValueArgs.shiftFitTrimRatio (2, 1) double = [0.2; 0.2]
+                NameValueArgs.shiftFitTrimRatio (2, 1) double = [0.3; 0.3]
                 NameValueArgs.offsetFitRoi_px (1, 4) double = [NaN, NaN, NaN, NaN]
                 NameValueArgs.sampleOffsetEstimatorMode (1, 1) string = "spline_shift"
                 NameValueArgs.beamspotCircleRadius_px (1, 1) double = NaN
@@ -206,10 +209,13 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 NameValueArgs.positionerVoltageProfileCsvPath (1, 1) string = ""
                 NameValueArgs.tenengradThreshold (1, 1) double {mustBeNonnegative} = 1e-4
                 NameValueArgs.maxAutofocusIterations (1, 1) double {mustBeInteger, mustBePositive} = 50
-                NameValueArgs.zVoltageIncrementFactor (1, 1) double {mustBePositive} = 1.2
+                NameValueArgs.zVoltageIncrementFactor (1, 1) double {mustBePositive} = 1.05
                 NameValueArgs.zStepTrialCount (1, 1) double {mustBeInteger, mustBePositive} = 5
                 NameValueArgs.targetStepSizePixel (1, 1) double {mustBePositive} = 0.25
                 NameValueArgs.xyCalibrationTargetDisplacement_px (1, 1) double {mustBePositive} = 2.0
+                NameValueArgs.xyCalibrationInitialVoltageScale (1, 1) double {mustBePositive} = 0.90
+                NameValueArgs.xyCalibrationOscillationCycles (1, 1) double {mustBeInteger, mustBePositive} = 10
+                NameValueArgs.xyCalibrationStepSizeToleranceFraction (1, 1) double {mustBeNonnegative} = 0.20
                 NameValueArgs.xyCalibrationMinFitRsquare (1, 1) double {mustBeGreaterThanOrEqual(NameValueArgs.xyCalibrationMinFitRsquare, 0), mustBeLessThanOrEqual(NameValueArgs.xyCalibrationMinFitRsquare, 1)} = 0.90
                 NameValueArgs.autoshiftStepRatio (1, 1) double {mustBePositive} = 0.5
                 NameValueArgs.xyResponseMatrixMinRcond (1, 1) double {mustBePositive} = 1e-3
@@ -278,6 +284,10 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 error("virtualInstrument_attodryAutofocus:InvalidShiftFitTrimRatio", ...
                     "shiftFitTrimRatio values must be in (0, 0.6).");
             end
+            if NameValueArgs.xyCalibrationStepSizeToleranceFraction >= 1
+                error("virtualInstrument_attodryAutofocus:InvalidXYStepSizeTolerance", ...
+                    "xyCalibrationStepSizeToleranceFraction must be less than 1.");
+            end
             obj.shiftFitTrimRatio = NameValueArgs.shiftFitTrimRatio;
             obj.offsetFitRoi_px = NameValueArgs.offsetFitRoi_px;
             obj.sampleOffsetEstimatorMode = NameValueArgs.sampleOffsetEstimatorMode;
@@ -342,6 +352,9 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             obj.zStepTrialCount = NameValueArgs.zStepTrialCount;
             obj.targetStepSizePixel = NameValueArgs.targetStepSizePixel;
             obj.xyCalibrationTargetDisplacement_px = NameValueArgs.xyCalibrationTargetDisplacement_px;
+            obj.xyCalibrationInitialVoltageScale = NameValueArgs.xyCalibrationInitialVoltageScale;
+            obj.xyCalibrationOscillationCycles = NameValueArgs.xyCalibrationOscillationCycles;
+            obj.xyCalibrationStepSizeToleranceFraction = NameValueArgs.xyCalibrationStepSizeToleranceFraction;
             obj.xyCalibrationMinFitRsquare = NameValueArgs.xyCalibrationMinFitRsquare;
             obj.autoshiftStepRatio = NameValueArgs.autoshiftStepRatio;
             obj.xyResponseMatrixMinRcond = NameValueArgs.xyResponseMatrixMinRcond;
@@ -970,23 +983,21 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             anc = obj.getANC300Handle();
             stepTargetPx = obj.targetStepSizePixel;
             calibrationTargetPx = obj.xyCalibrationTargetDisplacement_px;
-            scanStepCount = min(obj.maxAutoshiftCalibrationSteps, max(3, ceil(calibrationTargetPx / stepTargetPx)));
-            scanStepIncrement = min(obj.xyCalibrationStepIncrement, scanStepCount);
-            scanPositions = (0:scanStepIncrement:scanStepCount).';
-            if scanPositions(end) ~= scanStepCount
-                scanPositions(end+1, 1) = scanStepCount;
-            end
+            oscillationSteps = min(obj.maxAutoshiftCalibrationSteps, max(1, ceil(calibrationTargetPx / stepTargetPx)));
+            minAcceptedPxPerStep = stepTargetPx * (1 - obj.xyCalibrationStepSizeToleranceFraction);
+            maxAcceptedPxPerStep = stepTargetPx * (1 + obj.xyCalibrationStepSizeToleranceFraction);
+            minAcceptedDisplacementPx = calibrationTargetPx * (1 - obj.xyCalibrationStepSizeToleranceFraction);
             [firstTryVoltages, currentTemperature_K] = obj.getInitialPositionerVoltages();
             axes = ["x"; "y"];
             voltageChannels = [obj.ANC300_voltage_x_ChannelName; obj.ANC300_voltage_y_ChannelName];
             xyPixelPerStepMatrix = NaN(2, 2);
             finalVoltages = NaN(2, 1);
             for axisIndex = 1:2
-                voltage = firstTryVoltages(1);
+                voltage = max(1, firstTryVoltages(1) * obj.xyCalibrationInitialVoltageScale);
                 for voltageAttempt = 1:40
                     masterRackProxy.rackSetWrite(voltageChannels(axisIndex), voltage);
                     [axisVector, maxMeasuredPx, scanRsquare, residualRms_px, returnDrift_px, minFitRsquare] = ...
-                        obj.measureAxisScanResponse(anc, axes(axisIndex), scanPositions);
+                        obj.measureAxisOscillationResponse(anc, axes(axisIndex), oscillationSteps);
                     pxPerStep = norm(axisVector);
 
                     if minFitRsquare < obj.xyCalibrationMinFitRsquare
@@ -996,14 +1007,14 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                         end
                         break;
                     end
-                    if pxPerStep > 2 * stepTargetPx
+                    if pxPerStep > maxAcceptedPxPerStep
                         if voltage > 1
                             voltage = max(1, voltage / obj.zVoltageIncrementFactor);
                             continue;
                         end
                         break;
                     end
-                    if (pxPerStep < stepTargetPx / 2 || maxMeasuredPx < calibrationTargetPx) && voltage < 60
+                    if (pxPerStep < minAcceptedPxPerStep || maxMeasuredPx < minAcceptedDisplacementPx) && voltage < 60
                         voltage = min(60, voltage * obj.zVoltageIncrementFactor);
                         continue;
                     end
@@ -1016,7 +1027,8 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                         end
                         break;
                     end
-                    if pxPerStep >= stepTargetPx / 2 && maxMeasuredPx >= calibrationTargetPx
+                    if pxPerStep >= minAcceptedPxPerStep && pxPerStep <= maxAcceptedPxPerStep ...
+                            && maxMeasuredPx >= minAcceptedDisplacementPx
                         xyPixelPerStepMatrix(:, axisIndex) = axisVector;
                         finalVoltages(axisIndex) = voltage;
                         break;
@@ -1026,13 +1038,13 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             end
             if any(~isfinite(xyPixelPerStepMatrix(:, 1)))
                 error("virtualInstrument_attodryAutofocus:XAutoshiftCalibrationFailed", ...
-                    "X calibration could not produce %.6g px displacement with %.6g px/step target within %d steps.", ...
-                    obj.xyCalibrationTargetDisplacement_px, obj.targetStepSizePixel, obj.maxAutoshiftCalibrationSteps);
+                    "X oscillation calibration could not produce %.6g px displacement with %.6g px/step target within %d steps.", ...
+                    obj.xyCalibrationTargetDisplacement_px, obj.targetStepSizePixel, oscillationSteps);
             end
             if any(~isfinite(xyPixelPerStepMatrix(:, 2)))
                 error("virtualInstrument_attodryAutofocus:YAutoshiftCalibrationFailed", ...
-                    "Y calibration could not produce %.6g px displacement with %.6g px/step target within %d steps.", ...
-                    obj.xyCalibrationTargetDisplacement_px, obj.targetStepSizePixel, obj.maxAutoshiftCalibrationSteps);
+                    "Y oscillation calibration could not produce %.6g px displacement with %.6g px/step target within %d steps.", ...
+                    obj.xyCalibrationTargetDisplacement_px, obj.targetStepSizePixel, oscillationSteps);
             end
             matrixRcond = rcond(xyPixelPerStepMatrix);
             if matrixRcond < obj.xyResponseMatrixMinRcond
@@ -1044,21 +1056,34 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             obj.updatePositionerVoltageProfile("xy_voltage_V", currentTemperature_K, max(finalVoltages));
         end
 
-        function [axisVector, maxMeasuredPx, scanRsquare, residualRms_px, returnDrift_px, minFitRsquare] = measureAxisScanResponse(obj, anc, axisName, scanPositions)
-            offsets = NaN(numel(scanPositions), 2);
-            fitRsquare = NaN(numel(scanPositions), 1);
+        function [axisVector, maxMeasuredPx, scanRsquare, residualRms_px, returnDrift_px, minFitRsquare] = measureAxisOscillationResponse(obj, anc, axisName, oscillationSteps)
+            signedSteps = NaN(2 * obj.xyCalibrationOscillationCycles, 1);
+            offsetDeltas = NaN(2 * obj.xyCalibrationOscillationCycles, 2);
+            fitRsquare = NaN(3 * obj.xyCalibrationOscillationCycles, 1);
             currentCommandedStep = 0;
+            sampleIndex = 0;
+            fitIndex = 0;
             try
-                for scanIndex = 1:numel(scanPositions)
-                    stepDelta = scanPositions(scanIndex) - currentCommandedStep;
-                    if stepDelta ~= 0
-                        obj.stepAxisInSmallChunks(anc, axisName, stepDelta);
-                        currentCommandedStep = scanPositions(scanIndex);
-                    end
+                for cycleIndex = 1:obj.xyCalibrationOscillationCycles
                     obj.runZAutofocus();
-                    [dx, dy, gof] = obj.estimateSampleOffset(obj.acquireSampleImageForAutoshift());
-                    offsets(scanIndex, :) = [dx, dy];
-                    fitRsquare(scanIndex) = gof.rsquare;
+                    [baselineDx, baselineDy, baselineGof] = obj.estimateSampleOffset(obj.acquireSampleImageForAutoshift());
+                    baselineOffset = [baselineDx, baselineDy];
+                    fitIndex = fitIndex + 1;
+                    fitRsquare(fitIndex) = baselineGof.rsquare;
+                    for direction = [1, -1]
+                        stepDelta = direction * oscillationSteps;
+                        anc.stepAxis(axisName, stepDelta);
+                        currentCommandedStep = currentCommandedStep + stepDelta;
+                        obj.runZAutofocus();
+                        [dx, dy, gof] = obj.estimateSampleOffset(obj.acquireSampleImageForAutoshift());
+                        sampleIndex = sampleIndex + 1;
+                        signedSteps(sampleIndex) = stepDelta;
+                        offsetDeltas(sampleIndex, :) = [dx, dy] - baselineOffset;
+                        fitIndex = fitIndex + 1;
+                        fitRsquare(fitIndex) = gof.rsquare;
+                        anc.stepAxis(axisName, -stepDelta);
+                        currentCommandedStep = currentCommandedStep - stepDelta;
+                    end
                 end
             catch scanError
                 obj.returnAxisToScanStart(anc, axisName, currentCommandedStep);
@@ -1068,16 +1093,16 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             obj.returnAxisToScanStart(anc, axisName, currentCommandedStep);
             obj.runZAutofocus();
             [returnDx, returnDy, returnGof] = obj.estimateSampleOffset(obj.acquireSampleImageForAutoshift());
-            [axisVector, scanRsquare, residualRms_px] = obj.fitAxisScanResponse(scanPositions, offsets);
-            maxMeasuredPx = max(sqrt(sum((offsets - offsets(1, :)).^2, 2)));
-            returnDrift_px = norm([returnDx, returnDy] - offsets(1, :));
+            [axisVector, scanRsquare, residualRms_px] = obj.fitAxisScanResponse(signedSteps, offsetDeltas);
+            maxMeasuredPx = max(sqrt(sum(offsetDeltas.^2, 2)));
+            returnDrift_px = norm([returnDx, returnDy] - baselineOffset);
             minFitRsquare = min([fitRsquare; returnGof.rsquare]);
         end
 
         function [axisVector, scanRsquare, residualRms_px] = fitAxisScanResponse(~, scanPositions, offsets)
-            designMatrix = [ones(numel(scanPositions), 1), scanPositions(:)];
+            designMatrix = scanPositions(:);
             coefficients = designMatrix \ offsets;
-            axisVector = coefficients(2, :).';
+            axisVector = coefficients.';
             residuals = offsets - designMatrix * coefficients;
             residualRms_px = sqrt(mean(sum(residuals.^2, 2)));
             centered = offsets - mean(offsets, 1);
