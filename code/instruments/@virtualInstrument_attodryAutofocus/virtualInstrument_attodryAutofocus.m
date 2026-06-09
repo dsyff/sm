@@ -91,20 +91,20 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         zVoltageIncrementFactor (1, 1) double {mustBePositive} = 1.05
         zStepTrialCount (1, 1) double {mustBeInteger, mustBePositive} = 5
 
-        targetStepSizePixel (1, 1) double {mustBePositive} = 0.5
+        targetStepSizePixel (1, 1) double {mustBePositive} = 1.0
         xyCalibrationTargetDisplacement_px (1, 1) double {mustBePositive} = 2.0
         xyCalibrationInitialVoltageScale (1, 1) double {mustBePositive} = 1.0
-        xyCalibrationMaxVoltageFactor (1, 1) double {mustBeGreaterThanOrEqual(xyCalibrationMaxVoltageFactor, 1)} = 1.5
-        xyCalibrationMinBracketWidth_V (1, 1) double {mustBePositive} = 1.0
-        xyCalibrationOscillationCycles (1, 1) double {mustBeInteger, mustBePositive} = 5
+        xyCalibrationMaxVoltageFactor (1, 1) double {mustBeGreaterThanOrEqual(xyCalibrationMaxVoltageFactor, 1)} = 1.10
+        xyCalibrationMinBracketWidth_V (1, 1) double {mustBePositive} = 0.25
+        xyCalibrationOscillationCycles (1, 1) double {mustBeInteger, mustBePositive} = 6
         xyCalibrationStepSizeToleranceFraction (1, 1) double {mustBeNonnegative} = 0.20
         xyCalibrationMinFitRsquare (1, 1) double {mustBeGreaterThanOrEqual(xyCalibrationMinFitRsquare, 0), mustBeLessThanOrEqual(xyCalibrationMinFitRsquare, 1)} = 0.90
         autoshiftStepRatio (1, 1) double {mustBePositive} = 0.5
         xyResponseMatrixMinRcond (1, 1) double {mustBePositive} = 1e-3
         maxAutoshiftCalibrationSteps (1, 1) double {mustBeInteger, mustBePositive} = 20
         xyCalibrationStepIncrement (1, 1) double {mustBeInteger, mustBePositive} = 1
-        xyCalibrationMinSlopeRsquare (1, 1) double {mustBeGreaterThanOrEqual(xyCalibrationMinSlopeRsquare, 0), mustBeLessThanOrEqual(xyCalibrationMinSlopeRsquare, 1)} = 0.70
-        xyCalibrationMaxResidual_px (1, 1) double {mustBePositive} = 1.0
+        xyCalibrationMinSlopeRsquare (1, 1) double {mustBeGreaterThanOrEqual(xyCalibrationMinSlopeRsquare, 0), mustBeLessThanOrEqual(xyCalibrationMinSlopeRsquare, 1)} = 0.20
+        xyCalibrationMaxResidual_px (1, 1) double {mustBePositive} = 3.0
         xyCalibrationReturnTolerance_px (1, 1) double {mustBePositive} = 1.0
         maxAutoshiftCorrectionStepsPerAxis (1, 1) double {mustBeInteger, mustBePositive} = 5
     end
@@ -213,20 +213,20 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 NameValueArgs.maxAutofocusIterations (1, 1) double {mustBeInteger, mustBePositive} = 50
                 NameValueArgs.zVoltageIncrementFactor (1, 1) double {mustBePositive} = 1.05
                 NameValueArgs.zStepTrialCount (1, 1) double {mustBeInteger, mustBePositive} = 5
-                NameValueArgs.targetStepSizePixel (1, 1) double {mustBePositive} = 0.5
+                NameValueArgs.targetStepSizePixel (1, 1) double {mustBePositive} = 1.0
                 NameValueArgs.xyCalibrationTargetDisplacement_px (1, 1) double {mustBePositive} = 2.0
                 NameValueArgs.xyCalibrationInitialVoltageScale (1, 1) double {mustBePositive} = 1.0
-                NameValueArgs.xyCalibrationMaxVoltageFactor (1, 1) double {mustBeGreaterThanOrEqual(NameValueArgs.xyCalibrationMaxVoltageFactor, 1)} = 1.5
-                NameValueArgs.xyCalibrationMinBracketWidth_V (1, 1) double {mustBePositive} = 1.0
-                NameValueArgs.xyCalibrationOscillationCycles (1, 1) double {mustBeInteger, mustBePositive} = 5
+                NameValueArgs.xyCalibrationMaxVoltageFactor (1, 1) double {mustBeGreaterThanOrEqual(NameValueArgs.xyCalibrationMaxVoltageFactor, 1)} = 1.10
+                NameValueArgs.xyCalibrationMinBracketWidth_V (1, 1) double {mustBePositive} = 0.25
+                NameValueArgs.xyCalibrationOscillationCycles (1, 1) double {mustBeInteger, mustBePositive} = 6
                 NameValueArgs.xyCalibrationStepSizeToleranceFraction (1, 1) double {mustBeNonnegative} = 0.20
                 NameValueArgs.xyCalibrationMinFitRsquare (1, 1) double {mustBeGreaterThanOrEqual(NameValueArgs.xyCalibrationMinFitRsquare, 0), mustBeLessThanOrEqual(NameValueArgs.xyCalibrationMinFitRsquare, 1)} = 0.90
                 NameValueArgs.autoshiftStepRatio (1, 1) double {mustBePositive} = 0.5
                 NameValueArgs.xyResponseMatrixMinRcond (1, 1) double {mustBePositive} = 1e-3
                 NameValueArgs.maxAutoshiftCalibrationSteps (1, 1) double {mustBeInteger, mustBePositive} = 20
                 NameValueArgs.xyCalibrationStepIncrement (1, 1) double {mustBeInteger, mustBePositive} = 1
-                NameValueArgs.xyCalibrationMinSlopeRsquare (1, 1) double {mustBeGreaterThanOrEqual(NameValueArgs.xyCalibrationMinSlopeRsquare, 0), mustBeLessThanOrEqual(NameValueArgs.xyCalibrationMinSlopeRsquare, 1)} = 0.70
-                NameValueArgs.xyCalibrationMaxResidual_px (1, 1) double {mustBePositive} = 1.0
+                NameValueArgs.xyCalibrationMinSlopeRsquare (1, 1) double {mustBeGreaterThanOrEqual(NameValueArgs.xyCalibrationMinSlopeRsquare, 0), mustBeLessThanOrEqual(NameValueArgs.xyCalibrationMinSlopeRsquare, 1)} = 0.20
+                NameValueArgs.xyCalibrationMaxResidual_px (1, 1) double {mustBePositive} = 3.0
                 NameValueArgs.xyCalibrationReturnTolerance_px (1, 1) double {mustBePositive} = 1.0
                 NameValueArgs.maxAutoshiftCorrectionStepsPerAxis (1, 1) double {mustBeInteger, mustBePositive} = 5
             end
@@ -918,7 +918,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             masterRackProxy = obj.getMasterRackProxy();
             anc = obj.getANC300Handle();
             [firstTryVoltages, currentTemperature_K] = obj.getInitialPositionerVoltages();
-            vz = firstTryVoltages(2);
+            vz = firstTryVoltages(3);
 
             vZ = vz;
             threshold = 1e-4;
@@ -999,7 +999,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             xyPixelPerStepMatrix = NaN(2, 2);
             finalVoltages = NaN(2, 1);
             for axisIndex = 1:2
-                voltage = max(1, firstTryVoltages(1) * obj.xyCalibrationInitialVoltageScale);
+                voltage = max(1, firstTryVoltages(axisIndex) * obj.xyCalibrationInitialVoltageScale);
                 lowVoltage = NaN;
                 highVoltage = NaN;
                 for voltageAttempt = 1:40
@@ -1074,7 +1074,8 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                     matrixRcond, obj.xyResponseMatrixMinRcond);
             end
             obj.xyPixelPerStepMatrix = xyPixelPerStepMatrix;
-            obj.updatePositionerVoltageProfile("xy_voltage_V", currentTemperature_K, max(finalVoltages));
+            obj.updatePositionerVoltageProfile("x_voltage_V", currentTemperature_K, finalVoltages(1));
+            obj.updatePositionerVoltageProfile("y_voltage_V", currentTemperature_K, finalVoltages(2));
         end
 
         function [axisVector, maxMeasuredPx, scanRsquare, residualRms_px, returnDrift_px, minFitRsquare] = measureAxisOscillationResponse(obj, anc, axisName, oscillationSteps)
@@ -1198,7 +1199,8 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             currentTemperature_K = currentTB(1);
             obj.assertVoltageProfileCoversTemperature(profile, currentTemperature_K);
             firstTryVoltages = [ ...
-                interp1(profile.temperature_K, profile.xy_voltage_V, currentTemperature_K, "linear"); ...
+                interp1(profile.temperature_K, profile.x_voltage_V, currentTemperature_K, "linear"); ...
+                interp1(profile.temperature_K, profile.y_voltage_V, currentTemperature_K, "linear"); ...
                 interp1(profile.temperature_K, profile.z_voltage_V, currentTemperature_K, "linear")];
         end
 
@@ -1215,9 +1217,10 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             end
 
             newRow = table(currentTemperature_K, ...
-                interp1(profile.temperature_K, profile.xy_voltage_V, currentTemperature_K, "linear"), ...
+                interp1(profile.temperature_K, profile.x_voltage_V, currentTemperature_K, "linear"), ...
+                interp1(profile.temperature_K, profile.y_voltage_V, currentTemperature_K, "linear"), ...
                 interp1(profile.temperature_K, profile.z_voltage_V, currentTemperature_K, "linear"), ...
-                VariableNames = ["temperature_K", "xy_voltage_V", "z_voltage_V"]);
+                VariableNames = ["temperature_K", "x_voltage_V", "y_voltage_V", "z_voltage_V"]);
             newRow.(voltageColumnName) = newVoltage_V;
             nearMask = abs(profile.temperature_K - currentTemperature_K) <= obj.voltageProfileMinTemperatureSpacing_K;
             profile(nearMask, :) = [];
@@ -1237,17 +1240,27 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                     "Positioner voltage profile CSV does not exist: %s", csvPath);
             end
             profile = readtable(csvPath);
-            requiredVariables = ["temperature_K", "xy_voltage_V", "z_voltage_V"];
+            profileVariables = string(profile.Properties.VariableNames);
+            if ismember("xy_voltage_V", profileVariables)
+                if ~ismember("x_voltage_V", profileVariables)
+                    profile.x_voltage_V = profile.xy_voltage_V;
+                end
+                if ~ismember("y_voltage_V", profileVariables)
+                    profile.y_voltage_V = profile.xy_voltage_V;
+                end
+            end
+            requiredVariables = ["temperature_K", "x_voltage_V", "y_voltage_V", "z_voltage_V"];
             if ~all(ismember(requiredVariables, string(profile.Properties.VariableNames)))
                 error("virtualInstrument_attodryAutofocus:InvalidVoltageProfileCsv", ...
                     "Voltage profile CSV must contain columns: %s", strjoin(requiredVariables, ", "));
             end
             profile = profile(:, requiredVariables);
-            if any(~isfinite(profile.temperature_K)) || any(~isfinite(profile.xy_voltage_V)) || any(~isfinite(profile.z_voltage_V))
+            voltageColumns = ["x_voltage_V", "y_voltage_V", "z_voltage_V"];
+            if any(~isfinite(profile.temperature_K)) || any(any(~isfinite(profile{:, voltageColumns})))
                 error("virtualInstrument_attodryAutofocus:InvalidVoltageProfileCsv", ...
                     "Voltage profile temperatures and voltages must be finite.");
             end
-            if any(profile.xy_voltage_V < 0 | profile.xy_voltage_V > 60 | profile.z_voltage_V < 0 | profile.z_voltage_V > 60)
+            if any(any(profile{:, voltageColumns} < 0 | profile{:, voltageColumns} > 60))
                 error("virtualInstrument_attodryAutofocus:InvalidVoltageProfileCsv", ...
                     "Voltage profile voltages must be within [0, 60] V.");
             end
