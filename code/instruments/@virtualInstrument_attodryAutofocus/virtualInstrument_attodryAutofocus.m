@@ -997,6 +997,8 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             finalVoltages = NaN(2, 1);
             for axisIndex = 1:2
                 voltage = max(1, firstTryVoltages(1) * obj.xyCalibrationInitialVoltageScale);
+                lowVoltage = NaN;
+                highVoltage = NaN;
                 for voltageAttempt = 1:40
                     masterRackProxy.rackSetWrite(voltageChannels(axisIndex), voltage);
                     [axisVector, maxMeasuredPx, scanRsquare, residualRms_px, returnDrift_px, minFitRsquare] = ...
@@ -1012,14 +1014,24 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                     end
                     if pxPerStep > maxAcceptedPxPerStep
                         if voltage > 1
-                            voltage = obj.adjustXYCalibrationVoltage(voltage, pxPerStep, -1);
+                            highVoltage = voltage;
+                            if isfinite(lowVoltage)
+                                voltage = obj.bracketXYCalibrationVoltage(lowVoltage, highVoltage);
+                            else
+                                voltage = obj.adjustXYCalibrationVoltage(voltage, pxPerStep, -1);
+                            end
                             continue;
                         end
                         break;
                     end
                     if (pxPerStep < minAcceptedPxPerStep || maxMeasuredPx < minAcceptedDisplacementPx) && voltage < 60
                         currentPxPerStep = min(pxPerStep, maxMeasuredPx / oscillationSteps);
-                        voltage = obj.adjustXYCalibrationVoltage(voltage, currentPxPerStep, 1);
+                        lowVoltage = voltage;
+                        if isfinite(highVoltage)
+                            voltage = obj.bracketXYCalibrationVoltage(lowVoltage, highVoltage);
+                        else
+                            voltage = obj.adjustXYCalibrationVoltage(voltage, currentPxPerStep, 1);
+                        end
                         continue;
                     end
                     if scanRsquare < obj.xyCalibrationMinSlopeRsquare ...
@@ -1137,6 +1149,14 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             else
                 voltage = max(1, voltage / factor);
             end
+        end
+
+        function voltage = bracketXYCalibrationVoltage(~, lowVoltage, highVoltage)
+            if ~(isfinite(lowVoltage) && isfinite(highVoltage) && lowVoltage < highVoltage)
+                error("virtualInstrument_attodryAutofocus:InvalidVoltageBracket", ...
+                    "XY calibration voltage bracket must be finite with lowVoltage < highVoltage.");
+            end
+            voltage = (lowVoltage + highVoltage) / 2;
         end
 
         function stepAxisInSmallChunks(obj, anc, axisName, nSteps)
