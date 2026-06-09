@@ -59,28 +59,17 @@ classdef instrument_ANC300 < instrumentInterface
             end
 
             axisId = obj.parseAxis(axis);
-            if nSteps == 0
-                return;
+            obj.stepAxisIds(axisId, nSteps);
+        end
+
+        function stepXY(obj, nStepsX, nStepsY)
+            arguments
+                obj
+                nStepsX (1, 1) double {mustBeInteger, mustBeFinite}
+                nStepsY (1, 1) double {mustBeInteger, mustBeFinite}
             end
-            stepCount = abs(nSteps);
-            frequency_Hz = obj.queryScalar(sprintf("getf %d", axisId));
-            obj.assertValidFrequency(frequency_Hz);
-            handle = obj.communicationHandle;
-            originalTimeout = handle.Timeout;
-            handle.Timeout = max(originalTimeout, stepCount / frequency_Hz + 5);
-            if nSteps > 0
-                stepCommand = sprintf("stepu %d %d", axisId, stepCount);
-            else
-                stepCommand = sprintf("stepd %d %d", axisId, stepCount);
-            end
-            try
-                obj.writeCommand(stepCommand);
-                obj.writeCommand(sprintf("stepw %d", axisId));
-            catch exception
-                handle.Timeout = originalTimeout;
-                rethrow(exception);
-            end
-            handle.Timeout = originalTimeout;
+
+            obj.stepAxisIds([obj.axisId_x, obj.axisId_y], [nStepsX, nStepsY]);
         end
     end
 
@@ -161,6 +150,49 @@ classdef instrument_ANC300 < instrumentInterface
                 error("instrument_ANC300:InvalidAxisName", ...
                     "Axis must be ""x"", ""y"", ""z"", or configured numeric ID.");
             end
+        end
+
+        function stepAxisIds(obj, axisIds, nSteps)
+            axisIds = double(axisIds(:).');
+            nSteps = double(nSteps(:).');
+            if numel(axisIds) ~= numel(nSteps)
+                error("instrument_ANC300:StepArgumentMismatch", ...
+                    "Axis ID and step count lists must have the same length.");
+            end
+
+            activeMask = nSteps ~= 0;
+            if ~any(activeMask)
+                return;
+            end
+            axisIds = axisIds(activeMask);
+            nSteps = nSteps(activeMask);
+            stepCounts = abs(nSteps);
+            frequencies_Hz = NaN(size(axisIds));
+            for stepIndex = 1:numel(axisIds)
+                frequencies_Hz(stepIndex) = obj.queryScalar(sprintf("getf %d", axisIds(stepIndex)));
+                obj.assertValidFrequency(frequencies_Hz(stepIndex));
+            end
+
+            handle = obj.communicationHandle;
+            originalTimeout = handle.Timeout;
+            handle.Timeout = max(originalTimeout, max(stepCounts ./ frequencies_Hz) + 5);
+            try
+                for stepIndex = 1:numel(axisIds)
+                    if nSteps(stepIndex) > 0
+                        stepCommand = "stepu";
+                    else
+                        stepCommand = "stepd";
+                    end
+                    obj.writeCommand(sprintf("%s %d %d", stepCommand, axisIds(stepIndex), stepCounts(stepIndex)));
+                end
+                for stepIndex = 1:numel(axisIds)
+                    obj.writeCommand(sprintf("stepw %d", axisIds(stepIndex)));
+                end
+            catch exception
+                handle.Timeout = originalTimeout;
+                rethrow(exception);
+            end
+            handle.Timeout = originalTimeout;
         end
 
         function assertFiniteVoltage(~, value)

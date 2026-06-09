@@ -959,12 +959,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             correctionSteps = max(min(correctionSteps, obj.maxAutoshiftCorrectionStepsPerAxis), -obj.maxAutoshiftCorrectionStepsPerAxis);
             nStepX = correctionSteps(1);
             nStepY = correctionSteps(2);
-            if nStepX ~= 0
-                obj.stepAxisInSmallChunks(anc, "x", nStepX);
-            end
-            if nStepY ~= 0
-                obj.stepAxisInSmallChunks(anc, "y", nStepY);
-            end
+            obj.stepXYInSmallChunks(anc, nStepX, nStepY);
         end
 
         function xyPixelPerStepMatrix = calibrateXYPixelPerStepMatrix(obj)
@@ -1097,6 +1092,15 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             while remainingSteps ~= 0
                 stepDelta = sign(remainingSteps) * min(abs(remainingSteps), obj.xyCalibrationStepIncrement);
                 anc.stepAxis(axisName, stepDelta);
+                remainingSteps = remainingSteps - stepDelta;
+            end
+        end
+
+        function stepXYInSmallChunks(obj, anc, nStepsX, nStepsY)
+            remainingSteps = [nStepsX; nStepsY];
+            while any(remainingSteps ~= 0)
+                stepDelta = sign(remainingSteps) .* min(abs(remainingSteps), obj.xyCalibrationStepIncrement);
+                anc.stepXY(stepDelta(1), stepDelta(2));
                 remainingSteps = remainingSteps - stepDelta;
             end
         end
