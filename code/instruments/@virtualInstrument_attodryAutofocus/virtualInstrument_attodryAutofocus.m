@@ -85,6 +85,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         initialVoltage_z (4, 1) double = [25; 35; 50; 55]
         temperatureRegime (1, 1) double {mustBeInteger, mustBeMember(temperatureRegime, [1, 2, 3, 4])} = 4
         positionerVoltageProfileCsvPath (1, 1) string = ""
+        positionerCalibrationLogCsvPath (1, 1) string = ""
 
         tenengradThreshold (1, 1) double {mustBeNonnegative} = 1e-4
         maxAutofocusIterations (1, 1) double {mustBeInteger, mustBePositive} = 50
@@ -137,6 +138,12 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         referenceFitTrim_px (1, 2) double = [NaN, NaN]
 
         xyPixelPerStepMatrix (2, 2) double = NaN(2, 2)
+        xyCalibrationTemperature_K (1, 1) double = NaN
+        xyCalibrationVoltages_V (2, 1) double = [NaN; NaN]
+        zCalibrationTemperature_K (1, 1) double = NaN
+        zCalibrationVoltage_V (1, 1) double = NaN
+        lastAutoshiftRawSteps (2, 1) double = [NaN; NaN]
+        lastAutoshiftAppliedSteps (2, 1) double = [0; 0]
         voltageProfileMinTemperatureSpacing_K (1, 1) double {mustBePositive} = 5
         voltageProfileUpdateFractionThreshold (1, 1) double {mustBePositive} = 0.20
     end
@@ -209,6 +216,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 NameValueArgs.initialVoltage_z (4, 1) double = [25; 35; 50; 55]
                 NameValueArgs.temperatureRegime (1, 1) double {mustBeInteger, mustBePositive} = 4
                 NameValueArgs.positionerVoltageProfileCsvPath (1, 1) string = ""
+                NameValueArgs.positionerCalibrationLogCsvPath (1, 1) string = ""
                 NameValueArgs.tenengradThreshold (1, 1) double {mustBeNonnegative} = 1e-4
                 NameValueArgs.maxAutofocusIterations (1, 1) double {mustBeInteger, mustBePositive} = 50
                 NameValueArgs.zVoltageIncrementFactor (1, 1) double {mustBePositive} = 1.05
@@ -349,6 +357,12 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 obj.diagnosticOutputFolder = fullfile(repoRoot, "temp", "attodry_autofocus_diagnostics");
             else
                 obj.diagnosticOutputFolder = NameValueArgs.diagnosticOutputFolder;
+            end
+            if strlength(NameValueArgs.positionerCalibrationLogCsvPath) == 0
+                obj.positionerCalibrationLogCsvPath = fullfile(obj.diagnosticOutputFolder, ...
+                    "attodry_autofocus_positioner_calibration_log.csv");
+            else
+                obj.positionerCalibrationLogCsvPath = NameValueArgs.positionerCalibrationLogCsvPath;
             end
             obj.tenengradThreshold = NameValueArgs.tenengradThreshold;
             obj.maxAutofocusIterations = NameValueArgs.maxAutofocusIterations;
@@ -778,6 +792,9 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             cleanup = onCleanup(@() obj.blockLaserOnly());
             obj.prepareAutofocusBeamSplitters();
             obj.acquireSampleImageForAutofocus();
+            if obj.anc300Configured()
+                obj.calibrateXYPixelPerStepMatrix();
+            end
 
             masterRackProxy = obj.getMasterRackProxy();
             if waitForTargets
@@ -956,6 +973,10 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                     if abs(nStepApplied) >= 1
                         anc.stepAxis("z", nStepApplied);
                     end
+                    obj.zCalibrationTemperature_K = currentTemperature_K;
+                    obj.zCalibrationVoltage_V = vZ;
+                    obj.appendPositionerCalibrationLog("z", vZ, nTrial, nStepApplied, ...
+                        max(abs([sPlus - s0, sMinus - s0])), NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN);
                     obj.updatePositionerVoltageProfile("z_voltage_V", currentTemperature_K, vZ);
                     return;
                 end
@@ -971,16 +992,32 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                     "Estimated sample offset must be finite before autoshift.");
             end
             anc = obj.getANC300Handle();
-            xyMatrix = obj.calibrateXYPixelPerStepMatrix();
-            correctionSteps = round(-obj.autoshiftStepRatio * (xyMatrix \ [dx_px; dy_px]));
+            currentTB = obj.getCurrentTB();
+            if any(~isfinite(obj.xyPixelPerStepMatrix(:))) ...
+                    || ~isfinite(obj.xyCalibrationTemperature_K) ...
+                    || abs(currentTB(1) - obj.xyCalibrationTemperature_K) > obj.voltageProfileMinTemperatureSpacing_K
+                xyMatrix = obj.calibrateXYPixelPerStepMatrix();
+            else
+                xyMatrix = obj.xyPixelPerStepMatrix;
+            end
+            rawCorrectionSteps = -obj.autoshiftStepRatio * (xyMatrix \ [dx_px; dy_px]);
+            correctionSteps = round(rawCorrectionSteps);
             if any(~isfinite(correctionSteps))
                 error("virtualInstrument_attodryAutofocus:InvalidXYCorrection", ...
                     "Computed XY correction steps must be finite.");
             end
+            promoteToTwoSteps = correctionSteps ~= 0 ...
+                & obj.lastAutoshiftAppliedSteps ~= 0 ...
+                & sign(correctionSteps) == sign(obj.lastAutoshiftAppliedSteps) ...
+                & sign(rawCorrectionSteps) == sign(correctionSteps) ...
+                & abs(rawCorrectionSteps) >= 0.9;
+            correctionSteps(promoteToTwoSteps) = correctionSteps(promoteToTwoSteps) + sign(correctionSteps(promoteToTwoSteps));
             correctionSteps = max(min(correctionSteps, obj.maxAutoshiftCorrectionStepsPerAxis), -obj.maxAutoshiftCorrectionStepsPerAxis);
             nStepX = correctionSteps(1);
             nStepY = correctionSteps(2);
             obj.stepXYInSmallChunks(anc, nStepX, nStepY);
+            obj.lastAutoshiftRawSteps = rawCorrectionSteps;
+            obj.lastAutoshiftAppliedSteps = correctionSteps;
         end
 
         function xyPixelPerStepMatrix = calibrateXYPixelPerStepMatrix(obj)
@@ -1052,6 +1089,9 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                             && maxMeasuredPx >= minAcceptedDisplacementPx
                         xyPixelPerStepMatrix(:, axisIndex) = axisVector;
                         finalVoltages(axisIndex) = voltage;
+                        obj.appendPositionerCalibrationLog(axes(axisIndex), voltage, voltageAttempt, NaN, ...
+                            NaN, pxPerStep, axisVector(1), axisVector(2), maxMeasuredPx, ...
+                            scanRsquare, residualRms_px, returnDrift_px, minFitRsquare);
                         break;
                     end
                     break;
@@ -1074,6 +1114,8 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                     matrixRcond, obj.xyResponseMatrixMinRcond);
             end
             obj.xyPixelPerStepMatrix = xyPixelPerStepMatrix;
+            obj.xyCalibrationTemperature_K = currentTemperature_K;
+            obj.xyCalibrationVoltages_V = finalVoltages;
             obj.updatePositionerVoltageProfile("x_voltage_V", currentTemperature_K, finalVoltages(1));
             obj.updatePositionerVoltageProfile("y_voltage_V", currentTemperature_K, finalVoltages(2));
         end
@@ -1202,6 +1244,14 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 interp1(profile.temperature_K, profile.x_voltage_V, currentTemperature_K, "linear"); ...
                 interp1(profile.temperature_K, profile.y_voltage_V, currentTemperature_K, "linear"); ...
                 interp1(profile.temperature_K, profile.z_voltage_V, currentTemperature_K, "linear")];
+            if all(isfinite(obj.xyCalibrationVoltages_V)) ...
+                    && abs(currentTemperature_K - obj.xyCalibrationTemperature_K) <= obj.voltageProfileMinTemperatureSpacing_K
+                firstTryVoltages(1:2) = obj.xyCalibrationVoltages_V;
+            end
+            if isfinite(obj.zCalibrationVoltage_V) ...
+                    && abs(currentTemperature_K - obj.zCalibrationTemperature_K) <= obj.voltageProfileMinTemperatureSpacing_K
+                firstTryVoltages(3) = obj.zCalibrationVoltage_V;
+            end
         end
 
         function updatePositionerVoltageProfile(obj, voltageColumnName, currentTemperature_K, newVoltage_V)
@@ -1230,6 +1280,34 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             catch err
                 error("virtualInstrument_attodryAutofocus:VoltageProfileWriteFailed", ...
                     "Failed to update positioner voltage profile CSV: %s", err.message);
+            end
+        end
+
+        function appendPositionerCalibrationLog(obj, axisName, voltage_V, nTrial, appliedSteps, response, pxPerStep, rowPxPerStep, colPxPerStep, maxMeasuredPx, scanRsquare, residualRms_px, returnDrift_px, minFitRsquare)
+            csvPath = obj.positionerCalibrationLogCsvPath;
+            logFolder = string(fileparts(csvPath));
+            if strlength(logFolder) > 0 && ~isfolder(logFolder)
+                [status, message] = mkdir(logFolder);
+                if ~status
+                    error("virtualInstrument_attodryAutofocus:CalibrationLogFolderCreateFailed", ...
+                        "Failed to create calibration log folder %s: %s", logFolder, message);
+                end
+            end
+            currentTB = obj.getCurrentTB();
+            row = table(datetime("now"), currentTB(1), currentTB(2), obj.targetT, obj.targetB, ...
+                string(axisName), voltage_V, nTrial, appliedSteps, response, pxPerStep, ...
+                rowPxPerStep, colPxPerStep, maxMeasuredPx, scanRsquare, residualRms_px, ...
+                returnDrift_px, minFitRsquare, ...
+                VariableNames = ["timestamp", "temperature_K", "magneticField_T", "targetT_K", ...
+                "targetB_T", "axis", "voltage_V", "n_trial", "applied_steps", ...
+                "response", "px_per_step", "row_px_per_step", "col_px_per_step", ...
+                "max_measured_px", "scan_rsquare", "residual_rms_px", "return_drift_px", ...
+                "min_fit_rsquare"]);
+            try
+                writetable(row, csvPath, WriteMode = "append", WriteVariableNames = ~isfile(csvPath));
+            catch err
+                error("virtualInstrument_attodryAutofocus:CalibrationLogWriteFailed", ...
+                    "Failed to append positioner calibration log %s: %s", csvPath, err.message);
             end
         end
 
