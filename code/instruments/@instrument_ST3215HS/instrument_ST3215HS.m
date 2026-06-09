@@ -97,6 +97,7 @@ classdef instrument_ST3215HS < instrumentInterface
 
     methods (Static)
         reprogramSTServoId(comPort, idFrom, idTo, NameValueArgs);
+        ids = pingAllServoIds(comPort, NameValueArgs);
     end
 
     methods
@@ -179,16 +180,14 @@ classdef instrument_ST3215HS < instrumentInterface
 
             TF = false;
             for k = 1:NameValueArgs.nAttempts
-                try
-                    obj.flush();
-                    obj.sendPing_(uint8(servoId));
-                    if NameValueArgs.postWritePauseSeconds > 0
-                        pause(NameValueArgs.postWritePauseSeconds);
-                    end
-                    obj.readAckAllowErr_(uint8(servoId));
+                obj.flush();
+                obj.sendPing_(uint8(servoId));
+                if NameValueArgs.postWritePauseSeconds > 0
+                    pause(NameValueArgs.postWritePauseSeconds);
+                end
+                if obj.readAckAllowErr_(uint8(servoId))
                     TF = true;
                     return;
-                catch
                 end
             end
         end
@@ -591,38 +590,49 @@ classdef instrument_ST3215HS < instrumentInterface
             write(obj.communicationHandle, pkt, "uint8");
         end
 
-        function readAckAllowErr_(obj, expectedId)
+        function TF = readAckAllowErr_(obj, expectedId)
             % Like readAck_, but does NOT error on nonzero ERR byte (presence-only).
             expectedId = uint8(expectedId);
+            TF = false;
             if expectedId == uint8(254)
                 return;
             end
 
-            obj.checkHead_();
-            hdr = read(obj.communicationHandle, 4, "uint8");
-            if numel(hdr) ~= 4
-                error("ST3215HS:AckTimeout", ...
-                    "Servo ACK timeout (expected 4 bytes after header) for expectedId=%d.", double(expectedId));
-            end
+            echoChecksum = bitcmp(uint8(mod(uint16(expectedId) + uint16(2) + uint16(obj.INST_PING), 256)));
+            while true
+                if ~obj.checkHead_(true)
+                    return;
+                end
+                hdr = read(obj.communicationHandle, 4, "uint8");
+                if numel(hdr) ~= 4
+                    error("ST3215HS:AckTimeout", ...
+                        "Servo ACK timeout (expected 4 bytes after header) for expectedId=%d.", double(expectedId));
+                end
 
-            id = hdr(1);
-            len = hdr(2);
-            err = hdr(3);
-            chk = hdr(4);
+                id = hdr(1);
+                len = hdr(2);
+                err = hdr(3);
+                chk = hdr(4);
 
-            if id ~= expectedId
-                error("ST3215HS:AckIdMismatch", ...
-                    "Servo ACK ID mismatch. Expected %d, got %d.", double(expectedId), double(id));
-            end
-            if len ~= uint8(2)
-                error("ST3215HS:AckLenMismatch", ...
-                    "Servo ACK length mismatch. Expected 2, got %d.", double(len));
-            end
+                if id == expectedId && len == uint8(2) && err == obj.INST_PING && chk == echoChecksum
+                    continue;
+                end
+                if id ~= expectedId
+                    error("ST3215HS:AckIdMismatch", ...
+                        "Servo ACK ID mismatch. Expected %d, got %d.", double(expectedId), double(id));
+                end
+                if len ~= uint8(2)
+                    error("ST3215HS:AckLenMismatch", ...
+                        "Servo ACK length mismatch. Expected 2, got %d.", double(len));
+                end
 
-            cal = bitcmp(uint8(mod(uint16(id) + uint16(len) + uint16(err), 256)));
-            if cal ~= chk
-                error("ST3215HS:AckChecksumMismatch", ...
-                    "Servo ACK checksum mismatch.");
+                cal = bitcmp(uint8(mod(uint16(id) + uint16(len) + uint16(err), 256)));
+                if cal ~= chk
+                    error("ST3215HS:AckChecksumMismatch", ...
+                        "Servo ACK checksum mismatch.");
+                end
+                TF = true;
+                return;
             end
         end
 
@@ -744,19 +754,28 @@ classdef instrument_ST3215HS < instrumentInterface
             end
         end
 
-        function checkHead_(obj)
+        function found = checkHead_(obj, allowMissingResponse)
             % Mirrors SCS::checkHead()
+            if nargin < 2
+                allowMissingResponse = false;
+            end
+            found = false;
             prev = uint8(0);
             cnt = 0;
             maxHeaderScanBytes = 64;
-            while true
+            t0 = tic;
+            while toc(t0) < obj.ioTimeoutSeconds
+                if obj.communicationHandle.NumBytesAvailable == 0
+                    pause(0.001);
+                    continue;
+                end
                 b = read(obj.communicationHandle, 1, "uint8");
                 if isempty(b)
-                    error("ST3215HS:HeaderTimeout", ...
-                        "Servo response timeout while waiting for header 0xFF 0xFF.");
+                    continue;
                 end
                 cur = b(1);
                 if cur == uint8(255) && prev == uint8(255)
+                    found = true;
                     return;
                 end
                 prev = cur;
@@ -766,6 +785,11 @@ classdef instrument_ST3215HS < instrumentInterface
                         "Servo response header not found (scanned > %d bytes).", maxHeaderScanBytes);
                 end
             end
+            if allowMissingResponse
+                return;
+            end
+            error("ST3215HS:HeaderTimeout", ...
+                "Servo response timeout while waiting for header 0xFF 0xFF.");
         end
 
         function w = bytesToU16Little_(~, lo, hi)
