@@ -331,8 +331,8 @@ classdef instrument_CS165MU < instrumentInterface
             obj.liveAxes.Visible = "on";
             obj.liveAxes.TickDir = "out";
             obj.liveAxes.Box = "on";
-            xlabel(obj.liveAxes, "x pixel");
-            ylabel(obj.liveAxes, "y pixel");
+            xlabel(obj.liveAxes, "x pixel (horizontal)");
+            ylabel(obj.liveAxes, "y pixel (vertical, origin top-left)");
             obj.liveStatusLabel = uicontrol(obj.liveFigure, ...
                 Style = "text", ...
                 Units = "normalized", ...
@@ -347,7 +347,7 @@ classdef instrument_CS165MU < instrumentInterface
             obj.liveImage.CDataMapping = "scaled";
             obj.liveImage.Interpolation = "nearest";
             colormap(obj.liveAxes, gray(256));
-            obj.liveAxes.YDir = "normal";
+            obj.liveAxes.YDir = "reverse";
             axis(obj.liveAxes, "image"); % square pixels
             obj.liveAxes.Toolbar.Visible = "off";
             applyCompactTickFormat(obj.liveAxes);

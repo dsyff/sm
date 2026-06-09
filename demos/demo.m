@@ -885,7 +885,7 @@ end
 % Start continuous live mode with smset("cam_live",1). Closing the
 % live-view figure stops continuous acquisition.
 % Set cam_x, cam_y, cam_w, and cam_h before autofocus references; they
-% define the acquired camera ROI image.
+% define the acquired camera ROI image in native top-left camera coordinates.
 % MU and CU share cam_live/cam_exp/cam_bin/cam_x/cam_y/cam_w/cam_h/cam_q.
 if CS165MU_Use
     AF_cameraInstrumentFriendlyName = "CS165MU";
@@ -1158,9 +1158,10 @@ end
 % Run autofocus with camera continuous acquisition off, for example
 % smset("cam_live",0), because live view and autofocus both consume
 % CS165 frames.
-% cam_* ROI channels define the larger acquired camera ROI. Autofocus
-% uses offsetFitRoi_px for the sample feature ROI, while the beamspot is
-% found over the whole camera ROI.
+% cam_* ROI channels define the larger acquired camera ROI in native top-left
+% camera coordinates. Autofocus uses offsetFitRoi_px = [x,y,width,height]
+% inside the acquired image for the sample feature ROI, while the beamspot
+% is found over the whole camera ROI.
 % T_af/B_af/cooldown diagnostics save .png + .mat files every 5 min and at
 % convergence under temp/attodry_autofocus_diagnostics by default.
 % After smready(recipe), take a reference and then select the offset-fit ROI:
