@@ -97,6 +97,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         xyCalibrationMaxVoltageFactor (1, 1) double {mustBeGreaterThanOrEqual(xyCalibrationMaxVoltageFactor, 1)} = 1.20
         xyCalibrationMinBracketWidth_V (1, 1) double {mustBePositive} = 0.25
         xyCalibrationOscillationCycles (1, 1) double {mustBeInteger, mustBePositive} = 1
+        xyCalibrationBatchVoltageToleranceFraction (1, 1) double {mustBePositive} = 0.01
         xyCalibrationStepSizeToleranceFraction (1, 1) double {mustBeNonnegative} = 0.10
         xyCalibrationMinUsablePxPerStep (1, 1) double {mustBeNonnegative} = 0.25
         xyCalibrationLargeResponsePxPerStep (1, 1) double {mustBePositive} = 20.0
@@ -234,6 +235,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 NameValueArgs.xyCalibrationMaxVoltageFactor (1, 1) double {mustBeGreaterThanOrEqual(NameValueArgs.xyCalibrationMaxVoltageFactor, 1)} = 1.20
                 NameValueArgs.xyCalibrationMinBracketWidth_V (1, 1) double {mustBePositive} = 0.25
                 NameValueArgs.xyCalibrationOscillationCycles (1, 1) double {mustBeInteger, mustBePositive} = 1
+                NameValueArgs.xyCalibrationBatchVoltageToleranceFraction (1, 1) double {mustBePositive} = 0.01
                 NameValueArgs.xyCalibrationStepSizeToleranceFraction (1, 1) double {mustBeNonnegative} = 0.10
                 NameValueArgs.xyCalibrationMinUsablePxPerStep (1, 1) double {mustBeNonnegative} = 0.25
                 NameValueArgs.xyCalibrationLargeResponsePxPerStep (1, 1) double {mustBePositive} = 20.0
@@ -309,6 +311,10 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             if NameValueArgs.xyCalibrationStepSizeToleranceFraction >= 1
                 error("virtualInstrument_attodryAutofocus:InvalidXYStepSizeTolerance", ...
                     "xyCalibrationStepSizeToleranceFraction must be less than 1.");
+            end
+            if NameValueArgs.xyCalibrationBatchVoltageToleranceFraction >= 1
+                error("virtualInstrument_attodryAutofocus:InvalidXYBatchVoltageTolerance", ...
+                    "xyCalibrationBatchVoltageToleranceFraction must be less than 1.");
             end
             if NameValueArgs.xyCalibrationMinUsablePxPerStep >= NameValueArgs.targetStepSizePixel
                 error("virtualInstrument_attodryAutofocus:InvalidXYUsableThreshold", ...
@@ -391,6 +397,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             obj.xyCalibrationMaxVoltageFactor = NameValueArgs.xyCalibrationMaxVoltageFactor;
             obj.xyCalibrationMinBracketWidth_V = NameValueArgs.xyCalibrationMinBracketWidth_V;
             obj.xyCalibrationOscillationCycles = NameValueArgs.xyCalibrationOscillationCycles;
+            obj.xyCalibrationBatchVoltageToleranceFraction = NameValueArgs.xyCalibrationBatchVoltageToleranceFraction;
             obj.xyCalibrationStepSizeToleranceFraction = NameValueArgs.xyCalibrationStepSizeToleranceFraction;
             obj.xyCalibrationMinUsablePxPerStep = NameValueArgs.xyCalibrationMinUsablePxPerStep;
             obj.xyCalibrationLargeResponsePxPerStep = NameValueArgs.xyCalibrationLargeResponsePxPerStep;
@@ -1048,10 +1055,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 error("virtualInstrument_attodryAutofocus:InvalidXYCalibrationStepLimit", ...
                     "maxAutoshiftCalibrationSteps must be at least %d for XY calibration.", oscillationSteps);
             end
-            minAcceptedPxPerStep = stepTargetPx * (1 - obj.xyCalibrationStepSizeToleranceFraction);
-            maxAcceptedPxPerStep = stepTargetPx * (1 + obj.xyCalibrationStepSizeToleranceFraction);
-            initialProbeTargetsPxPerStep = repelem([stepTargetPx; 1.0; 1.5], 2);
-            fittedProbeTargetsPxPerStep = repelem([1.5; 1.0; stepTargetPx], 2);
+            probeBatchTargetsPxPerStep = [stepTargetPx; 1.0; 1.5];
             largestProbeTargetPxPerStep = 1.5;
             [~, currentTemperature_K, activeSlopes, activeIntercepts] = obj.getInitialPositionerVoltages();
             axes = ["x"; "y"];
@@ -1063,21 +1067,19 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             obj.runZAutofocus();
             for axisIndex = 1:2
                 [activeSlope, activeIntercept] = obj.validateXYActiveLine(activeSlopes(axisIndex), activeIntercepts(axisIndex));
-                targetQueue = initialProbeTargetsPxPerStep;
-                usableVoltages = NaN(100, 1);
-                usableResponses = NaN(100, 1);
+                targetQueue = probeBatchTargetsPxPerStep;
+                usableVoltages = NaN(160, 1);
+                usableResponses = NaN(160, 1);
                 usableCount = 0;
-                targetVectors = NaN(40, 2);
-                targetSamples = cell(40, 1);
-                targetCount = 0;
+                lineVectors = NaN(40, 2);
+                linePxPerStep = NaN(40, 1);
+                lineCount = 0;
+                previousBatchTargetVoltage = NaN;
+                batchLineStartIndex = 1;
                 for voltageAttempt = 1:40
                     if isempty(targetQueue)
-                        if usableCount >= 2
-                            [activeSlope, activeIntercept] = obj.fitXYActiveLine( ...
-                                usableVoltages(1:usableCount), usableResponses(1:usableCount), ...
-                                activeSlope, activeIntercept);
-                        end
-                        targetQueue = fittedProbeTargetsPxPerStep;
+                        targetQueue = probeBatchTargetsPxPerStep;
+                        batchLineStartIndex = lineCount + 1;
                     end
                     targetResponse_pxPerStep = targetQueue(1);
                     targetQueue(1) = [];
@@ -1112,7 +1114,9 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                             scanRsquare, residualRms_px, returnDrift_px, minFitRsquare, "discard_low_response");
                         if abs(targetResponse_pxPerStep - stepTargetPx) <= eps(stepTargetPx)
                             [activeSlope, activeIntercept] = obj.shiftXYActiveTurnOnVoltage(activeSlope, activeIntercept, 1);
-                            targetQueue = initialProbeTargetsPxPerStep;
+                            targetQueue = probeBatchTargetsPxPerStep;
+                            previousBatchTargetVoltage = NaN;
+                            batchLineStartIndex = lineCount + 1;
                         end
                         continue;
                     end
@@ -1120,50 +1124,59 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                     usableVoltages(usableCount + (1:nNewSamples)) = voltage;
                     usableResponses(usableCount + (1:nNewSamples)) = samplePxPerStep(:);
                     usableCount = usableCount + nNewSamples;
+                    if usableCount >= 2
+                        [activeSlope, activeIntercept] = obj.fitXYActiveLine( ...
+                            usableVoltages(1:usableCount), usableResponses(1:usableCount), ...
+                            activeSlope, activeIntercept);
+                    end
+
                     action = "use_fit" + scanModelActionSuffix;
+                    restartBatch = false;
                     if pxPerStep > obj.xyCalibrationLargeResponsePxPerStep
                         obj.printAutofocusWarning("%s XY calibration attempt %d measured %.4g px/step at %.4g V.", ...
                             upper(axes(axisIndex)), voltageAttempt, pxPerStep, voltage);
                         action = "use_fit_large_response" + scanModelActionSuffix;
                         if targetResponse_pxPerStep < largestProbeTargetPxPerStep
                             [activeSlope, activeIntercept] = obj.shiftXYActiveTurnOnVoltage(activeSlope, activeIntercept, -1);
-                            targetQueue = initialProbeTargetsPxPerStep;
+                            targetQueue = probeBatchTargetsPxPerStep;
+                            previousBatchTargetVoltage = NaN;
+                            restartBatch = true;
                         end
                     end
-                    if abs(targetResponse_pxPerStep - stepTargetPx) <= eps(stepTargetPx)
-                        targetCount = targetCount + 1;
-                        targetVectors(targetCount, :) = axisVector(:).';
-                        targetSamples{targetCount} = samplePxPerStep(:);
-                        if targetCount < 2
-                            obj.appendPositionerCalibrationLog(axes(axisIndex), voltage, voltageAttempt, NaN, ...
-                                NaN, pxPerStep, axisVector(1), axisVector(2), maxMeasuredPx, ...
-                                scanRsquare, residualRms_px, returnDrift_px, minFitRsquare, action);
-                            continue;
+
+                    lineCount = lineCount + 1;
+                    lineVectors(lineCount, :) = axisVector(:).';
+                    linePxPerStep(lineCount) = pxPerStep;
+                    if restartBatch
+                        batchLineStartIndex = lineCount + 1;
+                    elseif isempty(targetQueue) && lineCount >= batchLineStartIndex
+                        batchTargetVoltage = obj.predictXYVoltageFromActiveLine(activeSlope, activeIntercept, stepTargetPx);
+                        if isfinite(previousBatchTargetVoltage)
+                            batchVoltageChangeFraction = abs(batchTargetVoltage - previousBatchTargetVoltage) ...
+                                / max(abs(previousBatchTargetVoltage), eps);
+                            if batchVoltageChangeFraction <= obj.xyCalibrationBatchVoltageToleranceFraction
+                                recentIndices = batchLineStartIndex:lineCount;
+                                acceptedVector = median(lineVectors(recentIndices, :), 1, "omitnan").';
+                                if ~(all(isfinite(acceptedVector)) && norm(acceptedVector) > 0)
+                                    error("virtualInstrument_attodryAutofocus:InvalidXYCalibrationVector", ...
+                                        "Stable XY active-line fit produced a non-finite or zero axis vector.");
+                                end
+                                xyPixelPerStepMatrix(:, axisIndex) = stepTargetPx * acceptedVector / norm(acceptedVector);
+                                finalVoltages(axisIndex) = batchTargetVoltage;
+                                masterRackProxy.rackSetWrite(voltageChannels(axisIndex), finalVoltages(axisIndex));
+                                recentPxPerStep = median(linePxPerStep(recentIndices), "omitnan");
+                                obj.recordXYCalibrationHistory(axisIndex, finalVoltages(axisIndex), recentPxPerStep);
+                                obj.appendPositionerCalibrationLog(axes(axisIndex), voltage, voltageAttempt, NaN, ...
+                                    NaN, pxPerStep, axisVector(1), axisVector(2), maxMeasuredPx, ...
+                                    scanRsquare, residualRms_px, returnDrift_px, minFitRsquare, "accept_batch_voltage_stable");
+                                finalSlopes(axisIndex) = activeSlope;
+                                finalIntercepts(axisIndex) = activeIntercept;
+                                break;
+                            end
                         end
-                        recentSamples = [targetSamples{targetCount - 1}; targetSamples{targetCount}];
-                        recentPxPerStep = median(recentSamples, "omitnan");
-                        if recentPxPerStep < minAcceptedPxPerStep || recentPxPerStep > maxAcceptedPxPerStep
-                            obj.appendPositionerCalibrationLog(axes(axisIndex), voltage, voltageAttempt, NaN, ...
-                                NaN, pxPerStep, axisVector(1), axisVector(2), maxMeasuredPx, ...
-                                scanRsquare, residualRms_px, returnDrift_px, minFitRsquare, action);
-                            continue;
-                        end
-                        if usableCount >= 2
-                            [activeSlope, activeIntercept] = obj.fitXYActiveLine( ...
-                                usableVoltages(1:usableCount), usableResponses(1:usableCount), ...
-                                activeSlope, activeIntercept);
-                        end
-                        acceptedVector = median(targetVectors(targetCount - 1:targetCount, :), 1, "omitnan").';
-                        xyPixelPerStepMatrix(:, axisIndex) = stepTargetPx * acceptedVector / norm(acceptedVector);
-                        finalVoltages(axisIndex) = obj.predictXYVoltageFromActiveLine(activeSlope, activeIntercept, stepTargetPx);
-                        masterRackProxy.rackSetWrite(voltageChannels(axisIndex), finalVoltages(axisIndex));
-                        obj.recordXYCalibrationHistory(axisIndex, finalVoltages(axisIndex), recentPxPerStep);
-                        obj.appendPositionerCalibrationLog(axes(axisIndex), voltage, voltageAttempt, NaN, ...
-                            NaN, pxPerStep, axisVector(1), axisVector(2), maxMeasuredPx, ...
-                            scanRsquare, residualRms_px, returnDrift_px, minFitRsquare, "accept");
-                        finalSlopes(axisIndex) = activeSlope;
-                        finalIntercepts(axisIndex) = activeIntercept;
-                        break;
+                        previousBatchTargetVoltage = batchTargetVoltage;
+                        batchLineStartIndex = lineCount + 1;
+                        action = "batch_complete" + scanModelActionSuffix;
                     end
                     obj.appendPositionerCalibrationLog(axes(axisIndex), voltage, voltageAttempt, NaN, ...
                         NaN, pxPerStep, axisVector(1), axisVector(2), maxMeasuredPx, ...
@@ -1172,13 +1185,13 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             end
             if any(~isfinite(xyPixelPerStepMatrix(:, 1)))
                 error("virtualInstrument_attodryAutofocus:XAutoshiftCalibrationFailed", ...
-                    "X oscillation calibration could not produce %.6g px/step response within a +/- %.3g fraction using %d-step commands.", ...
-                    obj.targetStepSizePixel, obj.xyCalibrationStepSizeToleranceFraction, oscillationSteps);
+                    "X oscillation calibration predicted target voltage did not stabilize within %.3g%% between probe batches using %d-step commands.", ...
+                    100 * obj.xyCalibrationBatchVoltageToleranceFraction, oscillationSteps);
             end
             if any(~isfinite(xyPixelPerStepMatrix(:, 2)))
                 error("virtualInstrument_attodryAutofocus:YAutoshiftCalibrationFailed", ...
-                    "Y oscillation calibration could not produce %.6g px/step response within a +/- %.3g fraction using %d-step commands.", ...
-                    obj.targetStepSizePixel, obj.xyCalibrationStepSizeToleranceFraction, oscillationSteps);
+                    "Y oscillation calibration predicted target voltage did not stabilize within %.3g%% between probe batches using %d-step commands.", ...
+                    100 * obj.xyCalibrationBatchVoltageToleranceFraction, oscillationSteps);
             end
             matrixRcond = rcond(xyPixelPerStepMatrix);
             if matrixRcond < obj.xyResponseMatrixMinRcond
@@ -1250,17 +1263,19 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         function [axisVector, maxMeasuredPx, scanRsquare, residualRms_px, returnDrift_px, minFitRsquare, samplePxPerStep, trimBoundaryTouched] = measureAxisOscillationResponse(obj, anc, axisName, oscillationSteps)
             signedSteps = NaN(2 * obj.xyCalibrationOscillationCycles, 1);
             offsetDeltas = NaN(2 * obj.xyCalibrationOscillationCycles, 2);
-            fitRsquare = NaN(3 * obj.xyCalibrationOscillationCycles, 1);
+            fitRsquare = NaN(4 * obj.xyCalibrationOscillationCycles + 1, 1);
             currentCommandedStep = 0;
             sampleIndex = 0;
             fitIndex = 0;
+            baselineOffset = [NaN, NaN];
             try
                 for cycleIndex = 1:obj.xyCalibrationOscillationCycles
-                    [baselineDx, baselineDy, baselineGof] = obj.estimateSampleOffset(obj.acquireSampleImageForAutoshift());
-                    baselineOffset = [baselineDx, baselineDy];
-                    fitIndex = fitIndex + 1;
-                    fitRsquare(fitIndex) = baselineGof.rsquare;
                     for direction = [1, -1]
+                        [baselineDx, baselineDy, baselineGof] = obj.estimateSampleOffset(obj.acquireSampleImageForAutoshift());
+                        baselineOffset = [baselineDx, baselineDy];
+                        fitIndex = fitIndex + 1;
+                        fitRsquare(fitIndex) = baselineGof.rsquare;
+
                         stepDelta = direction * oscillationSteps;
                         anc.stepAxis(axisName, stepDelta);
                         currentCommandedStep = currentCommandedStep + stepDelta;
@@ -1289,7 +1304,6 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             trimBoundaryTouched = any(abs(offsetDeltas(:, 1)) >= 0.9 * trim_px(1) ...
                 | abs(offsetDeltas(:, 2)) >= 0.9 * trim_px(2));
         end
-
         function [axisVector, scanRsquare, residualRms_px, samplePxPerStep] = fitAxisScanResponse(~, scanPositions, offsets)
             if any(scanPositions(:) == 0)
                 error("virtualInstrument_attodryAutofocus:InvalidCalibrationScan", ...
@@ -1974,13 +1988,8 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                     "shiftFitTrimRatio leaves no offset fit samples inside the ROI.");
             end
 
-            sampleRows = fitRows(fitRows - rowShiftLimit >= 1 & fitRows + rowShiftLimit <= imageSize(1));
-            sampleCols = fitCols(fitCols - colShiftLimit >= 1 & fitCols + colShiftLimit <= imageSize(2));
-            if isempty(sampleRows) || isempty(sampleCols)
-                error("virtualInstrument_attodryAutofocus:OffsetFitRoiTooCloseToImageEdge", ...
-                    "offsetFitRoi_px leaves no samples that can shift by [%d, %d] pixels inside image bounds [height=%d, width=%d].", ...
-                    rowShiftLimit, colShiftLimit, imageSize(1), imageSize(2));
-            end
+            sampleRows = fitRows((rowShiftLimit + 1):(numel(fitRows) - rowShiftLimit));
+            sampleCols = fitCols((colShiftLimit + 1):(numel(fitCols) - colShiftLimit));
         end
 
         function [fitRows, fitCols] = getOffsetFitRoiIndices(obj, imageSize, roiShift_xy)
