@@ -9,6 +9,9 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
     % The sample reference is never automatically updated during autofocus. Live XY
     % compensation uses the original sample reference plus the live laser beamspot
     % displacement from the original reference beamspot.
+    %
+    % XY autoshift control design (full-gain quantized correction, tolerance
+    % rationale, stability): see docs/ATTODRY_AUTOFOCUS_AUTOSHIFT_DESIGN.md.
 
     properties
         T_channelName (1, 1) string
@@ -102,7 +105,6 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         xyCalibrationMinUsablePxPerStep (1, 1) double {mustBeNonnegative} = 0.25
         xyCalibrationLargeResponsePxPerStep (1, 1) double {mustBePositive} = 30.0
         xyCalibrationMinFitRsquare (1, 1) double {mustBeGreaterThanOrEqual(xyCalibrationMinFitRsquare, 0), mustBeLessThanOrEqual(xyCalibrationMinFitRsquare, 1)} = 0.90
-        autoshiftStepRatio (1, 1) double {mustBePositive} = 0.5
         xyResponseMatrixMinRcond (1, 1) double {mustBePositive} = 1e-3
         maxAutoshiftCalibrationSteps (1, 1) double {mustBeInteger, mustBePositive} = 20
         xyCalibrationStepIncrement (1, 1) double {mustBeInteger, mustBePositive} = 1
@@ -111,8 +113,12 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         xyCalibrationReturnTolerance_px (1, 1) double {mustBePositive} = 1.0
         xyCalibrationHistoryDriftThreshold_pxPerStep (1, 1) double {mustBePositive} = 0.1
         maxAutoshiftCorrectionStepsPerAxis (1, 1) double {mustBeInteger, mustBePositive} = 5
-        autoshiftTightTolerancePixel (1, 1) double {mustBePositive} = 0.25
-        autoshiftLooseTolerancePixel (1, 1) double {mustBePositive} = 0.5
+        % Done tolerances derive from the two-axis quantization floor
+        % (targetStepSizePixel/sqrt(2)): tight = autoshiftToleranceFactor * floor,
+        % loose = sqrt(2) * tight. Factor 1 = exact worst-case floor.
+        autoshiftToleranceFactor (1, 1) double {mustBeGreaterThanOrEqual(autoshiftToleranceFactor, 1)} = 1.5
+        autoshiftTightTolerancePixel (1, 1) double {mustBePositive} = 1.5 * 0.25 * sqrt(2)
+        autoshiftLooseTolerancePixel (1, 1) double {mustBePositive} = 1.5 * 0.5
         autoshiftLooseSuccessStepBudget (1, 1) double {mustBeInteger, mustBePositive} = 20
         autoshiftRecalibrationStepBudget (1, 1) double {mustBeInteger, mustBePositive} = 50
     end
@@ -243,7 +249,6 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 NameValueArgs.xyCalibrationMinUsablePxPerStep (1, 1) double {mustBeNonnegative} = 0.25
                 NameValueArgs.xyCalibrationLargeResponsePxPerStep (1, 1) double {mustBePositive} = 30.0
                 NameValueArgs.xyCalibrationMinFitRsquare (1, 1) double {mustBeGreaterThanOrEqual(NameValueArgs.xyCalibrationMinFitRsquare, 0), mustBeLessThanOrEqual(NameValueArgs.xyCalibrationMinFitRsquare, 1)} = 0.90
-                NameValueArgs.autoshiftStepRatio (1, 1) double {mustBePositive} = 0.5
                 NameValueArgs.xyResponseMatrixMinRcond (1, 1) double {mustBePositive} = 1e-3
                 NameValueArgs.maxAutoshiftCalibrationSteps (1, 1) double {mustBeInteger, mustBePositive} = 20
                 NameValueArgs.xyCalibrationStepIncrement (1, 1) double {mustBeInteger, mustBePositive} = 1
@@ -252,8 +257,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 NameValueArgs.xyCalibrationReturnTolerance_px (1, 1) double {mustBePositive} = 1.0
                 NameValueArgs.xyCalibrationHistoryDriftThreshold_pxPerStep (1, 1) double {mustBePositive} = 0.1
                 NameValueArgs.maxAutoshiftCorrectionStepsPerAxis (1, 1) double {mustBeInteger, mustBePositive} = 5
-                NameValueArgs.autoshiftTightTolerancePixel (1, 1) double {mustBePositive} = 0.25
-                NameValueArgs.autoshiftLooseTolerancePixel (1, 1) double {mustBePositive} = 0.5
+                NameValueArgs.autoshiftToleranceFactor (1, 1) double {mustBeGreaterThanOrEqual(NameValueArgs.autoshiftToleranceFactor, 1)} = 1.5
                 NameValueArgs.autoshiftLooseSuccessStepBudget (1, 1) double {mustBeInteger, mustBePositive} = 20
                 NameValueArgs.autoshiftRecalibrationStepBudget (1, 1) double {mustBeInteger, mustBePositive} = 50
             end
@@ -330,10 +334,6 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             if NameValueArgs.xyCalibrationLargeResponsePxPerStep <= NameValueArgs.targetStepSizePixel
                 error("virtualInstrument_attodryAutofocus:InvalidXYLargeResponseThreshold", ...
                     "xyCalibrationLargeResponsePxPerStep must be greater than targetStepSizePixel.");
-            end
-            if NameValueArgs.autoshiftTightTolerancePixel >= NameValueArgs.autoshiftLooseTolerancePixel
-                error("virtualInstrument_attodryAutofocus:InvalidAutoshiftTolerance", ...
-                    "autoshiftTightTolerancePixel must be less than autoshiftLooseTolerancePixel.");
             end
             if NameValueArgs.autoshiftLooseSuccessStepBudget >= NameValueArgs.autoshiftRecalibrationStepBudget
                 error("virtualInstrument_attodryAutofocus:InvalidAutoshiftStepBudget", ...
@@ -417,7 +417,6 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             obj.xyCalibrationMinUsablePxPerStep = NameValueArgs.xyCalibrationMinUsablePxPerStep;
             obj.xyCalibrationLargeResponsePxPerStep = NameValueArgs.xyCalibrationLargeResponsePxPerStep;
             obj.xyCalibrationMinFitRsquare = NameValueArgs.xyCalibrationMinFitRsquare;
-            obj.autoshiftStepRatio = NameValueArgs.autoshiftStepRatio;
             obj.xyResponseMatrixMinRcond = NameValueArgs.xyResponseMatrixMinRcond;
             obj.maxAutoshiftCalibrationSteps = NameValueArgs.maxAutoshiftCalibrationSteps;
             obj.xyCalibrationStepIncrement = NameValueArgs.xyCalibrationStepIncrement;
@@ -426,8 +425,9 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             obj.xyCalibrationReturnTolerance_px = NameValueArgs.xyCalibrationReturnTolerance_px;
             obj.xyCalibrationHistoryDriftThreshold_pxPerStep = NameValueArgs.xyCalibrationHistoryDriftThreshold_pxPerStep;
             obj.maxAutoshiftCorrectionStepsPerAxis = NameValueArgs.maxAutoshiftCorrectionStepsPerAxis;
-            obj.autoshiftTightTolerancePixel = NameValueArgs.autoshiftTightTolerancePixel;
-            obj.autoshiftLooseTolerancePixel = NameValueArgs.autoshiftLooseTolerancePixel;
+            obj.autoshiftToleranceFactor = NameValueArgs.autoshiftToleranceFactor;
+            obj.autoshiftTightTolerancePixel = NameValueArgs.autoshiftToleranceFactor * NameValueArgs.targetStepSizePixel / sqrt(2);
+            obj.autoshiftLooseTolerancePixel = sqrt(2) * obj.autoshiftTightTolerancePixel;
             obj.autoshiftLooseSuccessStepBudget = NameValueArgs.autoshiftLooseSuccessStepBudget;
             obj.autoshiftRecalibrationStepBudget = NameValueArgs.autoshiftRecalibrationStepBudget;
 
@@ -1074,7 +1074,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             else
                 xyMatrix = obj.xyPixelPerStepMatrix;
             end
-            rawCorrectionSteps = -obj.autoshiftStepRatio * (xyMatrix \ [dx_px; dy_px]);
+            rawCorrectionSteps = -(xyMatrix \ [dx_px; dy_px]);
             correctionSteps = round(rawCorrectionSteps);
             if any(~isfinite(correctionSteps))
                 error("virtualInstrument_attodryAutofocus:InvalidXYCorrection", ...

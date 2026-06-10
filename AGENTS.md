@@ -14,3 +14,6 @@
 ## 3) Email scrub before stage/push for public repos
 - Before staging, committing, or pushing, run the sensitive-email scrub required by the current session instructions.
 - Remove or redact any occurrences before `git add`, `git commit`, or `git push`.
+
+## 4) Agent-generated artifacts
+- Store agent-generated images/screenshots for the user in `temp/` inside the workspace (git-ignored), not the OS temp folder, so links survive temp cleanup.

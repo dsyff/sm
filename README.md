@@ -40,6 +40,7 @@
 - `docs/MEASUREMENT_ENGINE_ARCHITECTURE.md` (engine/recipe/safe/turbo architecture + worker protocol)
 - `docs/general_coding_guidelines.md` (repo-wide coding guidelines; includes git guidelines)
 - `docs/SMBRIDGE_GUI_ARCHITECTURE.txt` (smbridge GUI structure and scan flow)
+- `docs/ATTODRY_AUTOFOCUS_AUTOSHIFT_DESIGN.md` (XY autoshift control design, stepper physics, tolerance rationale)
 
 ## 🔧 TROUBLESHOOTING:
 - Check instrument addresses and VISA connections (especially adaptor index for GPIB)
@@ -48,4 +49,4 @@
 
 ---
 
-📅 **Last Updated**: 20260212
+📅 **Last Updated**: 20260610
