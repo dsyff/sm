@@ -100,7 +100,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         xyCalibrationOscillationCycles (1, 1) double {mustBeInteger, mustBePositive} = 1
         xyCalibrationStepSizeToleranceFraction (1, 1) double {mustBeNonnegative} = 0.20
         xyCalibrationMinUsablePxPerStep (1, 1) double {mustBeNonnegative} = 0.25
-        xyCalibrationLargeResponsePxPerStep (1, 1) double {mustBePositive} = 10.0
+        xyCalibrationLargeResponsePxPerStep (1, 1) double {mustBePositive} = 20.0
         xyCalibrationMinFitRsquare (1, 1) double {mustBeGreaterThanOrEqual(xyCalibrationMinFitRsquare, 0), mustBeLessThanOrEqual(xyCalibrationMinFitRsquare, 1)} = 0.90
         autoshiftStepRatio (1, 1) double {mustBePositive} = 0.5
         xyResponseMatrixMinRcond (1, 1) double {mustBePositive} = 1e-3
@@ -238,7 +238,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 NameValueArgs.xyCalibrationOscillationCycles (1, 1) double {mustBeInteger, mustBePositive} = 1
                 NameValueArgs.xyCalibrationStepSizeToleranceFraction (1, 1) double {mustBeNonnegative} = 0.20
                 NameValueArgs.xyCalibrationMinUsablePxPerStep (1, 1) double {mustBeNonnegative} = 0.25
-                NameValueArgs.xyCalibrationLargeResponsePxPerStep (1, 1) double {mustBePositive} = 10.0
+                NameValueArgs.xyCalibrationLargeResponsePxPerStep (1, 1) double {mustBePositive} = 20.0
                 NameValueArgs.xyCalibrationMinFitRsquare (1, 1) double {mustBeGreaterThanOrEqual(NameValueArgs.xyCalibrationMinFitRsquare, 0), mustBeLessThanOrEqual(NameValueArgs.xyCalibrationMinFitRsquare, 1)} = 0.90
                 NameValueArgs.autoshiftStepRatio (1, 1) double {mustBePositive} = 0.5
                 NameValueArgs.xyResponseMatrixMinRcond (1, 1) double {mustBePositive} = 1e-3
