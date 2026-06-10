@@ -1178,6 +1178,10 @@ end
 % is found over the whole camera ROI.
 % Autofocus publishes offsetFitRoi_px to the camera's software live-view box
 % and turns cam_box on automatically.
+% XY calibration targets 0.5 px/step, probes 0.5/1/1.5 px/step with 4-step
+% +/- oscillation commands, accepts the median of the last two target pairs
+% within +/-10%, and autofocuses Z once before XY trials rather than during
+% each oscillation.
 % T_af/B_af/cooldown diagnostics save .png + .mat files every 5 min and at
 % convergence under temp/attodry_autofocus_diagnostics by default.
 % After smready(recipe), take a reference and then select the offset-fit ROI:
@@ -1208,7 +1212,9 @@ if virtual_attodryAutofocus_Use
         ANC300InstrumentFriendlyName = "ANC300", ...
         ANC300_voltage_x_ChannelName = "Vx", ...
         ANC300_voltage_y_ChannelName = "Vy", ...
-        ANC300_voltage_z_ChannelName = "Vz");
+        ANC300_voltage_z_ChannelName = "Vz", ...
+        targetStepSizePixel = 0.5, ...
+        xyCalibrationStepSizeToleranceFraction = 0.10);
     recipe.addStatement("attodryAutofocus", "handle_virtual_attodryAutofocus.requireSetCheck = true;");
     recipe.addChannel("attodryAutofocus", "T", "T_af", [], [], 0, 400);
     recipe.addChannel("attodryAutofocus", "B", "B_af", [], [], -1, 1);
