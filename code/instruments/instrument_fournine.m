@@ -29,9 +29,6 @@ classdef instrument_fournine < instrumentInterface
             obj.setInterval = seconds(10);
 
             obj.addChannel("T");
-            obj.addChannel("T_target");
-            obj.addChannel("heater");
-            obj.addChannel("stable");
         end
 
         function currentTarget = getCurrentTargetTemperature(obj)
@@ -70,17 +67,6 @@ classdef instrument_fournine < instrumentInterface
             switch channelIndex
                 case 1
                     obj.readValues = obj.requireScalar(obj.statusField(status, "latest_temperature"), "latest_temperature");
-                case 2
-                    obj.readValues = obj.requireScalar(obj.statusField(status, "target"), "target");
-                case 3
-                    heater = obj.statusField(status, "latest_heater");
-                    if isempty(heater) || ~isstruct(heater) || ~isfield(heater, "power")
-                        error("instrument_fournine:NoHeaterData", ...
-                            "GET_STATUS returned no latest_heater.power data.");
-                    end
-                    obj.readValues = obj.requireScalar(heater.power, "latest_heater.power");
-                case 4
-                    obj.readValues = double(obj.requireLogical(obj.statusField(status, "stable"), "stable"));
             end
         end
 

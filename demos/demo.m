@@ -301,9 +301,6 @@ if FourNine_Use
     recipe.addInstrument("handle_FourNine", "instrument_fournine", "FourNine", FourNine_Host, FourNine_Port);
     recipe.addStatement("FourNine", "handle_FourNine.requireSetCheck = true;");
     recipe.addChannel("FourNine", "T", "T");
-    recipe.addChannel("FourNine", "T_target", "T_target");
-    recipe.addChannel("FourNine", "heater", "heater");
-    recipe.addChannel("FourNine", "stable", "T_stable");
 end
 
 if MPMS3_Use
