@@ -97,10 +97,10 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         xyCalibrationMaxVoltageFactor (1, 1) double {mustBeGreaterThanOrEqual(xyCalibrationMaxVoltageFactor, 1)} = 1.20
         xyCalibrationMinBracketWidth_V (1, 1) double {mustBePositive} = 0.25
         xyCalibrationOscillationCycles (1, 1) double {mustBeInteger, mustBePositive} = 1
-        xyCalibrationBatchVoltageToleranceFraction (1, 1) double {mustBePositive} = 0.01
+        xyCalibrationBatchVoltageToleranceFraction (1, 1) double {mustBePositive} = 0.05
         xyCalibrationStepSizeToleranceFraction (1, 1) double {mustBeNonnegative} = 0.10
         xyCalibrationMinUsablePxPerStep (1, 1) double {mustBeNonnegative} = 0.25
-        xyCalibrationLargeResponsePxPerStep (1, 1) double {mustBePositive} = 20.0
+        xyCalibrationLargeResponsePxPerStep (1, 1) double {mustBePositive} = 30.0
         xyCalibrationMinFitRsquare (1, 1) double {mustBeGreaterThanOrEqual(xyCalibrationMinFitRsquare, 0), mustBeLessThanOrEqual(xyCalibrationMinFitRsquare, 1)} = 0.90
         autoshiftStepRatio (1, 1) double {mustBePositive} = 0.5
         xyResponseMatrixMinRcond (1, 1) double {mustBePositive} = 1e-3
@@ -111,6 +111,10 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         xyCalibrationReturnTolerance_px (1, 1) double {mustBePositive} = 1.0
         xyCalibrationHistoryDriftThreshold_pxPerStep (1, 1) double {mustBePositive} = 0.1
         maxAutoshiftCorrectionStepsPerAxis (1, 1) double {mustBeInteger, mustBePositive} = 5
+        autoshiftTightTolerancePixel (1, 1) double {mustBePositive} = 0.25
+        autoshiftLooseTolerancePixel (1, 1) double {mustBePositive} = 0.5
+        autoshiftLooseSuccessStepBudget (1, 1) double {mustBeInteger, mustBePositive} = 20
+        autoshiftRecalibrationStepBudget (1, 1) double {mustBeInteger, mustBePositive} = 50
     end
 
     properties (SetAccess = private)
@@ -153,8 +157,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         lastAutoshiftOffset_px (2, 1) double = [NaN; NaN]
         lastAutoshiftSteps (2, 1) double = [0; 0]
         lastAutoshiftVoltages_V (2, 1) double = [NaN; NaN]
-        voltageProfileMinTemperatureSpacing_K (1, 1) double {mustBePositive} = 5
-        voltageProfileUpdateFractionThreshold (1, 1) double {mustBePositive} = 0.20
+        voltageProfileMinTemperatureSpacing_K (1, 1) double {mustBePositive} = 2
     end
 
     methods
@@ -235,10 +238,10 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 NameValueArgs.xyCalibrationMaxVoltageFactor (1, 1) double {mustBeGreaterThanOrEqual(NameValueArgs.xyCalibrationMaxVoltageFactor, 1)} = 1.20
                 NameValueArgs.xyCalibrationMinBracketWidth_V (1, 1) double {mustBePositive} = 0.25
                 NameValueArgs.xyCalibrationOscillationCycles (1, 1) double {mustBeInteger, mustBePositive} = 1
-                NameValueArgs.xyCalibrationBatchVoltageToleranceFraction (1, 1) double {mustBePositive} = 0.01
+                NameValueArgs.xyCalibrationBatchVoltageToleranceFraction (1, 1) double {mustBePositive} = 0.05
                 NameValueArgs.xyCalibrationStepSizeToleranceFraction (1, 1) double {mustBeNonnegative} = 0.10
                 NameValueArgs.xyCalibrationMinUsablePxPerStep (1, 1) double {mustBeNonnegative} = 0.25
-                NameValueArgs.xyCalibrationLargeResponsePxPerStep (1, 1) double {mustBePositive} = 20.0
+                NameValueArgs.xyCalibrationLargeResponsePxPerStep (1, 1) double {mustBePositive} = 30.0
                 NameValueArgs.xyCalibrationMinFitRsquare (1, 1) double {mustBeGreaterThanOrEqual(NameValueArgs.xyCalibrationMinFitRsquare, 0), mustBeLessThanOrEqual(NameValueArgs.xyCalibrationMinFitRsquare, 1)} = 0.90
                 NameValueArgs.autoshiftStepRatio (1, 1) double {mustBePositive} = 0.5
                 NameValueArgs.xyResponseMatrixMinRcond (1, 1) double {mustBePositive} = 1e-3
@@ -249,6 +252,10 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 NameValueArgs.xyCalibrationReturnTolerance_px (1, 1) double {mustBePositive} = 1.0
                 NameValueArgs.xyCalibrationHistoryDriftThreshold_pxPerStep (1, 1) double {mustBePositive} = 0.1
                 NameValueArgs.maxAutoshiftCorrectionStepsPerAxis (1, 1) double {mustBeInteger, mustBePositive} = 5
+                NameValueArgs.autoshiftTightTolerancePixel (1, 1) double {mustBePositive} = 0.25
+                NameValueArgs.autoshiftLooseTolerancePixel (1, 1) double {mustBePositive} = 0.5
+                NameValueArgs.autoshiftLooseSuccessStepBudget (1, 1) double {mustBeInteger, mustBePositive} = 20
+                NameValueArgs.autoshiftRecalibrationStepBudget (1, 1) double {mustBeInteger, mustBePositive} = 50
             end
 
             obj@virtualInstrumentInterface(address, masterRackProxy);
@@ -324,6 +331,14 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 error("virtualInstrument_attodryAutofocus:InvalidXYLargeResponseThreshold", ...
                     "xyCalibrationLargeResponsePxPerStep must be greater than targetStepSizePixel.");
             end
+            if NameValueArgs.autoshiftTightTolerancePixel >= NameValueArgs.autoshiftLooseTolerancePixel
+                error("virtualInstrument_attodryAutofocus:InvalidAutoshiftTolerance", ...
+                    "autoshiftTightTolerancePixel must be less than autoshiftLooseTolerancePixel.");
+            end
+            if NameValueArgs.autoshiftLooseSuccessStepBudget >= NameValueArgs.autoshiftRecalibrationStepBudget
+                error("virtualInstrument_attodryAutofocus:InvalidAutoshiftStepBudget", ...
+                    "autoshiftLooseSuccessStepBudget must be less than autoshiftRecalibrationStepBudget.");
+            end
             obj.shiftFitTrimRatio = NameValueArgs.shiftFitTrimRatio;
             obj.offsetFitRoi_px = NameValueArgs.offsetFitRoi_px;
             obj.sampleOffsetEstimatorMode = NameValueArgs.sampleOffsetEstimatorMode;
@@ -370,18 +385,18 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                     "Unable to resolve class folder with which(class(obj)).");
             end
             classFolder = string(fileparts(classFilePath));
-            if strlength(NameValueArgs.positionerVoltageProfileCsvPath) == 0
-                obj.positionerVoltageProfileCsvPath = fullfile(classFolder, ...
-                    "attodry_autofocus_positioner_voltage_profile.csv");
-            else
-                obj.positionerVoltageProfileCsvPath = NameValueArgs.positionerVoltageProfileCsvPath;
-            end
             if strlength(NameValueArgs.diagnosticOutputFolder) == 0
-                repoRoot = string(fileparts(fileparts(fileparts(classFolder))));
-                obj.diagnosticOutputFolder = fullfile(repoRoot, "temp", "attodry_autofocus_diagnostics");
+                obj.diagnosticOutputFolder = fullfile(string(pwd), "attodry_autofocus_diagnostics");
             else
                 obj.diagnosticOutputFolder = NameValueArgs.diagnosticOutputFolder;
             end
+            if strlength(NameValueArgs.positionerVoltageProfileCsvPath) == 0
+                sourceVoltageProfileCsvPath = fullfile(classFolder, ...
+                    "attodry_autofocus_positioner_voltage_profile.csv");
+            else
+                sourceVoltageProfileCsvPath = NameValueArgs.positionerVoltageProfileCsvPath;
+            end
+            obj.positionerVoltageProfileCsvPath = obj.prepareLocalPositionerVoltageProfile(sourceVoltageProfileCsvPath);
             if strlength(NameValueArgs.positionerCalibrationLogCsvPath) == 0
                 obj.positionerCalibrationLogCsvPath = fullfile(obj.diagnosticOutputFolder, ...
                     "attodry_autofocus_positioner_calibration_log.csv");
@@ -411,6 +426,10 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             obj.xyCalibrationReturnTolerance_px = NameValueArgs.xyCalibrationReturnTolerance_px;
             obj.xyCalibrationHistoryDriftThreshold_pxPerStep = NameValueArgs.xyCalibrationHistoryDriftThreshold_pxPerStep;
             obj.maxAutoshiftCorrectionStepsPerAxis = NameValueArgs.maxAutoshiftCorrectionStepsPerAxis;
+            obj.autoshiftTightTolerancePixel = NameValueArgs.autoshiftTightTolerancePixel;
+            obj.autoshiftLooseTolerancePixel = NameValueArgs.autoshiftLooseTolerancePixel;
+            obj.autoshiftLooseSuccessStepBudget = NameValueArgs.autoshiftLooseSuccessStepBudget;
+            obj.autoshiftRecalibrationStepBudget = NameValueArgs.autoshiftRecalibrationStepBudget;
 
             if strlength(obj.ANC300InstrumentFriendlyName) > 0
                 obj.assertChannelsExist([obj.ANC300_voltage_x_ChannelName; obj.ANC300_voltage_y_ChannelName; obj.ANC300_voltage_z_ChannelName]);
@@ -825,6 +844,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             temperatureSampleCount = 0;
             settledCorrectionCount = 0;
             lastDiagnosticTime = datetime("now");
+            xyCorrectionMoveCount = 0;
 
             while true
                 nowTime = datetime("now");
@@ -845,14 +865,18 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 temperatureSamples_K(temperatureSampleCount) = currentTB(1);
 
                 correction = obj.performAutofocusAndAutoshift();
+                xyCorrectionMoveCount = xyCorrectionMoveCount + sum(abs(correction.xySteps));
                 if datetime("now") - lastDiagnosticTime >= obj.diagnosticInterval
                     obj.writeAutofocusDiagnostic(operationName + "_periodic", correction, currentTB);
                     lastDiagnosticTime = datetime("now");
                 end
                 targetsSettled = (~waitForTargets || obj.targetsReached(currentTB)) ...
                     && obj.temperatureIsStable(temperatureTimes(1:temperatureSampleCount), temperatureSamples_K(1:temperatureSampleCount));
+                xyOffsetNorm_px = hypot(correction.dx_px, correction.dy_px);
 
-                if targetsSettled && ~correction.didApplyCorrection
+                noCorrectionSatisfied = ~correction.didApplyCorrection ...
+                    && (~isfinite(xyOffsetNorm_px) || xyOffsetNorm_px <= obj.autoshiftTightTolerancePixel);
+                if targetsSettled && noCorrectionSatisfied
                     if isnat(noCorrectionStart)
                         noCorrectionStart = nowTime;
                     elseif nowTime - noCorrectionStart >= obj.noCorrectionQuietDuration
@@ -865,13 +889,35 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                     noCorrectionStart = NaT;
                 end
 
+                if targetsSettled && isfinite(xyOffsetNorm_px) && abs(correction.zSteps) < 1 ...
+                        && xyCorrectionMoveCount >= obj.autoshiftLooseSuccessStepBudget ...
+                        && xyOffsetNorm_px <= obj.autoshiftLooseTolerancePixel
+                    obj.printAutofocusWarning("Autoshift accepted %.4g px residual after %d XY moves; tight target is %.4g px.", ...
+                        xyOffsetNorm_px, xyCorrectionMoveCount, obj.autoshiftTightTolerancePixel);
+                    obj.writeAutofocusDiagnostic(operationName + "_loose_converged", correction, currentTB);
+                    obj.restoreMeasurementOptics();
+                    clear cleanup;
+                    return;
+                end
+
+                if isfinite(xyOffsetNorm_px) && xyCorrectionMoveCount >= obj.autoshiftRecalibrationStepBudget ...
+                        && xyOffsetNorm_px > obj.autoshiftLooseTolerancePixel
+                    obj.printAutofocusWarning("Autoshift still %.4g px away after %d XY moves; recalibrating XY response.", ...
+                        xyOffsetNorm_px, xyCorrectionMoveCount);
+                    obj.calibrateXYPixelPerStepMatrix();
+                    xyCorrectionMoveCount = 0;
+                    noCorrectionStart = NaT;
+                    settledCorrectionCount = 0;
+                    continue;
+                end
+
                 if targetsSettled && correction.didApplyCorrection
                     settledCorrectionCount = settledCorrectionCount + 1;
                     if settledCorrectionCount >= obj.maxAutofocusIterations
                         error("virtualInstrument_attodryAutofocus:AutofocusConvergenceFailed", ...
                             "Autofocus/autoshift still required correction after %d cycles at settled T/B.", obj.maxAutofocusIterations);
                     end
-                elseif ~targetsSettled || ~correction.didApplyCorrection
+                elseif ~targetsSettled || noCorrectionSatisfied
                     settledCorrectionCount = 0;
                 end
 
@@ -1011,6 +1057,15 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             currentTB = obj.getCurrentTB();
             currentOffset_px = [dx_px; dy_px];
             obj.recordObservedAutoshiftResponse(currentOffset_px);
+            if norm(currentOffset_px) <= obj.autoshiftTightTolerancePixel
+                nStepX = 0;
+                nStepY = 0;
+                obj.lastAutoshiftOffset_px = currentOffset_px;
+                obj.lastAutoshiftSteps = [0; 0];
+                obj.lastAutoshiftVoltages_V = obj.getMasterRackProxy().rackGet([obj.ANC300_voltage_x_ChannelName; obj.ANC300_voltage_y_ChannelName]);
+                obj.lastAutoshiftVoltages_V = obj.lastAutoshiftVoltages_V(:);
+                return;
+            end
             if any(~isfinite(obj.xyPixelPerStepMatrix(:))) ...
                     || ~isfinite(obj.xyCalibrationTemperature_K) ...
                     || abs(currentTB(1) - obj.xyCalibrationTemperature_K) > obj.voltageProfileMinTemperatureSpacing_K ...
@@ -1050,12 +1105,13 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             masterRackProxy = obj.getMasterRackProxy();
             anc = obj.getANC300Handle();
             stepTargetPx = obj.targetStepSizePixel;
-            oscillationSteps = 4;
+            oscillationSteps = 6;
             if obj.maxAutoshiftCalibrationSteps < oscillationSteps
                 error("virtualInstrument_attodryAutofocus:InvalidXYCalibrationStepLimit", ...
                     "maxAutoshiftCalibrationSteps must be at least %d for XY calibration.", oscillationSteps);
             end
-            probeBatchTargetsPxPerStep = [stepTargetPx; 1.0; 1.5];
+            initialProbeBatchTargetsPxPerStep = [stepTargetPx; 1.0; 1.5];
+            repeatProbeBatchTargetsPxPerStep = flipud(initialProbeBatchTargetsPxPerStep);
             largestProbeTargetPxPerStep = 1.5;
             [~, currentTemperature_K, activeSlopes, activeIntercepts] = obj.getInitialPositionerVoltages();
             axes = ["x"; "y"];
@@ -1067,7 +1123,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             obj.runZAutofocus();
             for axisIndex = 1:2
                 [activeSlope, activeIntercept] = obj.validateXYActiveLine(activeSlopes(axisIndex), activeIntercepts(axisIndex));
-                targetQueue = probeBatchTargetsPxPerStep;
+                targetQueue = initialProbeBatchTargetsPxPerStep;
                 usableVoltages = NaN(160, 1);
                 usableResponses = NaN(160, 1);
                 usableCount = 0;
@@ -1078,7 +1134,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 batchLineStartIndex = 1;
                 for voltageAttempt = 1:40
                     if isempty(targetQueue)
-                        targetQueue = probeBatchTargetsPxPerStep;
+                        targetQueue = repeatProbeBatchTargetsPxPerStep;
                         batchLineStartIndex = lineCount + 1;
                     end
                     targetResponse_pxPerStep = targetQueue(1);
@@ -1114,7 +1170,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                             scanRsquare, residualRms_px, returnDrift_px, minFitRsquare, "discard_low_response");
                         if abs(targetResponse_pxPerStep - stepTargetPx) <= eps(stepTargetPx)
                             [activeSlope, activeIntercept] = obj.shiftXYActiveTurnOnVoltage(activeSlope, activeIntercept, 1);
-                            targetQueue = probeBatchTargetsPxPerStep;
+                            targetQueue = initialProbeBatchTargetsPxPerStep;
                             previousBatchTargetVoltage = NaN;
                             batchLineStartIndex = lineCount + 1;
                         end
@@ -1138,7 +1194,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                         action = "use_fit_large_response" + scanModelActionSuffix;
                         if targetResponse_pxPerStep < largestProbeTargetPxPerStep
                             [activeSlope, activeIntercept] = obj.shiftXYActiveTurnOnVoltage(activeSlope, activeIntercept, -1);
-                            targetQueue = probeBatchTargetsPxPerStep;
+                            targetQueue = initialProbeBatchTargetsPxPerStep;
                             previousBatchTargetVoltage = NaN;
                             restartBatch = true;
                         end
@@ -1268,11 +1324,29 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             sampleIndex = 0;
             fitIndex = 0;
             baselineOffset = [NaN, NaN];
+            referenceOffset = [NaN, NaN];
             try
                 for cycleIndex = 1:obj.xyCalibrationOscillationCycles
                     for direction = [1, -1]
                         [baselineDx, baselineDy, baselineGof] = obj.estimateSampleOffset(obj.acquireSampleImageForAutoshift());
                         baselineOffset = [baselineDx, baselineDy];
+                        if any(~isfinite(referenceOffset))
+                            referenceOffset = baselineOffset;
+                        elseif sampleIndex > 0
+                            measuredResponse = offsetDeltas(1:sampleIndex, :) ./ signedSteps(1:sampleIndex);
+                            axisEstimate = median(measuredResponse, 1, "omitnan");
+                            driftFromReference = baselineOffset - referenceOffset;
+                            if all(isfinite(axisEstimate)) && norm(axisEstimate) > 0 ...
+                                    && norm(driftFromReference) > 2 * norm(axisEstimate)
+                                projectedDriftSteps = dot(driftFromReference, axisEstimate) / dot(axisEstimate, axisEstimate);
+                                if abs(projectedDriftSteps) >= 2
+                                    compensationSteps = -2 * sign(projectedDriftSteps);
+                                    anc.stepAxis(axisName, compensationSteps);
+                                    [baselineDx, baselineDy, baselineGof] = obj.estimateSampleOffset(obj.acquireSampleImageForAutoshift());
+                                    baselineOffset = [baselineDx, baselineDy];
+                                end
+                            end
+                        end
                         fitIndex = fitIndex + 1;
                         fitRsquare(fitIndex) = baselineGof.rsquare;
 
@@ -1393,34 +1467,16 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             profile = obj.readPositionerVoltageProfile();
             currentTB = obj.getCurrentTB();
             currentTemperature_K = currentTB(1);
-            obj.assertVoltageProfileCoversTemperature(profile, currentTemperature_K);
             firstTryVoltages = [ ...
-                interp1(profile.temperature_K, profile.x_voltage_V, currentTemperature_K, "linear"); ...
-                interp1(profile.temperature_K, profile.y_voltage_V, currentTemperature_K, "linear"); ...
-                interp1(profile.temperature_K, profile.z_voltage_V, currentTemperature_K, "linear")];
+                interp1(profile.temperature_K, profile.x_voltage_V, currentTemperature_K, "linear", "extrap"); ...
+                interp1(profile.temperature_K, profile.y_voltage_V, currentTemperature_K, "linear", "extrap"); ...
+                interp1(profile.temperature_K, profile.z_voltage_V, currentTemperature_K, "linear", "extrap")];
             activeSlopes = [ ...
-                interp1(profile.temperature_K, profile.x_active_slope_px_per_step_per_V, currentTemperature_K, "linear"); ...
-                interp1(profile.temperature_K, profile.y_active_slope_px_per_step_per_V, currentTemperature_K, "linear")];
+                interp1(profile.temperature_K, profile.x_active_slope_px_per_step_per_V, currentTemperature_K, "linear", "extrap"); ...
+                interp1(profile.temperature_K, profile.y_active_slope_px_per_step_per_V, currentTemperature_K, "linear", "extrap")];
             activeIntercepts = [ ...
-                interp1(profile.temperature_K, profile.x_active_intercept_px_per_step, currentTemperature_K, "linear"); ...
-                interp1(profile.temperature_K, profile.y_active_intercept_px_per_step, currentTemperature_K, "linear")];
-            if all(isfinite(obj.xyCalibrationVoltages_V)) ...
-                    && abs(currentTemperature_K - obj.xyCalibrationTemperature_K) <= obj.voltageProfileMinTemperatureSpacing_K
-                firstTryVoltages(1:2) = obj.xyCalibrationVoltages_V;
-            end
-            if all(isfinite(obj.xyCalibrationActiveSlope_pxPerStepPerV)) ...
-                    && all(isfinite(obj.xyCalibrationActiveIntercept_pxPerStep)) ...
-                    && abs(currentTemperature_K - obj.xyCalibrationTemperature_K) <= obj.voltageProfileMinTemperatureSpacing_K
-                activeSlopes = obj.xyCalibrationActiveSlope_pxPerStepPerV;
-                activeIntercepts = obj.xyCalibrationActiveIntercept_pxPerStep;
-                firstTryVoltages(1:2) = [ ...
-                    obj.predictXYVoltageFromActiveLine(activeSlopes(1), activeIntercepts(1), obj.targetStepSizePixel); ...
-                    obj.predictXYVoltageFromActiveLine(activeSlopes(2), activeIntercepts(2), obj.targetStepSizePixel)];
-            end
-            if isfinite(obj.zCalibrationVoltage_V) ...
-                    && abs(currentTemperature_K - obj.zCalibrationTemperature_K) <= obj.voltageProfileMinTemperatureSpacing_K
-                firstTryVoltages(3) = obj.zCalibrationVoltage_V;
-            end
+                interp1(profile.temperature_K, profile.x_active_intercept_px_per_step, currentTemperature_K, "linear", "extrap"); ...
+                interp1(profile.temperature_K, profile.y_active_intercept_px_per_step, currentTemperature_K, "linear", "extrap")];
         end
 
         function updatePositionerVoltageProfile(obj, voltageColumnName, currentTemperature_K, newVoltage_V)
@@ -1429,11 +1485,6 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                     "Learned positioner voltage must be finite and within [0, 60] V.");
             end
             profile = obj.readPositionerVoltageProfile();
-            obj.assertVoltageProfileCoversTemperature(profile, currentTemperature_K);
-            oldVoltage_V = interp1(profile.temperature_K, profile.(voltageColumnName), currentTemperature_K, "linear");
-            if abs(newVoltage_V - oldVoltage_V) <= obj.voltageProfileUpdateFractionThreshold * max(abs(oldVoltage_V), eps)
-                return;
-            end
 
             newRow = obj.interpolatePositionerProfileRow(profile, currentTemperature_K);
             newRow.(voltageColumnName) = newVoltage_V;
@@ -1455,7 +1506,6 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                     "Learned XY active line must have finite positive slope, finite intercept, and [0, 60] V target voltage.");
             end
             profile = obj.readPositionerVoltageProfile();
-            obj.assertVoltageProfileCoversTemperature(profile, currentTemperature_K);
             axisName = string(lower(axisName));
             if axisName ~= "x" && axisName ~= "y"
                 error("virtualInstrument_attodryAutofocus:InvalidVoltageProfileUpdate", ...
@@ -1481,7 +1531,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             row.temperature_K = currentTemperature_K;
             for variableIndex = 2:numel(profile.Properties.VariableNames)
                 variableName = profile.Properties.VariableNames{variableIndex};
-                row.(variableName) = interp1(profile.temperature_K, profile.(variableName), currentTemperature_K, "linear");
+                row.(variableName) = interp1(profile.temperature_K, profile.(variableName), currentTemperature_K, "linear", "extrap");
             end
         end
 
@@ -1520,6 +1570,37 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             end
         end
 
+        function csvPath = prepareLocalPositionerVoltageProfile(obj, sourceCsvPath)
+            sourceCsvPath = string(sourceCsvPath);
+            if strlength(sourceCsvPath) == 0 || ~isfile(sourceCsvPath)
+                error("virtualInstrument_attodryAutofocus:MissingVoltageProfileCsv", ...
+                    "Positioner voltage profile CSV does not exist: %s", sourceCsvPath);
+            end
+            if ~isfolder(obj.diagnosticOutputFolder)
+                [status, message] = mkdir(obj.diagnosticOutputFolder);
+                if ~status
+                    error("virtualInstrument_attodryAutofocus:VoltageProfileFolderCreateFailed", ...
+                        "Failed to create voltage profile folder %s: %s", obj.diagnosticOutputFolder, message);
+                end
+            end
+            [~, fileName, fileExt] = fileparts(sourceCsvPath);
+            csvPath = fullfile(obj.diagnosticOutputFolder, fileName + fileExt);
+            if isfile(csvPath)
+                profile = readtable(csvPath);
+            else
+                profile = readtable(sourceCsvPath);
+            end
+            if ismember("temperature_K", string(profile.Properties.VariableNames))
+                profile(profile.temperature_K == 400, :) = [];
+            end
+            try
+                writetable(profile, csvPath);
+            catch err
+                error("virtualInstrument_attodryAutofocus:VoltageProfileWriteFailed", ...
+                    "Failed to write local positioner voltage profile %s: %s", csvPath, err.message);
+            end
+        end
+
         function profile = readPositionerVoltageProfile(obj)
             csvPath = obj.positionerVoltageProfileCsvPath;
             if strlength(csvPath) == 0 || ~isfile(csvPath)
@@ -1535,6 +1616,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                     "Voltage profile CSV must contain columns: %s", strjoin(requiredVariables, ", "));
             end
             profile = profile(:, requiredVariables);
+            profile(profile.temperature_K == 400, :) = [];
             voltageColumns = ["x_voltage_V", "y_voltage_V", "z_voltage_V"];
             lineColumns = requiredVariables(5:end);
             if any(~isfinite(profile.temperature_K)) || any(any(~isfinite(profile{:, [voltageColumns, lineColumns]})))
@@ -1555,13 +1637,9 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 error("virtualInstrument_attodryAutofocus:InvalidVoltageProfileCsv", ...
                     "Voltage profile temperatures must be unique.");
             end
-        end
-
-        function assertVoltageProfileCoversTemperature(~, profile, currentTemperature_K)
-            if currentTemperature_K < profile.temperature_K(1) || currentTemperature_K > profile.temperature_K(end)
-                error("virtualInstrument_attodryAutofocus:VoltageProfileTemperatureOutOfRange", ...
-                    "Current temperature %.6g K is outside voltage profile range [%.6g, %.6g] K.", ...
-                    currentTemperature_K, profile.temperature_K(1), profile.temperature_K(end));
+            if height(profile) < 2
+                error("virtualInstrument_attodryAutofocus:InvalidVoltageProfileCsv", ...
+                    "Voltage profile must contain at least two temperature rows for interpolation/extrapolation.");
             end
         end
 
