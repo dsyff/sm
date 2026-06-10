@@ -149,14 +149,14 @@ classdef instrument_CS165MU < instrumentInterface
                 error("instrument_CS165MU:NoCamera", "Camera is not open.");
             end
 
-            obj.ensureLiveFigure();
-
             if obj.liveEnabled
                 image2D = obj.tryGetOneFrameOrTrigger();
             else
                 image2D = obj.acquireOneFrameStandalone();
             end
 
+            % Renders only into an existing live figure; single acquisitions do
+            % not re-create a closed live view (use showLiveView/continuous).
             obj.updateLiveFigure(image2D);
         end
 

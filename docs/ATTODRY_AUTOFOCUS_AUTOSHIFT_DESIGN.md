@@ -33,12 +33,26 @@ Code map:
   exactly `targetStepSizePixel`, mapping integer steps [x; y] to expected
   [row; col] px. Conditioning is enforced via `xyResponseMatrixMinRcond`.
 - Drift handling during calibration (smoke test 20260610, instrument port
-  pending): probes are not stepped back after measurement. Probe direction
-  defaults to +/- balance but flips to oppose the measured drift (++/--
-  allowed), so the descending-step-size probe batches compensate
-  progressively better as the active line improves. Drift beyond 5 px
-  projected on the axis triggers a single multi-step command at the
-  active-line `targetStepSizePixel` voltage.
+  pending): each probe is stepped back with a single multi-step command at the
+  active-line `targetStepSizePixel` voltage, sized from the commanded probe
+  (`oscillationSteps * probeTarget / targetStepSizePixel` steps) so that a
+  uniformly mis-scaled active line cancels out of the return: bad initial
+  calibration moves probe and return by the same factor and cannot compound.
+  (Sizing the return from the measured displacement against the assumed
+  0.5 px/step amplifies position error by the line-scale factor every probe
+  pair; commanded-step returns at the probe voltage drifted ~2-6 px per
+  attempt via +/- asymmetry; a no-return variant drifted away monotonically.)
+  Probe direction defaults to +/- balance but flips to oppose residual drift
+  (++/-- allowed). Drift beyond 5 px projected on the axis triggers a single
+  multi-step compensation at the `targetStepSizePixel` voltage, gated on a
+  trusted baseline fit (R^2 >= 0.90).
+- Bad-line guards: response too small (< `xyCalibrationMinUsablePxPerStep` at
+  the `targetStepSizePixel` probe target) shifts the turn-on estimate up 1 V;
+  response too large is detected via the trim-boundary guard (checked before
+  fit quality, because an oversized shift clamps the fit and ruins R^2) and
+  shifts the turn-on estimate down 1 V. Both reset the probe batch, so a
+  badly seeded line walks itself into range instead of retrying the same
+  voltage until the attempt budget runs out.
 - Calibration offset fits run on a 2x-per-axis downsampled sample grid (4x
   fewer residuals); correction-phase fits stay full resolution.
 
