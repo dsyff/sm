@@ -93,12 +93,11 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         zStepTrialCount (1, 1) double {mustBeInteger, mustBePositive} = 5
 
         targetStepSizePixel (1, 1) double {mustBePositive} = 0.5
-        xyCalibrationTargetDisplacement_px (1, 1) double {mustBePositive} = 1.0
         xyCalibrationInitialVoltageScale (1, 1) double {mustBePositive} = 0.9
         xyCalibrationMaxVoltageFactor (1, 1) double {mustBeGreaterThanOrEqual(xyCalibrationMaxVoltageFactor, 1)} = 1.20
         xyCalibrationMinBracketWidth_V (1, 1) double {mustBePositive} = 0.25
         xyCalibrationOscillationCycles (1, 1) double {mustBeInteger, mustBePositive} = 1
-        xyCalibrationStepSizeToleranceFraction (1, 1) double {mustBeNonnegative} = 0.20
+        xyCalibrationStepSizeToleranceFraction (1, 1) double {mustBeNonnegative} = 0.10
         xyCalibrationMinUsablePxPerStep (1, 1) double {mustBeNonnegative} = 0.25
         xyCalibrationLargeResponsePxPerStep (1, 1) double {mustBePositive} = 20.0
         xyCalibrationMinFitRsquare (1, 1) double {mustBeGreaterThanOrEqual(xyCalibrationMinFitRsquare, 0), mustBeLessThanOrEqual(xyCalibrationMinFitRsquare, 1)} = 0.90
@@ -231,12 +230,11 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 NameValueArgs.zVoltageIncrementFactor (1, 1) double {mustBePositive} = 1.05
                 NameValueArgs.zStepTrialCount (1, 1) double {mustBeInteger, mustBePositive} = 5
                 NameValueArgs.targetStepSizePixel (1, 1) double {mustBePositive} = 0.5
-                NameValueArgs.xyCalibrationTargetDisplacement_px (1, 1) double {mustBePositive} = 1.0
                 NameValueArgs.xyCalibrationInitialVoltageScale (1, 1) double {mustBePositive} = 0.9
                 NameValueArgs.xyCalibrationMaxVoltageFactor (1, 1) double {mustBeGreaterThanOrEqual(NameValueArgs.xyCalibrationMaxVoltageFactor, 1)} = 1.20
                 NameValueArgs.xyCalibrationMinBracketWidth_V (1, 1) double {mustBePositive} = 0.25
                 NameValueArgs.xyCalibrationOscillationCycles (1, 1) double {mustBeInteger, mustBePositive} = 1
-                NameValueArgs.xyCalibrationStepSizeToleranceFraction (1, 1) double {mustBeNonnegative} = 0.20
+                NameValueArgs.xyCalibrationStepSizeToleranceFraction (1, 1) double {mustBeNonnegative} = 0.10
                 NameValueArgs.xyCalibrationMinUsablePxPerStep (1, 1) double {mustBeNonnegative} = 0.25
                 NameValueArgs.xyCalibrationLargeResponsePxPerStep (1, 1) double {mustBePositive} = 20.0
                 NameValueArgs.xyCalibrationMinFitRsquare (1, 1) double {mustBeGreaterThanOrEqual(NameValueArgs.xyCalibrationMinFitRsquare, 0), mustBeLessThanOrEqual(NameValueArgs.xyCalibrationMinFitRsquare, 1)} = 0.90
@@ -389,7 +387,6 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             obj.zVoltageIncrementFactor = NameValueArgs.zVoltageIncrementFactor;
             obj.zStepTrialCount = NameValueArgs.zStepTrialCount;
             obj.targetStepSizePixel = NameValueArgs.targetStepSizePixel;
-            obj.xyCalibrationTargetDisplacement_px = NameValueArgs.xyCalibrationTargetDisplacement_px;
             obj.xyCalibrationInitialVoltageScale = NameValueArgs.xyCalibrationInitialVoltageScale;
             obj.xyCalibrationMaxVoltageFactor = NameValueArgs.xyCalibrationMaxVoltageFactor;
             obj.xyCalibrationMinBracketWidth_V = NameValueArgs.xyCalibrationMinBracketWidth_V;
@@ -608,33 +605,22 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         function [dx, dy, gof] = estimateSampleOffsetSplineShift(obj, image2D, roiShift_xy)
             filtered = log(double(image2D) + 1);
             [rows, cols] = size(filtered);
-            [fitRows, fitCols] = obj.getOffsetFitRoiIndices([rows, cols], roiShift_xy);
+            [~, ~, rowShiftLimit, colShiftLimit, sampleRows, sampleCols] = ...
+                obj.getOffsetFitSampleIndices([rows, cols], roiShift_xy);
             [fullRows, fullCols] = ndgrid(1:rows, 1:cols);
             currentInterpolant = griddedInterpolant(fullRows, fullCols, filtered, "spline", "none");
-            [xGrid, yGrid] = ndgrid(fitRows, fitCols);
-            zGrid = obj.referenceFilteredImage(fitRows, fitCols);
+            [xGrid, yGrid] = ndgrid(sampleRows, sampleCols);
+            zGrid = obj.referenceFilteredImage(sampleRows, sampleCols);
 
-            xTrim = ceil(obj.shiftFitTrimRatio(1) / 2 * numel(fitRows));
-            yTrim = ceil(obj.shiftFitTrimRatio(2) / 2 * numel(fitCols));
-            if xTrim * 2 >= numel(fitRows) || yTrim * 2 >= numel(fitCols)
-                error("virtualInstrument_attodryAutofocus:TrimTooLarge", ...
-                    "shiftFitTrimRatio trims away the full offset fit ROI.");
-            end
-            rowKeep = xTrim+1:numel(fitRows)-xTrim;
-            colKeep = yTrim+1:numel(fitCols)-yTrim;
-            xGridTrimmed = xGrid(rowKeep, colKeep);
-            yGridTrimmed = yGrid(rowKeep, colKeep);
-            zGridTrimmed = zGrid(rowKeep, colKeep);
-
-            xColumn = xGridTrimmed(:);
-            yColumn = yGridTrimmed(:);
-            zColumn = zGridTrimmed(:);
+            xColumn = xGrid(:);
+            yColumn = yGrid(:);
+            zColumn = zGrid(:);
 
             currentShiftFitModel = @(dx, dy, x, y) currentInterpolant(x + dx, y + dy);
             [fitResult, gof] = fit([xColumn, yColumn], zColumn, currentShiftFitModel, ...
                 StartPoint = [0, 0], ...
-                Lower = [-xTrim, -yTrim], ...
-                Upper = [xTrim, yTrim], ...
+                Lower = [-rowShiftLimit, -colShiftLimit], ...
+                Upper = [rowShiftLimit, colShiftLimit], ...
                 DiffMinChange = 0.00001, ...
                 TolFun = 0.001, ...
                 TolX = 0.001);
@@ -1057,13 +1043,16 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             masterRackProxy = obj.getMasterRackProxy();
             anc = obj.getANC300Handle();
             stepTargetPx = obj.targetStepSizePixel;
-            calibrationTargetPx = obj.xyCalibrationTargetDisplacement_px;
-            oscillationSteps = min(obj.maxAutoshiftCalibrationSteps, max(1, ceil(calibrationTargetPx / stepTargetPx)));
+            oscillationSteps = 4;
+            if obj.maxAutoshiftCalibrationSteps < oscillationSteps
+                error("virtualInstrument_attodryAutofocus:InvalidXYCalibrationStepLimit", ...
+                    "maxAutoshiftCalibrationSteps must be at least %d for XY calibration.", oscillationSteps);
+            end
             minAcceptedPxPerStep = stepTargetPx * (1 - obj.xyCalibrationStepSizeToleranceFraction);
             maxAcceptedPxPerStep = stepTargetPx * (1 + obj.xyCalibrationStepSizeToleranceFraction);
-            minAcceptedDisplacementPx = calibrationTargetPx * (1 - obj.xyCalibrationStepSizeToleranceFraction);
-            initialProbeTargetsPxPerStep = repelem([stepTargetPx; 1.0; 2.0], 2);
-            fittedProbeTargetsPxPerStep = repelem([2.0; 1.0; stepTargetPx], 2);
+            initialProbeTargetsPxPerStep = repelem([stepTargetPx; 1.0; 1.5], 2);
+            fittedProbeTargetsPxPerStep = repelem([1.5; 1.0; stepTargetPx], 2);
+            largestProbeTargetPxPerStep = 1.5;
             [~, currentTemperature_K, activeSlopes, activeIntercepts] = obj.getInitialPositionerVoltages();
             axes = ["x"; "y"];
             voltageChannels = [obj.ANC300_voltage_x_ChannelName; obj.ANC300_voltage_y_ChannelName];
@@ -1071,6 +1060,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             finalVoltages = NaN(2, 1);
             finalSlopes = NaN(2, 1);
             finalIntercepts = NaN(2, 1);
+            obj.runZAutofocus();
             for axisIndex = 1:2
                 [activeSlope, activeIntercept] = obj.validateXYActiveLine(activeSlopes(axisIndex), activeIntercepts(axisIndex));
                 targetQueue = initialProbeTargetsPxPerStep;
@@ -1078,6 +1068,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 usableResponses = NaN(100, 1);
                 usableCount = 0;
                 targetVectors = NaN(40, 2);
+                targetSamples = cell(40, 1);
                 targetCount = 0;
                 for voltageAttempt = 1:40
                     if isempty(targetQueue)
@@ -1134,17 +1125,24 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                         obj.printAutofocusWarning("%s XY calibration attempt %d measured %.4g px/step at %.4g V.", ...
                             upper(axes(axisIndex)), voltageAttempt, pxPerStep, voltage);
                         action = "use_fit_large_response" + scanModelActionSuffix;
-                        if targetResponse_pxPerStep < 2.0
+                        if targetResponse_pxPerStep < largestProbeTargetPxPerStep
                             [activeSlope, activeIntercept] = obj.shiftXYActiveTurnOnVoltage(activeSlope, activeIntercept, -1);
                             targetQueue = initialProbeTargetsPxPerStep;
                         end
                     end
-                    if abs(targetResponse_pxPerStep - stepTargetPx) <= eps(stepTargetPx) ...
-                            && pxPerStep >= minAcceptedPxPerStep && pxPerStep <= maxAcceptedPxPerStep ...
-                            && maxMeasuredPx >= minAcceptedDisplacementPx
+                    if abs(targetResponse_pxPerStep - stepTargetPx) <= eps(stepTargetPx)
                         targetCount = targetCount + 1;
                         targetVectors(targetCount, :) = axisVector(:).';
+                        targetSamples{targetCount} = samplePxPerStep(:);
                         if targetCount < 2
+                            obj.appendPositionerCalibrationLog(axes(axisIndex), voltage, voltageAttempt, NaN, ...
+                                NaN, pxPerStep, axisVector(1), axisVector(2), maxMeasuredPx, ...
+                                scanRsquare, residualRms_px, returnDrift_px, minFitRsquare, action);
+                            continue;
+                        end
+                        recentSamples = [targetSamples{targetCount - 1}; targetSamples{targetCount}];
+                        recentPxPerStep = median(recentSamples, "omitnan");
+                        if recentPxPerStep < minAcceptedPxPerStep || recentPxPerStep > maxAcceptedPxPerStep
                             obj.appendPositionerCalibrationLog(axes(axisIndex), voltage, voltageAttempt, NaN, ...
                                 NaN, pxPerStep, axisVector(1), axisVector(2), maxMeasuredPx, ...
                                 scanRsquare, residualRms_px, returnDrift_px, minFitRsquare, action);
@@ -1155,11 +1153,11 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                                 usableVoltages(1:usableCount), usableResponses(1:usableCount), ...
                                 activeSlope, activeIntercept);
                         end
-                        acceptedVector = median(targetVectors(1:targetCount, :), 1, "omitnan").';
+                        acceptedVector = median(targetVectors(targetCount - 1:targetCount, :), 1, "omitnan").';
                         xyPixelPerStepMatrix(:, axisIndex) = stepTargetPx * acceptedVector / norm(acceptedVector);
                         finalVoltages(axisIndex) = obj.predictXYVoltageFromActiveLine(activeSlope, activeIntercept, stepTargetPx);
                         masterRackProxy.rackSetWrite(voltageChannels(axisIndex), finalVoltages(axisIndex));
-                        obj.recordXYCalibrationHistory(axisIndex, finalVoltages(axisIndex), stepTargetPx);
+                        obj.recordXYCalibrationHistory(axisIndex, finalVoltages(axisIndex), recentPxPerStep);
                         obj.appendPositionerCalibrationLog(axes(axisIndex), voltage, voltageAttempt, NaN, ...
                             NaN, pxPerStep, axisVector(1), axisVector(2), maxMeasuredPx, ...
                             scanRsquare, residualRms_px, returnDrift_px, minFitRsquare, "accept");
@@ -1174,13 +1172,13 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             end
             if any(~isfinite(xyPixelPerStepMatrix(:, 1)))
                 error("virtualInstrument_attodryAutofocus:XAutoshiftCalibrationFailed", ...
-                    "X oscillation calibration could not produce %.6g px displacement with %.6g px/step target within %d steps.", ...
-                    obj.xyCalibrationTargetDisplacement_px, obj.targetStepSizePixel, oscillationSteps);
+                    "X oscillation calibration could not produce %.6g px/step response within a +/- %.3g fraction using %d-step commands.", ...
+                    obj.targetStepSizePixel, obj.xyCalibrationStepSizeToleranceFraction, oscillationSteps);
             end
             if any(~isfinite(xyPixelPerStepMatrix(:, 2)))
                 error("virtualInstrument_attodryAutofocus:YAutoshiftCalibrationFailed", ...
-                    "Y oscillation calibration could not produce %.6g px displacement with %.6g px/step target within %d steps.", ...
-                    obj.xyCalibrationTargetDisplacement_px, obj.targetStepSizePixel, oscillationSteps);
+                    "Y oscillation calibration could not produce %.6g px/step response within a +/- %.3g fraction using %d-step commands.", ...
+                    obj.targetStepSizePixel, obj.xyCalibrationStepSizeToleranceFraction, oscillationSteps);
             end
             matrixRcond = rcond(xyPixelPerStepMatrix);
             if matrixRcond < obj.xyResponseMatrixMinRcond
@@ -1257,7 +1255,6 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             sampleIndex = 0;
             fitIndex = 0;
             try
-                obj.runZAutofocus();
                 for cycleIndex = 1:obj.xyCalibrationOscillationCycles
                     [baselineDx, baselineDy, baselineGof] = obj.estimateSampleOffset(obj.acquireSampleImageForAutoshift());
                     baselineOffset = [baselineDx, baselineDy];
@@ -1283,7 +1280,6 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             end
 
             obj.returnAxisToScanStart(anc, axisName, currentCommandedStep);
-            obj.runZAutofocus();
             [returnDx, returnDy, returnGof] = obj.estimateSampleOffset(obj.acquireSampleImageForAutoshift());
             [axisVector, scanRsquare, residualRms_px, samplePxPerStep] = obj.fitAxisScanResponse(signedSteps, offsetDeltas);
             maxMeasuredPx = max(sqrt(sum(offsetDeltas.^2, 2)));
@@ -1959,18 +1955,32 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
 
             referenceFiltered = log(double(obj.referenceSampleImage) + 1);
             [rows, cols] = size(referenceFiltered);
-            [fitRows, fitCols] = obj.getOffsetFitRoiIndices([rows, cols]);
-
-            xTrim = ceil(obj.shiftFitTrimRatio(1) / 2 * numel(fitRows));
-            yTrim = ceil(obj.shiftFitTrimRatio(2) / 2 * numel(fitCols));
-            if xTrim * 2 >= numel(fitRows) || yTrim * 2 >= numel(fitCols)
-                error("virtualInstrument_attodryAutofocus:TrimTooLarge", ...
-                    "shiftFitTrimRatio trims away the full offset fit ROI.");
-            end
+            [~, ~, rowShiftLimit, colShiftLimit] = obj.getOffsetFitSampleIndices([rows, cols]);
 
             obj.referenceFilteredImage = referenceFiltered;
             obj.referenceFitSize_px = [rows, cols];
-            obj.referenceFitTrim_px = [xTrim, yTrim];
+            obj.referenceFitTrim_px = [rowShiftLimit, colShiftLimit];
+        end
+
+        function [fitRows, fitCols, rowShiftLimit, colShiftLimit, sampleRows, sampleCols] = getOffsetFitSampleIndices(obj, imageSize, roiShift_xy)
+            if nargin < 3
+                roiShift_xy = [0; 0];
+            end
+            [fitRows, fitCols] = obj.getOffsetFitRoiIndices(imageSize, roiShift_xy);
+            rowShiftLimit = ceil(obj.shiftFitTrimRatio(1) / 2 * numel(fitRows));
+            colShiftLimit = ceil(obj.shiftFitTrimRatio(2) / 2 * numel(fitCols));
+            if rowShiftLimit * 2 >= numel(fitRows) || colShiftLimit * 2 >= numel(fitCols)
+                error("virtualInstrument_attodryAutofocus:TrimTooLarge", ...
+                    "shiftFitTrimRatio leaves no offset fit samples inside the ROI.");
+            end
+
+            sampleRows = fitRows(fitRows - rowShiftLimit >= 1 & fitRows + rowShiftLimit <= imageSize(1));
+            sampleCols = fitCols(fitCols - colShiftLimit >= 1 & fitCols + colShiftLimit <= imageSize(2));
+            if isempty(sampleRows) || isempty(sampleCols)
+                error("virtualInstrument_attodryAutofocus:OffsetFitRoiTooCloseToImageEdge", ...
+                    "offsetFitRoi_px leaves no samples that can shift by [%d, %d] pixels inside image bounds [height=%d, width=%d].", ...
+                    rowShiftLimit, colShiftLimit, imageSize(1), imageSize(2));
+            end
         end
 
         function [fitRows, fitCols] = getOffsetFitRoiIndices(obj, imageSize, roiShift_xy)
