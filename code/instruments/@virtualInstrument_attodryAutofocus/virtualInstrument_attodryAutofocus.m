@@ -1093,7 +1093,9 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             correctionSteps = max(min(correctionSteps, obj.maxAutoshiftCorrectionStepsPerAxis), -obj.maxAutoshiftCorrectionStepsPerAxis);
             nStepX = correctionSteps(1);
             nStepY = correctionSteps(2);
-            obj.stepXYInSmallChunks(anc, nStepX, nStepY);
+            if nStepX ~= 0 || nStepY ~= 0
+                anc.stepXY(nStepX, nStepY);
+            end
             currentVoltages = obj.getMasterRackProxy().rackGet([obj.ANC300_voltage_x_ChannelName; obj.ANC300_voltage_y_ChannelName]);
             obj.lastAutoshiftOffset_px = currentOffset_px;
             obj.lastAutoshiftSteps = correctionSteps;
@@ -1444,15 +1446,6 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             while remainingSteps ~= 0
                 stepDelta = sign(remainingSteps) * min(abs(remainingSteps), obj.xyCalibrationStepIncrement);
                 anc.stepAxis(axisName, stepDelta);
-                remainingSteps = remainingSteps - stepDelta;
-            end
-        end
-
-        function stepXYInSmallChunks(obj, anc, nStepsX, nStepsY)
-            remainingSteps = [nStepsX; nStepsY];
-            while any(remainingSteps ~= 0)
-                stepDelta = sign(remainingSteps) .* min(abs(remainingSteps), obj.xyCalibrationStepIncrement);
-                anc.stepXY(stepDelta(1), stepDelta(2));
                 remainingSteps = remainingSteps - stepDelta;
             end
         end
