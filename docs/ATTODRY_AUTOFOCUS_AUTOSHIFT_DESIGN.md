@@ -1,151 +1,127 @@
-# Attodry Autofocus XY Autoshift — Control Design
+# Attodry Autofocus And XY Autoshift Design Notes
 
-Design rationale for the XY drift-correction (autoshift) loop in
-`virtualInstrument_attodryAutofocus`. Records why the loop is full-gain with
-quantized steps, how the done tolerance is derived, and what to preserve when
-extending to varying temperature. Last updated 20260610.
+This document records hardware behavior and the control design constraints for
+`virtualInstrument_attodryAutofocus`. It is not an implementation log for
+git-ignored smoke-test scripts. Those scripts are local diagnostics used to
+validate a design before porting it into the production instrument.
 
 Code map:
-- Instrument: `code/instruments/@virtualInstrument_attodryAutofocus/virtualInstrument_attodryAutofocus.m`
-  (`runAutoshift`, `calibrateXYPixelPerStepMatrix`, `waitForTargetsWithCompensation`)
-- Standalone mirrors (git-ignored debug scripts): `tests/autofocus testing/`
-  (`attodry_no_optics_positioner_smoke_test.m`: `calibrateXY`, `returnToReference`;
-  `attodry_z_tenengrad_macrostep_scan.m`: Z response diagnostic)
+- Production instrument:
+  `code/instruments/@virtualInstrument_attodryAutofocus/virtualInstrument_attodryAutofocus.m`
+- Local diagnostics, ignored by git:
+  `tests/autofocus testing/`
 
-## 1. Actuator physics (ANC300 stick-slip positioners)
+Last updated 20260611.
 
-- Below a threshold ("turn-on") voltage an axis does not step at all.
-- Above threshold, mean px/step grows roughly linearly with voltage
-  (slope + intercept = the "active line", stored per temperature in
-  `attodry_autofocus_positioner_voltage_profile.csv`).
-- Near threshold the realized step size is very noisy in percentage terms,
-  and + / - directions are asymmetric.
-- Consequence: ~0.5 px/step (`targetStepSizePixel`) is the smallest reliable
-  quantum. Calibration probes 0.5 / 1 / 1.5 px/step targets along the active
-  line and shifts the turn-on estimate when the response is dead or huge.
+## Hardware Behavior
 
-## 2. Calibration output
+- The ANC300 stick-slip axes have a two-segment voltage response. Below a
+  turn-on voltage, commanded steps produce little or no motion. Above turn-on,
+  the mean image displacement per microstep is approximately linear in voltage:
+  `px_per_step = slope * V + intercept`.
+- Near turn-on, percentage scatter is large. A voltage that is useful for
+  detecting motion may still be too noisy for accurate correction.
+- Positive and negative directions can be asymmetric. Calibration should first
+  probe both directions at the same voltage so that nonzero net drift is
+  measured rather than assumed away. Separate + and - operating voltages are
+  justified only after the data show reproducible directional clustering.
+- The camera axes need not align with positioner X/Y. The live response matrix
+  must be measured from images; persisted calibration data should store scalar
+  voltage-response information, not sample-specific direction vectors.
+- XY and Z are weakly coupled. XY stepping can defocus the sample, and Z
+  stepping can shift the image in XY. The expected convergence path is still
+  simple because the coupling is small, but calibration cannot assume it is
+  zero.
+- Temperature changes alter the step response. T/B compensation should keep
+  recalibrating from recent local behavior instead of relying indefinitely on a
+  stale voltage profile.
 
-- Per axis: active line (slope, intercept) refit from oscillation probes;
-  accepted when the predicted target voltage is stable between probe batches
-  (`xyCalibrationBatchVoltageToleranceFraction`).
-- `xyPixelPerStepMatrix`: each column is the unit response direction scaled to
-  exactly `targetStepSizePixel`, mapping integer steps [x; y] to expected
-  [row; col] px. Conditioning is enforced via `xyResponseMatrixMinRcond`.
-- Drift handling during calibration (smoke test 20260610, instrument port
-  pending): each probe is stepped back with a single multi-step command at the
-  active-line `targetStepSizePixel` voltage, sized from the commanded probe
-  (`oscillationSteps * probeTarget / targetStepSizePixel` steps) so that a
-  uniformly mis-scaled active line cancels out of the return: bad initial
-  calibration moves probe and return by the same factor and cannot compound.
-  (Sizing the return from the measured displacement against the assumed
-  0.5 px/step amplifies position error by the line-scale factor every probe
-  pair; commanded-step returns at the probe voltage drifted ~2-6 px per
-  attempt via +/- asymmetry; a no-return variant drifted away monotonically.)
-  Probe direction defaults to +/- balance but flips to oppose residual drift
-  (++/-- allowed). Drift beyond 5 px projected on the axis triggers a single
-  multi-step compensation at the `targetStepSizePixel` voltage, gated on a
-  trusted baseline fit (R^2 >= 0.90).
-- Bad-line guards: response too small (< `xyCalibrationMinUsablePxPerStep` at
-  the `targetStepSizePixel` probe target) shifts the turn-on estimate up 1 V;
-  response too large is detected via the trim-boundary guard (checked before
-  fit quality, because an oversized shift clamps the fit and ruins R^2) and
-  shifts the turn-on estimate down 1 V. Both reset the probe batch, so a
-  badly seeded line walks itself into range instead of retrying the same
-  voltage until the attempt budget runs out.
-- Calibration offset fits run on a 2x-per-axis downsampled sample grid (4x
-  fewer residuals); correction-phase fits stay full resolution.
+## Image And Reference Contract
 
-## 3. Correction law
+- The user is responsible for initial coarse centering and focusing.
+- The software must autofocus before taking a new XY reference image. The
+  reference is the registration template, so a blurred reference poisons every
+  later offset fit.
+- XY offset fitting uses an autofocus ROI in camera coordinates. The ROI should
+  be drawn in live view for operator clarity, but the autofocus instrument owns
+  how that ROI is used.
+- The image convention presented to the user is camera-like: x is horizontal,
+  y is vertical, and the displayed y axis follows the usual image direction.
+  The raw frame does not need to be flipped for every acquisition.
+- During diagnostic calibration, do not downsample offset fits until the
+  failure modes are understood. Downsampling can be reintroduced only after it
+  is shown not to change the fitted displacement or fit-quality gates.
 
-```
+## XY Calibration Design
+
+- A microstep is one ANC stick-slip step. A macrostep is a finite command of
+  multiple microsteps; current diagnostics use 4 microsteps per probe command
+  to make the displacement measurable without pushing features out of the ROI.
+- Calibration should collect paired + and - macrostep probes at a common
+  voltage for a given axis. The displacement samples are measured from images;
+  the pair is not assumed to return to zero.
+- Probe drift must be bounded. After a probe pair, if the image fit is
+  trustworthy and the sample has drifted far enough to matter, return toward
+  the pre-probe position before trying the next voltage. Letting residual drift
+  accumulate is unsafe because + and - stick-slip responses do not average to
+  zero reliably.
+- If a probe defocuses the image, autofocus should run before the next
+  displacement measurement. Low image-fit R^2 during calibration should be
+  treated as evidence that focus, ROI coverage, or probe size is no longer
+  acceptable.
+- X calibration failure should abort the diagnostic run immediately. Running Y
+  after X has already walked the sample out of the reference geometry produces
+  misleading data.
+- The voltage-response fit should use only accepted above-threshold samples.
+  Very small responses are part of the turn-on search, not the active linear
+  region.
+
+## Correction Design
+
+```matlab
 rawSteps = -(xyPixelPerStepMatrix \ offset_px);          % full model-predicted correction
-rawSteps = rawSteps * min(1, maxCorrectionNorm_px / norm(offset_px));  % 20 px displacement cap
+rawSteps = rawSteps * min(1, maxCorrectionNorm_px / norm(offset_px));  % displacement cap
 steps    = round(rawSteps);                              % integer commands only
 ```
 
-The displacement cap (smoke test 20260610) replaces the older per-axis clamp
-(1-2 steps per command, then `maxAutoshiftCorrectionStepsPerAxis`), which made
-large recoveries needlessly slow (a 22 px offset took 13 iterations at +/-2).
-The instrument still carries the per-axis clamp until the port.
+The correction phase can use the final calibrated + or - operating voltage for
+the sign of the command. Calibration is still responsible for keeping the
+response matrix fresh; the correction loop should not silently rescale the
+matrix from a single noisy correction move.
 
-There is deliberately NO gain/damping factor (`autoshiftStepRatio` was removed
-20260610). With integer commands a gain < 1 cannot produce sub-quantum motion;
-near convergence the command is 0 or +/-1 either way. The only end-game effect
-of a 0.5 gain was to double the round-to-zero deadband from +/-0.25 px to
-+/-0.5 px per axis, leaving a stuck annulus between deadband and tolerance.
-
-### Deadband / tolerance geometry
+### Deadband / Tolerance Geometry
 
 - `round` emits zero on an axis iff the offset component along that positioner
-  axis is < 0.5 * targetStepSizePixel = 0.25 px (MATLAB rounds half away from
-  zero, so exactly one step's worth still commands a full step).
-- Worst case both components just under 0.25 px: offset norm
-  0.25 * sqrt(2) ~= 0.354 px (axes near-orthogonal; rcond check guards this).
-- `autoshiftTightTolerancePixel = autoshiftToleranceFactor * targetStepSizePixel / sqrt(2)`
-  with factor default 1.5 (~0.53 px). Factor 1 would sit exactly at the
-  quantization floor, but then a residual landing near the worst-case corner
-  passes only by lottery (run 20260610_175001 finished at 0.370 px vs floor
-  0.354 px and needed the loose path). Factor 1.5 adds headroom for image-fit
-  noise and the stochastic landing spread while still implying a [0, 0]
-  command ends within tolerance.
-- `autoshiftLooseTolerancePixel = sqrt(2) * tight` (~0.75 px at defaults):
-  loose accept after `autoshiftLooseSuccessStepBudget` (20) moves; forced
-  recalibration after `autoshiftRecalibrationStepBudget` (50) moves while
-  still outside loose.
+  axis is less than 0.5 target microstep.
+- With a 0.5 px target step, the single-axis deadband is 0.25 px. For two
+  near-orthogonal axes, the corner norm is about `0.25 * sqrt(2) = 0.354 px`.
+- A practical done tolerance needs headroom above this quantization floor
+  because the fitted offset and the realized step size are both noisy.
 
-## 4. Stability
+## Stability
 
-Let r = (true px/step) / (calibrated px/step) at correction time. Per cycle,
-along each axis direction:
+Let `r = true_px_per_step / calibrated_px_per_step`. With full-gain correction,
+the one-axis residual evolves approximately as:
 
-```
-offset_next = (1 - r) * offset        % full gain
+```matlab
+offset_next = (1 - r) * offset
 ```
 
-- r < 1: monotone geometric convergence (always safe, just slower).
-- 1 < r < 2: sign-alternating convergence.
-- r = 2: deterministic ping-pong, no convergence.
-- r > 2: deterministic growth until the displacement cap bounds it.
+- `r < 1`: monotone geometric convergence.
+- `1 < r < 2`: sign-alternating convergence.
+- `r >= 2`: deterministic ping-pong or growth unless stochastic landing noise
+  happens to enter the done tolerance.
 
-Why this is acceptable without damping:
+The right response to a stale or badly fitted matrix is recalibration, not an
+in-loop gain that hides an incorrect calibration.
 
-1. r ~= 1 by construction: correction runs shortly after calibration at the
-   same conditions, and recalibration triggers keep the matrix fresh.
-2. Dither rescue: near threshold the step-size noise is comparable to the
-   step itself. Each +/-1 bounce has order-tens-of-percent probability of
-   landing inside the absorbing tolerance circle (once inside, the loop stops
-   commanding), so the stochastic loop converges almost surely even at r >= 2.
-3. The regime where dither fails — mean step much larger than the tolerance
-   radius with small relative spread — only occurs far above threshold, where
-   calibration would never have placed the operating voltage.
+## Temperature Ramp Contract
 
-Failure signature of a stale matrix (r >= 2): sign-alternating offsets with
-non-decreasing magnitude across consecutive correction iterations in the
-correction log. Fix by recalibrating more often, not by reintroducing a gain.
-
-## 5. Temperature status
-
-- Validated at fixed temperature only (as of 20260610). At fixed T, r stays
-  near 1 because correction immediately follows calibration.
-- Existing hooks for varying T: forced recalibration when |T - calibration T|
-  exceeds `voltageProfileMinTemperatureSpacing_K` (2 K), calibration-history
-  drift refresh, and the recalibration step budget.
-- Main watch item for the T-expansion: the profile voltage sliding below the
-  (T-dependent) turn-on threshold as T drops. The response then goes to zero
-  and correction stalls rather than oscillates; this is caught by the
-  low/no-response calibration paths (`xyCalibrationMinUsablePxPerStep`,
-  turn-on shifting), not by anything gain-related.
-
-## 6. Key parameters
-
-| Parameter | Value | Meaning |
-|---|---|---|
-| `targetStepSizePixel` | 0.5 | calibrated px per microstep (minimum reliable quantum) |
-| `autoshiftToleranceFactor` | 1.5 | tolerance headroom over the quantization floor |
-| `autoshiftTightTolerancePixel` | factor * 0.25*sqrt(2) ~= 0.53 | done tolerance |
-| `autoshiftLooseTolerancePixel` | sqrt(2) * tight ~= 0.75 | fallback acceptance after move budget |
-| `autoshiftLooseSuccessStepBudget` | 20 | moves before loose acceptance allowed |
-| `autoshiftRecalibrationStepBudget` | 50 | moves before forced recalibration |
-| `maxCorrectionNorm_px` | 20 | per-command predicted displacement cap (smoke test) |
-| `voltageProfileMinTemperatureSpacing_K` | 2 | T drift that forces recalibration |
+- T/B set operations through the virtual instrument are blocking by design.
+  Reaching the requested T/B value is necessary but not sufficient; the loop
+  must also wait for thermal and mechanical drift to settle.
+- Continuous compensation should run during T/B ramps and during cooldown,
+  because waiting until the end turns a fine correction problem into a wide
+  search problem.
+- The instrument needs an explicit "take reference here" operation. That call
+  defines the image/position/focus state to maintain during later ramps.
