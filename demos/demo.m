@@ -1184,6 +1184,9 @@ end
 % each oscillation.
 % T_af/B_af/cooldown diagnostics save .png + .mat files every 5 min and at
 % convergence under temp/attodry_autofocus_diagnostics by default.
+% To run Z autofocus only before taking a reference, e.g. while aligning the
+% laser spot with the sample, use:
+%   engine.evalOnEngine('handle_virtual_attodryAutofocus.performAutofocusOnly()')
 % After smready(recipe), take a reference and then select the offset-fit ROI:
 %   engine.evalOnEngine('handle_virtual_attodryAutofocus.takeReferenceData()')
 %   engine.evalOnEngine('handle_virtual_attodryAutofocus.selectOffsetFitRoi()')
