@@ -177,6 +177,20 @@ classdef instrument_CS165MU < instrumentInterface
             obj.stopContinuousAcquisition();
         end
 
+        function closeLiveView(obj)
+            obj.stopContinuousAcquisition();
+            obj.liveOverlayEnabled = false;
+            obj.liveOverlayRoi_px = [NaN, NaN, NaN, NaN];
+            if ~isempty(obj.liveFigure) && isvalid(obj.liveFigure)
+                delete(obj.liveFigure);
+            end
+            obj.liveFigure = [];
+            obj.liveAxes = [];
+            obj.liveImage = [];
+            obj.liveStatusLabel = [];
+            obj.liveOverlayLine = [];
+        end
+
         function setLiveOverlayRoi(obj, roi_px)
             arguments
                 obj
