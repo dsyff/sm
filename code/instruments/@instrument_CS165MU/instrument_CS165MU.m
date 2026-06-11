@@ -404,12 +404,11 @@ classdef instrument_CS165MU < instrumentInterface
                     TimerFcn = @(~, ~) obj.liveTick());
             end
 
-            % Arm for continuous software-triggered acquisition
+            % TLCamera rejects trigger-frame changes while armed/running.
+            obj.safeDisarm();
             obj.tlCamera.OperationMode = Thorlabs.TSI.TLCameraInterfaces.OperationMode.SoftwareTriggered;
             obj.tlCamera.FramesPerTrigger_zeroForUnlimited = 0;
-            if obj.tlCamera.IsArmed
-                obj.tlCamera.Disarm;
-            end
+            obj.clearQueuedFrames();
             obj.tlCamera.Arm;
             obj.tlCamera.IssueSoftwareTrigger;
 
@@ -472,19 +471,11 @@ classdef instrument_CS165MU < instrumentInterface
 
         function image2D = acquireOneFrameStandalone(obj)
             % Use the same software-triggered mode as live view, then disarm after one frame.
+            obj.safeDisarm();
             obj.tlCamera.OperationMode = Thorlabs.TSI.TLCameraInterfaces.OperationMode.SoftwareTriggered;
             obj.tlCamera.FramesPerTrigger_zeroForUnlimited = 0;
 
-            if obj.tlCamera.IsArmed
-                obj.tlCamera.Disarm;
-            end
-
-            while obj.tlCamera.NumberOfQueuedFrames > 0
-                staleFrame = obj.tlCamera.GetPendingFrameOrNull;
-                if ~isempty(staleFrame)
-                    delete(staleFrame);
-                end
-            end
+            obj.clearQueuedFrames();
 
             obj.tlCamera.Arm;
             cleanup = onCleanup(@() obj.safeDisarm());
@@ -749,6 +740,15 @@ classdef instrument_CS165MU < instrumentInterface
                     obj.tlCamera.Disarm;
                 end
             catch
+            end
+        end
+
+        function clearQueuedFrames(obj)
+            while obj.tlCamera.NumberOfQueuedFrames > 0
+                staleFrame = obj.tlCamera.GetPendingFrameOrNull;
+                if ~isempty(staleFrame)
+                    delete(staleFrame);
+                end
             end
         end
 

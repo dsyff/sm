@@ -21,6 +21,15 @@ Last updated 20260611.
   `px_per_step = slope * V + intercept`.
 - Near turn-on, percentage scatter is large. A voltage that is useful for
   detecting motion may still be too noisy for accurate correction.
+- The low-response region should not be treated as part of the active
+  calibration line. Very small measured responses are turn-on diagnostics;
+  they are useful for moving the intercept but should not pull the active
+  slope down.
+- Oversized XY probes are self-defeating. Recent no-optics data showed that
+  aiming for 2 px/microstep can push the image 20-30 px during a 4-step probe,
+  degrading the registration fit and forcing slow voltage walk-down retries.
+  Moderate targets around 0.75, 1, 1.25, and 1.5 px/microstep are a better
+  compromise: above the noisy 0.5 px region, but below the large-shift regime.
 - Positive and negative directions can be asymmetric. Calibration should first
   probe both directions at the same voltage so that nonzero net drift is
   measured rather than assumed away. Separate + and - operating voltages are
@@ -48,9 +57,9 @@ Last updated 20260611.
 - The image convention presented to the user is camera-like: x is horizontal,
   y is vertical, and the displayed y axis follows the usual image direction.
   The raw frame does not need to be flipped for every acquisition.
-- During diagnostic calibration, do not downsample offset fits until the
-  failure modes are understood. Downsampling can be reintroduced only after it
-  is shown not to change the fitted displacement or fit-quality gates.
+- Diagnostic runs may downsample offset fits for speed only when the fitted
+  displacement and fit-quality gates remain consistent with full-resolution
+  fits. Fit-quality gates must be revisited whenever downsampling changes.
 
 ## XY Calibration Design
 
@@ -60,11 +69,12 @@ Last updated 20260611.
 - Calibration should collect paired + and - macrostep probes at a common
   voltage for a given axis. The displacement samples are measured from images;
   the pair is not assumed to return to zero.
-- Probe drift must be bounded. After a probe pair, if the image fit is
-  trustworthy and the sample has drifted far enough to matter, return toward
-  the pre-probe position before trying the next voltage. Letting residual drift
-  accumulate is unsafe because + and - stick-slip responses do not average to
-  zero reliably.
+- Pairwise diagnostic calibration should measure each + or - macrostep against
+  the immediately preceding image, not against the original reference. The
+  cumulative drift vector should still be tracked; once one axis has a trusted
+  calibration, compensate the accumulated drift before moving to the next axis.
+  Production compensation can be more conservative and return more often if
+  fit quality or ROI coverage degrades.
 - If a probe defocuses the image, autofocus should run before the next
   displacement measurement. Low image-fit R^2 during calibration should be
   treated as evidence that focus, ROI coverage, or probe size is no longer
@@ -75,6 +85,13 @@ Last updated 20260611.
 - The voltage-response fit should use only accepted above-threshold samples.
   Very small responses are part of the turn-on search, not the active linear
   region.
+- Current calibration should estimate one operating voltage per physical axis,
+  using both + and - samples at the same voltage. Direction-split voltages
+  should remain a later optimization unless the accepted data form reproducible
+  + and - clusters.
+- The correction target can stay at 0.5 px/microstep even if the calibration
+  probes use larger targets. In that case the 0.5 px operating voltage is an
+  extrapolation from the accepted active-line fit, not a direct noisy probe.
 
 ## Correction Design
 
@@ -84,10 +101,14 @@ rawSteps = rawSteps * min(1, maxCorrectionNorm_px / norm(offset_px));  % displac
 steps    = round(rawSteps);                              % integer commands only
 ```
 
-The correction phase can use the final calibrated + or - operating voltage for
-the sign of the command. Calibration is still responsible for keeping the
-response matrix fresh; the correction loop should not silently rescale the
-matrix from a single noisy correction move.
+The correction phase uses the final calibrated operating voltage for each
+axis. Calibration is still responsible for keeping the response matrix fresh;
+the correction loop should not silently rescale the matrix from a single noisy
+correction move.
+
+The correction done gate must require a trustworthy offset fit. A small fitted
+offset with poor R^2 is not evidence of convergence; it is an invalid
+measurement and must not be accepted as `done` or `loose_done`.
 
 ### Deadband / Tolerance Geometry
 

@@ -706,6 +706,8 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 "beamspot_y_px", NaN, ...
                 "beamspotDelta_x_px", NaN, ...
                 "beamspotDelta_y_px", NaN, ...
+                "sampleOffsetFitRsquare", NaN, ...
+                "sampleOffsetFitReliable", false, ...
                 "zSteps", 0, ...
                 "xySteps", [0; 0]);
 
@@ -735,6 +737,8 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             [rawDx, rawDy] = obj.estimateSampleOffset(sampleImage, beamDelta_px);
             rawOffset_px = [rawDx; rawDy];
             correctedOffset_px = obj.computeBeamReferencedSampleOffset(rawOffset_px, beamspot_px);
+            result.sampleOffsetFitRsquare = gof.rsquare;
+            result.sampleOffsetFitReliable = isfinite(gof.rsquare) && gof.rsquare >= obj.xyCalibrationMinFitRsquare;
 
             obj.lastRawSampleOffset_px = rawOffset_px;
             obj.lastBeamReferencedOffset_px = correctedOffset_px;
@@ -749,15 +753,24 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             result.beamspotDelta_x_px = beamDelta_px(1);
             result.beamspotDelta_y_px = beamDelta_px(2);
 
-            if obj.anc300Configured()
+            if obj.anc300Configured() && result.sampleOffsetFitReliable
                 [nStepX, nStepY] = obj.runAutoshift(correctedOffset_px(1), correctedOffset_px(2));
+            elseif obj.anc300Configured()
+                obj.printAutofocusWarning("Autoshift skipped unreliable sample-offset fit R^2 %.4g below %.4g.", ...
+                    gof.rsquare, obj.xyCalibrationMinFitRsquare);
+                nStepX = 0;
+                nStepY = 0;
             else
                 nStepX = 0;
                 nStepY = 0;
             end
             result.xySteps = [nStepX; nStepY];
             result.correctionStepsMax = max(abs([nStepZ, nStepX, nStepY]));
-            result.didApplyCorrection = result.correctionStepsMax >= 1;
+            if obj.anc300Configured() && ~result.sampleOffsetFitReliable
+                result.correctionKind = "unreliable_fit";
+            end
+            result.didApplyCorrection = result.correctionStepsMax >= 1 ...
+                || strcmp(result.correctionKind, "unreliable_fit");
 
             clear cleanup;
         end
@@ -874,7 +887,9 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                     && obj.temperatureIsStable(temperatureTimes(1:temperatureSampleCount), temperatureSamples_K(1:temperatureSampleCount));
                 xyOffsetNorm_px = hypot(correction.dx_px, correction.dy_px);
 
-                noCorrectionSatisfied = ~correction.didApplyCorrection ...
+                offsetFitReliable = ~isfield(correction, 'sampleOffsetFitReliable') || correction.sampleOffsetFitReliable;
+                noCorrectionSatisfied = offsetFitReliable ...
+                    && ~correction.didApplyCorrection ...
                     && (~isfinite(xyOffsetNorm_px) || xyOffsetNorm_px <= obj.autoshiftTightTolerancePixel);
                 if targetsSettled && noCorrectionSatisfied
                     if isnat(noCorrectionStart)
@@ -889,7 +904,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                     noCorrectionStart = NaT;
                 end
 
-                if targetsSettled && isfinite(xyOffsetNorm_px) && abs(correction.zSteps) < 1 ...
+                if offsetFitReliable && targetsSettled && isfinite(xyOffsetNorm_px) && abs(correction.zSteps) < 1 ...
                         && xyCorrectionMoveCount >= obj.autoshiftLooseSuccessStepBudget ...
                         && xyOffsetNorm_px <= obj.autoshiftLooseTolerancePixel
                     obj.printAutofocusWarning("Autoshift accepted %.4g px residual after %d XY moves; tight target is %.4g px.", ...
@@ -1112,7 +1127,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
                 error("virtualInstrument_attodryAutofocus:InvalidXYCalibrationStepLimit", ...
                     "maxAutoshiftCalibrationSteps must be at least %d for XY calibration.", oscillationSteps);
             end
-            initialProbeBatchTargetsPxPerStep = [stepTargetPx; 1.0; 1.5];
+            initialProbeBatchTargetsPxPerStep = [0.75; 1.0; 1.25; 1.5];
             repeatProbeBatchTargetsPxPerStep = flipud(initialProbeBatchTargetsPxPerStep);
             largestProbeTargetPxPerStep = 1.5;
             [~, currentTemperature_K, activeSlopes, activeIntercepts] = obj.getInitialPositionerVoltages();
