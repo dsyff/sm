@@ -35,9 +35,9 @@ classdef instrument_ANC300 < instrumentInterface
                 obj.writeCommand(sprintf("setf %d %d", axisId, 50));
             end
 
-            obj.addChannel("voltage_x", setTolerances = 1e-3);
-            obj.addChannel("voltage_y", setTolerances = 1e-3);
-            obj.addChannel("voltage_z", setTolerances = 1e-3);
+            obj.addChannel("voltage_x", setTolerances = 0.05);
+            obj.addChannel("voltage_y", setTolerances = 0.05);
+            obj.addChannel("voltage_z", setTolerances = 0.05);
             obj.addChannel("frequency_x", setTolerances = 0.5);
             obj.addChannel("frequency_y", setTolerances = 0.5);
             obj.addChannel("frequency_z", setTolerances = 0.5);
