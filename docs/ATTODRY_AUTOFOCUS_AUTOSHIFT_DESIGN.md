@@ -13,6 +13,18 @@ Code map:
 
 Last updated 20260611.
 
+## Known Implementation Drift
+
+These are quick reminders from earlier code review. Production autofocus code
+is intentionally not being updated during the current Z-voltage test pass.
+
+- The production reference path may not autofocus immediately before capturing
+  the XY reference, even though this document requires it.
+- Current pairwise diagnostics use 4-microstep XY probes. Production code may
+  still use a different probe macrostep count.
+- The production autoshift path should be rechecked for whether it captures
+  and validates the offset-fit goodness-of-fit object before using it.
+
 ## Hardware Behavior
 
 - The ANC300 stick-slip axes have a two-segment voltage response. Below a
@@ -92,6 +104,25 @@ Last updated 20260611.
 - The correction target can stay at 0.5 px/microstep even if the calibration
   probes use larger targets. In that case the 0.5 px operating voltage is an
   extrapolation from the accepted active-line fit, not a direct noisy probe.
+
+## Z Voltage Calibration Design
+
+- Z needs its own voltage calibration before XY calibration and before any
+  T/B ramp compensation. The goal is only detectable Z motion, not best focus.
+- The diagnostic test for this stage is
+  `tests/autofocus testing/attodry_z_tenengrad_macrostep_scan.m`. It should
+  use 4-microstep Z macrosteps and scan a voltage range high enough to bracket
+  the turn-on region.
+- A usable Z-voltage gate should be based on Tenengrad noise measured from
+  repeated no-motion images at the same voltage. The calibrated voltage should
+  be accepted only when a zero-net Z oscillation produces a Tenengrad response
+  that clears that gate.
+- The zero-net oscillation pattern for calibration should be symmetric, for
+  example `+N, -2N, +N`, so the voltage probe does not intentionally walk away
+  from the starting focus position.
+- Once a Z voltage is calibrated, normal autofocus can use that voltage to
+  search for the local focus optimum. Voltage calibration and focus optimization
+  should stay separate because they answer different questions.
 
 ## Correction Design
 
