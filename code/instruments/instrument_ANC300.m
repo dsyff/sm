@@ -6,6 +6,7 @@ classdef instrument_ANC300 < instrumentInterface
         axisId_x (1, 1) double {mustBeInteger, mustBePositive} = 3
         axisId_y (1, 1) double {mustBeInteger, mustBePositive} = 4
         axisId_z (1, 1) double {mustBeInteger, mustBePositive} = 5
+        stepRingdownDelay_s (1, 1) double {mustBeNonnegative} = 0.2
     end
 
     methods
@@ -34,12 +35,12 @@ classdef instrument_ANC300 < instrumentInterface
                 obj.writeCommand(sprintf("setf %d %d", axisId, 50));
             end
 
-            obj.addChannel("voltage_x");
-            obj.addChannel("voltage_y");
-            obj.addChannel("voltage_z");
-            obj.addChannel("frequency_x");
-            obj.addChannel("frequency_y");
-            obj.addChannel("frequency_z");
+            obj.addChannel("voltage_x", setTolerances = 1e-3);
+            obj.addChannel("voltage_y", setTolerances = 1e-3);
+            obj.addChannel("voltage_z", setTolerances = 1e-3);
+            obj.addChannel("frequency_x", setTolerances = 0.5);
+            obj.addChannel("frequency_y", setTolerances = 0.5);
+            obj.addChannel("frequency_z", setTolerances = 0.5);
         end
 
         function delete(obj)
@@ -49,6 +50,14 @@ classdef instrument_ANC300 < instrumentInterface
             handle = obj.communicationHandle; %#ok<NASGU>
             obj.communicationHandle = [];
             clear handle;
+        end
+
+        function flush(obj)
+            if isempty(obj.communicationHandle)
+                return;
+            end
+            flush(obj.communicationHandle);
+            obj.pendingValue = NaN;
         end
 
         function stepAxis(obj, axis, nSteps)
@@ -75,23 +84,7 @@ classdef instrument_ANC300 < instrumentInterface
 
     methods (Access = ?instrumentInterface)
         function getWriteChannelHelper(obj, channelIndex)
-            switch channelIndex
-                case 1
-                    obj.pendingValue = obj.queryScalar(sprintf("getv %d", obj.axisId_x));
-                case 2
-                    obj.pendingValue = obj.queryScalar(sprintf("getv %d", obj.axisId_y));
-                case 3
-                    obj.pendingValue = obj.queryScalar(sprintf("getv %d", obj.axisId_z));
-                case 4
-                    obj.pendingValue = obj.queryScalar(sprintf("getf %d", obj.axisId_x));
-                case 5
-                    obj.pendingValue = obj.queryScalar(sprintf("getf %d", obj.axisId_y));
-                case 6
-                    obj.pendingValue = obj.queryScalar(sprintf("getf %d", obj.axisId_z));
-                otherwise
-                    error("instrument_ANC300:UnsupportedGetChannel", ...
-                        "Unsupported get channel index %d.", channelIndex);
-            end
+            obj.pendingValue = obj.queryChannelValue(channelIndex);
         end
 
         function getValues = getReadChannelHelper(obj, ~)
@@ -124,9 +117,43 @@ classdef instrument_ANC300 < instrumentInterface
                     setWriteChannelHelper@instrumentInterface(obj, channelIndex, setValues);
             end
         end
+
+        function TF = setCheckChannelHelper(obj, channelIndex, channelLastSetValues)
+            actualValue = obj.queryChannelValue(channelIndex);
+            expectedValue = channelLastSetValues(1);
+            if channelIndex >= 4 && channelIndex <= 6
+                expectedValue = obj.prepareFrequency(expectedValue);
+            end
+            TF = abs(actualValue - expectedValue) <= obj.setTolerances{channelIndex};
+            if ~TF
+                error("instrument_ANC300:SetCheckFailed", ...
+                    "ANC300 %s set-check failed: expected %.9g, actual %.9g, tolerance %.3g.", ...
+                    obj.channelTable.channels(channelIndex), expectedValue, actualValue, obj.setTolerances{channelIndex});
+            end
+        end
     end
 
     methods (Access = private)
+        function value = queryChannelValue(obj, channelIndex)
+            switch channelIndex
+                case 1
+                    value = obj.queryScalar(sprintf("getv %d", obj.axisId_x));
+                case 2
+                    value = obj.queryScalar(sprintf("getv %d", obj.axisId_y));
+                case 3
+                    value = obj.queryScalar(sprintf("getv %d", obj.axisId_z));
+                case 4
+                    value = obj.queryScalar(sprintf("getf %d", obj.axisId_x));
+                case 5
+                    value = obj.queryScalar(sprintf("getf %d", obj.axisId_y));
+                case 6
+                    value = obj.queryScalar(sprintf("getf %d", obj.axisId_z));
+                otherwise
+                    error("instrument_ANC300:UnsupportedGetChannel", ...
+                        "Unsupported channel index %d.", channelIndex);
+            end
+        end
+
         function axisId = parseAxis(obj, axis)
             if isnumeric(axis)
                 axisIds = [obj.axisId_z, obj.axisId_y, obj.axisId_x];
@@ -188,6 +215,7 @@ classdef instrument_ANC300 < instrumentInterface
                 for stepIndex = 1:numel(axisIds)
                     obj.writeCommand(sprintf("stepw %d", axisIds(stepIndex)));
                 end
+                pause(obj.stepRingdownDelay_s);
             catch exception
                 handle.Timeout = originalTimeout;
                 rethrow(exception);
@@ -216,6 +244,7 @@ classdef instrument_ANC300 < instrumentInterface
 
         function writeCommand(obj, command)
             handle = obj.communicationHandle;
+            obj.flush();
             writeline(handle, command);
             responseLines = obj.readCommandResponse(command);
             if ~isempty(responseLines)
@@ -226,6 +255,7 @@ classdef instrument_ANC300 < instrumentInterface
 
         function responseLine = queryCommand(obj, command)
             handle = obj.communicationHandle;
+            obj.flush();
             writeline(handle, command);
             responseLines = obj.readCommandResponse(command);
             if isempty(responseLines)

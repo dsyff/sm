@@ -962,7 +962,7 @@ end
 
 if ANC300_Use
     recipe.addInstrument("handle_ANC300", "instrument_ANC300", "ANC300", ANC300_Serial);
-    recipe.addStatement("ANC300", "handle_ANC300.requireSetCheck = false;");
+    recipe.addStatement("ANC300", "handle_ANC300.requireSetCheck = true;");
     recipe.addChannel("ANC300", "voltage_x", "Vx", [], [], 0, 60);
     recipe.addChannel("ANC300", "voltage_y", "Vy", [], [], 0, 60);
     recipe.addChannel("ANC300", "voltage_z", "Vz", [], [], 0, 60);
