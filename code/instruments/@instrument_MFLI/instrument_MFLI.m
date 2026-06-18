@@ -44,6 +44,7 @@ classdef instrument_MFLI < instrumentInterface
 
                 % Use a separate oscillator for each sine generator.
                 ziDAQ('setInt', sprintf('/%s/demods/%d/oscselect', obj.device_id, slot_idx), osc_idx);
+                ziDAQ('setInt', sprintf('/%s/demods/%d/enable', obj.device_id, slot_idx), 1);
 
                 % Enable the sine generator on the signal output
                 % /devN/sigouts/0/enables/i
@@ -68,8 +69,11 @@ classdef instrument_MFLI < instrumentInterface
                 % demodulator harmonic_n
                 obj.addChannel(sprintf("harmonic_%d", i));
 
-                % on_n
-                obj.addChannel(sprintf("on_%d", i));
+                % output sine enable on signal output 0
+                obj.addChannel(sprintf("output_sine_on_%d", i));
+
+                % demodulator enable
+                obj.addChannel(sprintf("demod_on_%d", i));
 
                 % demodulator X,Y,R,Theta
                 obj.addChannel(sprintf("XYRTheta_%d", i), 4);
@@ -94,11 +98,11 @@ classdef instrument_MFLI < instrumentInterface
 
         function getValues = getReadChannelHelper(obj, channelIndex)
             % Optimized channel handling using modular arithmetic
-            % Channel order: Amplitude, Phase, Signed Amplitude, Frequency, Oscillator, Harmonic, On, XYRTheta
+            % Channel order: Amplitude, Phase, Signed Amplitude, Frequency, Oscillator, Harmonic, Output Sine On, Demod On, XYRTheta
 
             idx_zero = channelIndex - 1;
-            group_idx = floor(idx_zero / 8); % 0-3 (demodulator/sine slot)
-            type_idx = mod(idx_zero, 8);     % 0-7 (Channel Type)
+            group_idx = floor(idx_zero / 9); % 0-3 (demodulator/sine slot)
+            type_idx = mod(idx_zero, 9);     % 0-8 (Channel Type)
 
             switch type_idx
                 case 0 % Amplitude
@@ -132,10 +136,13 @@ classdef instrument_MFLI < instrumentInterface
                 case 5 % Harmonic
                     path = sprintf('/%s/demods/%d/harmonic', obj.device_id, group_idx);
                     getValues = double(ziDAQ('getInt', path));
-                case 6 % On
+                case 6 % Output Sine On
                     path = sprintf('/%s/sigouts/0/enables/%d', obj.device_id, group_idx);
                     getValues = double(ziDAQ('getInt', path));
-                case 7 % XYRTheta
+                case 7 % Demod On
+                    path = sprintf('/%s/demods/%d/enable', obj.device_id, group_idx);
+                    getValues = double(ziDAQ('getInt', path));
+                case 8 % XYRTheta
                     path = sprintf('/%s/demods/%d/sample', obj.device_id, group_idx);
                     sample = ziDAQ('getSample', path);
                     x = double(sample.x);
@@ -149,8 +156,8 @@ classdef instrument_MFLI < instrumentInterface
 
         function setWriteChannelHelper(obj, channelIndex, setValues)
             idx_zero = channelIndex - 1;
-            group_idx = floor(idx_zero / 8); % 0-3 (demodulator/sine slot)
-            type_idx = mod(idx_zero, 8);     % 0-7 (Channel Type)
+            group_idx = floor(idx_zero / 9); % 0-3 (demodulator/sine slot)
+            type_idx = mod(idx_zero, 9);     % 0-8 (Channel Type)
 
             switch type_idx
                 case 0 % Amplitude
@@ -179,10 +186,13 @@ classdef instrument_MFLI < instrumentInterface
                     end
                     path = sprintf('/%s/demods/%d/harmonic', obj.device_id, group_idx);
                     ziDAQ('setInt', path, int64(setValues));
-                case 6 % On
+                case 6 % Output Sine On
                     path = sprintf('/%s/sigouts/0/enables/%d', obj.device_id, group_idx);
                     ziDAQ('setInt', path, int64(setValues));
-                case 7 % XYRTheta
+                case 7 % Demod On
+                    path = sprintf('/%s/demods/%d/enable', obj.device_id, group_idx);
+                    ziDAQ('setInt', path, int64(setValues));
+                case 8 % XYRTheta
                     error("Set operation not supported for channel %s", obj.channelTable.channels(channelIndex));
             end
         end
