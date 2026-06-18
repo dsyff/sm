@@ -1083,7 +1083,8 @@ if MFLI_Use
         recipe.addChannel("MFLI", "frequency_" + string(i), "f" + string(i));
         recipe.addChannel("MFLI", "oscillator_" + string(i), "Osc" + string(i), [], [], 1, 4);
         recipe.addChannel("MFLI", "harmonic_" + string(i), "Harm" + string(i));
-        recipe.addChannel("MFLI", "on_" + string(i), "On" + string(i));
+        recipe.addChannel("MFLI", "output_sine_on_" + string(i), "OutSineOn" + string(i));
+        recipe.addChannel("MFLI", "demod_on_" + string(i), "DOn" + string(i));
         recipe.addChannel("MFLI", "XYRTheta_" + string(i), "XYRTheta" + string(i));
     end
 end
