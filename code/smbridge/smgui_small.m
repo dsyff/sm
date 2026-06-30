@@ -349,6 +349,9 @@ end
 
 function SaveScan(hObject,eventdata)
     global smscan
+    if isstruct(smscan) && isfield(smscan, "consts")
+        smscan.consts = measurementScan.normalizeConsts(smscan.consts);
+    end
     defaultName = "scan.mat";
     if isstruct(smscan) && isfield(smscan, "name") && ~isempty(smscan.name)
         defaultName = string(sanitizeFilename(string(smscan.name))) + ".mat";
@@ -624,6 +627,13 @@ end
 %Callback for the constants eth
 function ConstTXT(hObject,eventdata,i)
 global smaux smscan;
+    if i > length(smscan.consts) || ~isfield(smscan.consts, "setchan") || isempty(smscan.consts(i).setchan)
+        return;
+    end
+    constName = strip(string(smscan.consts(i).setchan));
+    if ~isscalar(constName) || strlength(constName) == 0 || constName == "none"
+        return;
+    end
     val = str2double(get(smaux.smgui.consts_eth(i),'String'));
     if (isnan(val))
         errordlg('Please enter a real number','Invalid Input Value');
@@ -636,6 +646,13 @@ end
 % Callback for constants checkboxes
 function SetConsts(hObject,eventdata,i)
 global smaux smscan;
+    if i > length(smscan.consts) || ~isfield(smscan.consts, "setchan") || isempty(smscan.consts(i).setchan)
+        return;
+    end
+    constName = strip(string(smscan.consts(i).setchan));
+    if ~isscalar(constName) || strlength(constName) == 0 || constName == "none"
+        return;
+    end
     smscan.consts(i).set = get(smaux.smgui.setconsts_cbh(i),'Value');  
 end
 
@@ -652,10 +669,8 @@ function UpdateConstants(varargin)
         return;
     end
 
-    consts = smscan.consts;
-    if ~isfield(consts, "set")
-        [consts.set] = deal(1);
-    end
+    consts = measurementScan.normalizeConsts(smscan.consts);
+    smscan.consts = consts;
 
     setMask = [consts.set] == 1;
     if any(setMask)
@@ -674,13 +689,14 @@ function UpdateConstants(varargin)
     getIdx = find(getMask);
     for k = 1:numel(getIdx)
         i = getIdx(k);
-        smscan.consts(i).val = newvals(k);
+        consts(i).val = newvals(k);
         if abs(floor(log10(newvals(k)))) > 3
             set(smaux.smgui.consts_eth(i), "String", sprintf("%0.1e", newvals(k)));
         else
             set(smaux.smgui.consts_eth(i), "String", round(1000 * newvals(k)) / 1000);
         end
     end
+    smscan.consts = consts;
 end
 
  % Callback for data file location pushbutton
@@ -1146,6 +1162,9 @@ function ToScans(varargin)
         if isfield(smscan, 'name')
             smscan.name = sanitizeFilename(smscan.name);
         end
+        if isfield(smscan, "consts")
+            smscan.consts = measurementScan.normalizeConsts(smscan.consts);
+        end
         smaux.scans{end+1}=smscan;
         sm
         sm_Callback('UpdateToGUI');
@@ -1172,6 +1191,9 @@ function ToQueue(varargin)
         % Safety net: ensure scan name is sanitized before sending to queue
         if isfield(smscan, 'name')
             smscan.name = sanitizeFilename(smscan.name);
+        end
+        if isfield(smscan, "consts")
+            smscan.consts = measurementScan.normalizeConsts(smscan.consts);
         end
         smaux.smq{end+1}=smscan;
         sm

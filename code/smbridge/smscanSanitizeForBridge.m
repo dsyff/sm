@@ -13,6 +13,14 @@ if ~isstruct(scanOut) || ~isfield(scanOut, "loops")
     scanOut = [];
     return;
 end
+if isfield(scanOut, "consts")
+    try
+        scanOut.consts = measurementScan.normalizeConsts(scanOut.consts);
+    catch
+        scanOut = [];
+        return;
+    end
+end
 
 if ~(exist("bridge", "var") && ~isempty(bridge) && isobject(bridge))
     if isfield(scanOut, "disp")
