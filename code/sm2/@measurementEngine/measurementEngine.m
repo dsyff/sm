@@ -348,10 +348,11 @@ classdef measurementEngine < handle
             end
         end
 
-        function out = evalOnEngine(obj, codeString)
+        function out = evalOnEngine(obj, codeString, options)
             arguments
                 obj
                 codeString (1, 1) string {mustBeNonzeroLengthText}
+                options.outputMode (1, 1) string {mustBeMember(options.outputMode, ["value", "display"])} = "value"
             end
 
             out = [];
@@ -360,6 +361,9 @@ classdef measurementEngine < handle
                     evalin("base", char(codeString));
                 else
                     out = evalin("base", char(codeString));
+                    if options.outputMode == "display"
+                        out = measurementEngine.evalOutputDisplayText_(out);
+                    end
                 end
                 return;
             end
@@ -369,7 +373,8 @@ classdef measurementEngine < handle
                 "type", "eval", ...
                 "requestId", requestId, ...
                 "code", codeString, ...
-                "nOut", nargout));
+                "nOut", nargout, ...
+                "outputMode", options.outputMode));
 
             reply = obj.waitForEngineReply_(requestId, "evalDone");
             if isfield(reply, "ok") && ~reply.ok
@@ -878,6 +883,14 @@ classdef measurementEngine < handle
                         end
                     end
                 end
+                fut = obj.engineWorkerFuture_();
+                if ~isempty(fut) && isprop(fut, "State") && string(fut.State) ~= "running"
+                    if isprop(fut, "Error") && ~isempty(fut.Error)
+                        throw(fut.Error);
+                    end
+                    error("measurementEngine:EngineWorkerExited", ...
+                        "Engine worker exited while waiting for engine reply %s. State: %s", expectedType, string(fut.State));
+                end
                 assert(datetime("now") - startTime < timeout, "measurementEngine:Timeout", "Timed out waiting for engine reply %s.", expectedType);
                 pause(1E-6);
             end
@@ -1289,6 +1302,61 @@ classdef measurementEngine < handle
             else
                 err.stack = [];
             end
+        end
+
+        function text = evalOutputDisplayText_(value)
+            try
+                text = string(formattedDisplayText(value));
+            catch ME
+                error("measurementEngine:EvalOutputDisplayFailed", ...
+                    "Failed to format eval output for display (%s): %s", class(value), ME.message);
+            end
+        end
+
+        function TF = isEvalOutputValueSerializable_(value)
+            cls = string(class(value));
+            if any(cls == ["double", "single", "logical", "char", "string", ...
+                    "int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64"]) || ...
+                    isa(value, "datetime") || isa(value, "duration") || isa(value, "calendarDuration") || isa(value, "categorical")
+                TF = true;
+                return;
+            end
+            if iscell(value)
+                TF = true;
+                for k = 1:numel(value)
+                    if ~measurementEngine.isEvalOutputValueSerializable_(value{k})
+                        TF = false;
+                        return;
+                    end
+                end
+                return;
+            end
+            if isstruct(value)
+                TF = true;
+                fields = fieldnames(value);
+                for f = 1:numel(fields)
+                    vals = {value.(fields{f})};
+                    for k = 1:numel(vals)
+                        if ~measurementEngine.isEvalOutputValueSerializable_(vals{k})
+                            TF = false;
+                            return;
+                        end
+                    end
+                end
+                return;
+            end
+            if istable(value) || isa(value, "timetable")
+                TF = true;
+                names = string(value.Properties.VariableNames);
+                for k = 1:numel(names)
+                    if ~measurementEngine.isEvalOutputValueSerializable_(value.(char(names(k))))
+                        TF = false;
+                        return;
+                    end
+                end
+                return;
+            end
+            TF = false;
         end
 
         rack = buildRackFromRecipe_(recipe, spawnOnClientFcn)
