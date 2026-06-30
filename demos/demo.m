@@ -196,13 +196,13 @@ virtual_nE_V_bg_limits = [-6, 6];
 virtual_nE_V_tg_limits = [-6, 6];
 
 virtual_hysteresis_gate_Use = 0;
-virtual_hysteresis_V_bg_limits = [-5, 5];
-virtual_hysteresis_V_tg_limits = [-5, 5];
+virtual_hysteresis_V_bg_points = [-5, 5];
+virtual_hysteresis_V_tg_points = [-5, 5];
 
 virtual_hysteresis_nE_Use = 0;
 
 virtual_hysteresis_B_Use = 0;
-virtual_hysteresis_B_limits = [-1, 1];
+virtual_hysteresis_B_points = [-1, 1];
 
 %% Create instrumentRackRecipe
 recipe = instrumentRackRecipe();
@@ -1227,31 +1227,31 @@ end
 
 if virtual_hysteresis_gate_Use
     recipe.addVirtualInstrument("handle_virtual_hysteresis_V_bg", "virtualInstrument_hysteresis", "virtual_hysteresis_V_bg", "virtual_hysteresis_V_bg", ...
-        setChannelName = "V_bg", min = virtual_hysteresis_V_bg_limits(1), max = virtual_hysteresis_V_bg_limits(2));
+        setChannelName = "V_bg", point1 = virtual_hysteresis_V_bg_points(1), point2 = virtual_hysteresis_V_bg_points(2));
     recipe.addStatement("virtual_hysteresis_V_bg", "handle_virtual_hysteresis_V_bg.requireSetCheck = false;");
     recipe.addChannel("virtual_hysteresis_V_bg", "hysteresis", "hys_V_bg", [], [], 0, 1);
 
     recipe.addVirtualInstrument("handle_virtual_hysteresis_V_tg", "virtualInstrument_hysteresis", "virtual_hysteresis_V_tg", "virtual_hysteresis_V_tg", ...
-        setChannelName = "V_tg", min = virtual_hysteresis_V_tg_limits(1), max = virtual_hysteresis_V_tg_limits(2));
+        setChannelName = "V_tg", point1 = virtual_hysteresis_V_tg_points(1), point2 = virtual_hysteresis_V_tg_points(2));
     recipe.addStatement("virtual_hysteresis_V_tg", "handle_virtual_hysteresis_V_tg.requireSetCheck = false;");
     recipe.addChannel("virtual_hysteresis_V_tg", "hysteresis", "hys_V_tg", [], [], 0, 1);
 end
 
 if virtual_hysteresis_nE_Use
     recipe.addVirtualInstrument("handle_virtual_hysteresis_n", "virtualInstrument_hysteresis", "virtual_hysteresis_n", "virtual_hysteresis_n", ...
-        setChannelName = "n_normalized", min = 0, max = 1);
+        setChannelName = "n_normalized", point1 = 0, point2 = 1);
     recipe.addStatement("virtual_hysteresis_n", "handle_virtual_hysteresis_n.requireSetCheck = false;");
     recipe.addChannel("virtual_hysteresis_n", "hysteresis", "hys_n", [], [], 0, 1);
 
     recipe.addVirtualInstrument("handle_virtual_hysteresis_E", "virtualInstrument_hysteresis", "virtual_hysteresis_E", "virtual_hysteresis_E", ...
-        setChannelName = "E_normalized", min = 0, max = 1);
+        setChannelName = "E_normalized", point1 = 0, point2 = 1);
     recipe.addStatement("virtual_hysteresis_E", "handle_virtual_hysteresis_E.requireSetCheck = false;");
     recipe.addChannel("virtual_hysteresis_E", "hysteresis", "hys_E", [], [], 0, 1);
 end
 
 if virtual_hysteresis_B_Use
     recipe.addVirtualInstrument("handle_virtual_hysteresis_B", "virtualInstrument_hysteresis", "virtual_hysteresis_B", "virtual_hysteresis_B", ...
-        setChannelName = "B", min = virtual_hysteresis_B_limits(1), max = virtual_hysteresis_B_limits(2));
+        setChannelName = "B", point1 = virtual_hysteresis_B_points(1), point2 = virtual_hysteresis_B_points(2));
     recipe.addStatement("virtual_hysteresis_B", "handle_virtual_hysteresis_B.requireSetCheck = false;");
     recipe.addChannel("virtual_hysteresis_B", "hysteresis", "hys_B", [], [], 0, 1);
 end
