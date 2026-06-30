@@ -160,6 +160,7 @@ function engineWorkerMain_(engineToClient, recipe, workerFprintfQueue, experimen
                 ok = true;
                 err = [];
                 out = [];
+                outputMode = "value";
                 try
                     nOut = 0;
                     if isfield(msg, "nOut") && ~isempty(msg.nOut)
@@ -168,8 +169,18 @@ function engineWorkerMain_(engineToClient, recipe, workerFprintfQueue, experimen
                     if ~(isscalar(nOut) && isfinite(nOut) && nOut >= 0 && mod(nOut, 1) == 0)
                         error("measurementEngine:InvalidEvalNOut", "nOut must be a nonnegative integer.");
                     end
+                    if isfield(msg, "outputMode") && strlength(string(msg.outputMode)) > 0
+                        outputMode = string(msg.outputMode);
+                    end
+                    if ~any(outputMode == ["value", "display"])
+                        error("measurementEngine:InvalidEvalOutputMode", "outputMode must be value or display.");
+                    end
                     if nOut > 0
                         out = evalin("base", char(msg.code));
+                        if outputMode == "display" || ~measurementEngine.isEvalOutputValueSerializable_(out)
+                            out = measurementEngine.evalOutputDisplayText_(out);
+                            outputMode = "display";
+                        end
                     else
                         evalin("base", char(msg.code));
                     end
@@ -183,8 +194,29 @@ function engineWorkerMain_(engineToClient, recipe, workerFprintfQueue, experimen
                 reply.requestId = requestId;
                 reply.ok = ok;
                 reply.output = out;
+                reply.outputMode = outputMode;
                 reply.error = err;
-                send(engineToClient, reply);
+                try
+                    send(engineToClient, reply);
+                catch ME
+                    if verbose
+                        wlog("send evalDone failed " + requestId + ": " + ME.identifier + " " + ME.message);
+                    end
+                    safeReply = struct("type", "evalDone", ...
+                        "requestId", requestId, ...
+                        "ok", false, ...
+                        "output", [], ...
+                        "outputMode", "value", ...
+                        "error", measurementEngine.serializeException_(ME));
+                    try
+                        send(engineToClient, safeReply);
+                    catch ME2
+                        if verbose
+                            wlog("send safe evalDone failed " + requestId + ": " + ME2.identifier + " " + ME2.message);
+                        end
+                        rethrow(ME2);
+                    end
+                end
 
             case "rackDisp"
                 requestId = msg.requestId;
