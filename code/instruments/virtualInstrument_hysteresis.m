@@ -1,20 +1,20 @@
 classdef virtualInstrument_hysteresis < virtualInstrumentInterface
-    % virtualInstrument_hysteresis - Map normalized inputs to a min→max→min setpoint.
+    % virtualInstrument_hysteresis - Map normalized inputs to a point1->point2->point1 setpoint.
     %
     % Uses a single virtual channel ("hysteresis") that accepts normalized
     % values in [0, 1]. The target hardware channel designated by
     % setChannelName is driven such that:
-    %   * 0   -> min
-    %   * 0.5 -> max
-    %   * 1   -> min
+    %   * 0   -> point1
+    %   * 0.5 -> point2
+    %   * 1   -> point1
     % Intermediate inputs are piecewise-linear between these anchors.
     %
     % Thomas 20251113
 
     properties
         setChannelName (1, 1) string {mustBeNonzeroLengthText} = "V_tg";
-        min (1, 1) double {mustBeFinite};
-        max (1, 1) double {mustBeFinite};
+        point1 (1, 1) double {mustBeFinite};
+        point2 (1, 1) double {mustBeFinite};
     end
 
     methods
@@ -24,17 +24,16 @@ classdef virtualInstrument_hysteresis < virtualInstrumentInterface
                 address (1, 1) string {mustBeNonzeroLengthText};
                 masterRackProxy (1, 1) instrumentRackProxy;
                 NameValueArgs.setChannelName (1, 1) string {mustBeNonzeroLengthText} = "V_tg";
-                NameValueArgs.min (1, 1) double {mustBeFinite};
-                NameValueArgs.max (1, 1) double {mustBeFinite};
+                NameValueArgs.point1 (1, 1) double {mustBeFinite};
+                NameValueArgs.point2 (1, 1) double {mustBeFinite};
             end
 
             obj@virtualInstrumentInterface(address, masterRackProxy);
             obj.requireSetCheck = true;
 
             obj.setChannelName = NameValueArgs.setChannelName;
-            obj.min = NameValueArgs.min;
-            obj.max = NameValueArgs.max;
-            obj.validateRange();
+            obj.point1 = NameValueArgs.point1;
+            obj.point2 = NameValueArgs.point2;
 
             obj.addChannel("hysteresis");
         end
@@ -88,20 +87,13 @@ classdef virtualInstrument_hysteresis < virtualInstrumentInterface
         end
 
         function setTarget = computeSetTarget(obj, normalizedInput)
-            span = obj.max - obj.min;
+            span = obj.point2 - obj.point1;
             if normalizedInput <= 0.5
                 weight = normalizedInput / 0.5; % maps [0, 0.5] -> [0, 1]
-                setTarget = obj.min + weight * span;
+                setTarget = obj.point1 + weight * span;
             else
                 weight = (normalizedInput - 0.5) / 0.5; % maps (0.5, 1] -> [0, 1]
-                setTarget = obj.max - weight * span;
-            end
-        end
-
-        function validateRange(obj)
-            if ~(obj.max > obj.min)
-                error("virtualInstrument_hysteresis:InvalidRange", ...
-                    "max must be greater than min. Received %g and %g.", obj.max, obj.min);
+                setTarget = obj.point2 - weight * span;
             end
         end
 

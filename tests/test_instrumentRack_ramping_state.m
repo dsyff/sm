@@ -4,6 +4,7 @@ addpath(genpath(fullfile(projectRoot, "code")));
 
 testDirectRackSetWriteUsesCommandedOrigin();
 testHysteresisVirtualWriteUsesCommandedOrigin();
+testHysteresisAcceptsDescendingEndpoints();
 testVirtualNEBatchWriteUsesNestedCommandedOrigin();
 testFirstSetReadFailureUsesRackRetry();
 
@@ -41,7 +42,7 @@ rack.rackSet("V_tg", 0);
 
 masterRackProxy = instrumentRackProxy(rack);
 virtualHys = virtualInstrument_hysteresis("virtual_hys", masterRackProxy, ...
-    setChannelName = "V_tg", min = 0, max = 100);
+    setChannelName = "V_tg", point1 = 0, point2 = 100);
 virtualHys.requireSetCheck = false;
 rack.addInstrument(virtualHys, "virtual_hys");
 rack.addChannel("virtual_hys", "hysteresis", "hys_V_tg", [], [], 0, 1);
@@ -53,6 +54,32 @@ rack.rackSetWrite("hys_V_tg", 0.495);
 
 assert(min(trace.writeHistory) > 90, ...
     "Virtual hysteresis ramp restarted from stale V_tg verified state.");
+end
+
+function testHysteresisAcceptsDescendingEndpoints()
+rack = instrumentRack(true);
+cleanupObj = onCleanup(@() delete(rack));
+
+trace = instrument_rampTrace("trace_hysteresis_descending");
+trace.requireSetCheck = false;
+rack.addInstrument(trace, "trace");
+rack.addChannel("trace", "value", "V_tg", [], [], -200, 200);
+
+masterRackProxy = instrumentRackProxy(rack);
+virtualHys = virtualInstrument_hysteresis("virtual_hys", masterRackProxy, ...
+    setChannelName = "V_tg", point1 = 100, point2 = -25);
+virtualHys.requireSetCheck = false;
+rack.addInstrument(virtualHys, "virtual_hys");
+rack.addChannel("virtual_hys", "hysteresis", "hys_V_tg", [], [], 0, 1);
+
+rack.rackSetWrite("hys_V_tg", 0);
+assert(trace.writeHistory(end) == 100, "Expected normalized 0 to map to point1.");
+
+rack.rackSetWrite("hys_V_tg", 0.5);
+assert(trace.writeHistory(end) == -25, "Expected normalized 0.5 to map to point2.");
+
+rack.rackSetWrite("hys_V_tg", 1);
+assert(trace.writeHistory(end) == 100, "Expected normalized 1 to return to point1.");
 end
 
 function testVirtualNEBatchWriteUsesNestedCommandedOrigin()
