@@ -932,10 +932,7 @@ classdef measurementEngine < handle
                 return;
             end
 
-            consts = scanObj.consts;
-            if ~isfield(consts, "set")
-                [consts.set] = deal(1);
-            end
+            consts = measurementScan.normalizeConsts(scanObj.consts);
 
             setMask = [consts.set] ~= 0;
             if any(setMask)
@@ -947,8 +944,8 @@ classdef measurementEngine < handle
             end
 
             getMask = ~setMask;
-            getchans = string({consts(getMask).setchan});
             if any(getMask)
+                getchans = string({consts(getMask).setchan});
                 if isrow(getchans)
                     getchans = getchans.';
                 end

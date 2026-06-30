@@ -15,7 +15,7 @@ classdef measurementScan
         duration (1, 1) duration = seconds(NaN)
 
         % Legacy-style constants struct array with fields:
-        %   setchan (char/string), val (double), set (logical/double)
+        %   setchan (char/string or legacy scalar cellstr), val (double), set (logical/double)
         consts (1, :) struct = struct("setchan", {}, "val", {}, "set", {})
         % Internal run-time flag: true when scan startup already applied
         % set constants and refreshed get constants for this scan instance.
@@ -101,10 +101,7 @@ classdef measurementScan
             end
 
             if isfield(scan, "consts") && ~isempty(scan.consts)
-                obj.consts = scan.consts;
-                if ~isfield(obj.consts, "set")
-                    [obj.consts.set] = deal(1);
-                end
+                obj.consts = measurementScan.normalizeConsts(scan.consts);
             end
 
             legacyLoops = scan.loops;
@@ -276,6 +273,70 @@ classdef measurementScan
                 end
                 obj.plotScalarNames = plotNames;
             end
+        end
+
+        function consts = normalizeConsts(consts)
+            if isempty(consts)
+                consts = struct("setchan", {}, "val", {}, "set", {});
+                return;
+            end
+            if ~isstruct(consts)
+                error("measurementScan:InvalidConst", "scan.consts must be a struct array.");
+            end
+            if ~isfield(consts, "setchan")
+                [consts.setchan] = deal([]);
+            end
+            if ~isfield(consts, "val")
+                [consts.val] = deal([]);
+            end
+            if ~isfield(consts, "set")
+                [consts.set] = deal(1);
+            end
+
+            normalized = struct("setchan", {}, "val", {}, "set", {});
+            for constIdx = 1:numel(consts)
+                rawName = consts(constIdx).setchan;
+                if iscell(rawName)
+                    if isempty(rawName)
+                        continue;
+                    end
+                    if ~isscalar(rawName)
+                        error("measurementScan:InvalidConst", ...
+                            "consts(%d).setchan must contain one channel name.", constIdx);
+                    end
+                    rawName = rawName{1};
+                end
+                if isempty(rawName)
+                    continue;
+                end
+                if ~(ischar(rawName) || isstring(rawName))
+                    error("measurementScan:InvalidConst", ...
+                        "consts(%d).setchan must be a string scalar or character vector.", constIdx);
+                end
+                name = strip(string(rawName));
+                if ~(isscalar(name) && ~ismissing(name))
+                    error("measurementScan:InvalidConst", ...
+                        "consts(%d).setchan must be one channel name.", constIdx);
+                end
+                if strlength(name) == 0 || name == "none"
+                    continue;
+                end
+
+                rawVal = consts(constIdx).val;
+                if ~(isnumeric(rawVal) && isscalar(rawVal))
+                    error("measurementScan:InvalidConst", ...
+                        "consts(%d).val must be a numeric scalar.", constIdx);
+                end
+
+                rawSet = consts(constIdx).set;
+                if ~((isnumeric(rawSet) || islogical(rawSet)) && isscalar(rawSet))
+                    error("measurementScan:InvalidConst", ...
+                        "consts(%d).set must be a numeric or logical scalar.", constIdx);
+                end
+
+                normalized(end+1) = struct("setchan", name, "val", double(rawVal), "set", double(rawSet) ~= 0); %#ok<AGROW>
+            end
+            consts = normalized;
         end
     end
 

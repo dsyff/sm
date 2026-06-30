@@ -199,6 +199,9 @@ function SaveScans
             filename = baseName + " (" + suffix + ")";
         end
         smscan = scanCandidate;
+        if isfield(smscan, "consts")
+            smscan.consts = measurementScan.normalizeConsts(smscan.consts);
+        end
         save(fullfile(targetFolder, filename + ".mat"), "smscan");
     end
 end
@@ -614,10 +617,8 @@ function scan = UpdateConstants(scan)
             return;
         end
 
-        consts = scan.consts;
-        if ~isfield(consts, "set")
-            [consts.set] = deal(1);
-        end
+        consts = measurementScan.normalizeConsts(scan.consts);
+        scan.consts = consts;
 
         setMask = [consts.set] == 1;
         if any(setMask)
