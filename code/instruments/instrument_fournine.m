@@ -150,15 +150,14 @@ classdef instrument_fournine < instrumentInterface
                 error("instrument_fournine:MalformedStatus", ...
                     "%s returned status data that is not a struct.", operation);
             end
-            if isfield(status, "last_error") && ~isempty(status.last_error) ...
-                    && strlength(string(status.last_error)) > 0
-                error("instrument_fournine:ServiceLoopError", ...
-                    "%s reports last_error: %s", operation, string(status.last_error));
+            running = obj.requireLogical(obj.statusField(status, "running"), "running");
+            if ~running
+                error("instrument_fournine:ServiceStopped", ...
+                    "%s reports the FourNine service loop is not running.", operation);
             end
-            obj.statusField(status, "running");
-            obj.statusField(status, "control_enabled");
-            obj.statusField(status, "target");
-            obj.statusField(status, "stable");
+            obj.requireLogical(obj.statusField(status, "control_enabled"), "control_enabled");
+            obj.requireScalar(obj.statusField(status, "target"), "target");
+            obj.requireLogical(obj.statusField(status, "stable"), "stable");
         end
 
         function value = statusField(~, status, fieldName)
