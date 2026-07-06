@@ -1,4 +1,4 @@
-function [data, stopped] = runTurboScanCore_(rack, scanObj, clientToEngine, engineToClient, requestId, snapshotInterval, logFcn)
+function [data, stopped] = runTurboScanCore_(rack, scanObj, scanControlToEngine, engineToClient, requestId, snapshotInterval, logFcn)
     % Turbo scan loop: acquire continuously, send compact dirty batches when the client is ready.
     enableLog = ~isempty(logFcn) && isa(logFcn, "function_handle");
     meta = measurementEngine.computeScanMeta_(scanObj);
@@ -292,8 +292,8 @@ function [data, stopped] = runTurboScanCore_(rack, scanObj, clientToEngine, engi
     flushDirty(true);
 
     function pollControls()
-        while clientToEngine.QueueLength > 0
-            ctl = poll(clientToEngine);
+        while scanControlToEngine.QueueLength > 0
+            ctl = poll(scanControlToEngine);
             if ~isstruct(ctl) || ~isfield(ctl, "type")
                 continue;
             end

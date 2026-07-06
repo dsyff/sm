@@ -1,4 +1,4 @@
-function [data, stopped] = runSafeScanCore_(rack, scanObj, clientToEngine, engineToClient, requestId, logFcn)
+function [data, stopped] = runSafeScanCore_(rack, scanObj, scanControlToEngine, engineToClient, requestId, logFcn)
     % Safe scan loop: send safePoint after each read, wait for ack/stop.
     enableLog = ~isempty(logFcn) && isa(logFcn, "function_handle");
     meta = measurementEngine.computeScanMeta_(scanObj);
@@ -61,8 +61,8 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, clientToEngine, engin
 
     for ptIdx = 1:totpoints
         % Stop check
-        if ~stopped && clientToEngine.QueueLength > 0
-            ctl = poll(clientToEngine);
+        if ~stopped && scanControlToEngine.QueueLength > 0
+            ctl = poll(scanControlToEngine);
             if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
                 stopped = true;
             end
@@ -81,8 +81,8 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, clientToEngine, engin
         batchSetChans = string.empty(0, 1);
         batchSetVals = double.empty(0, 1);
         for li = fliplr(loopsToSet)
-            if ~stopped && clientToEngine.QueueLength > 0
-                ctl = poll(clientToEngine);
+            if ~stopped && scanControlToEngine.QueueLength > 0
+                ctl = poll(scanControlToEngine);
                 if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
                     stopped = true;
                 end
@@ -160,8 +160,8 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, clientToEngine, engin
                 if count(li) == 1 && startwait_s(li) > 0
                     rem_ = startwait_s(li);
                     while rem_ > 0 && ~stopped
-                        if clientToEngine.QueueLength > 0
-                            ctl = poll(clientToEngine);
+                        if scanControlToEngine.QueueLength > 0
+                            ctl = poll(scanControlToEngine);
                             if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
                                 stopped = true; break;
                             end
@@ -175,8 +175,8 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, clientToEngine, engin
                 if waittime_s(li) > 0
                     rem_ = waittime_s(li);
                     while rem_ > 0 && ~stopped
-                        if clientToEngine.QueueLength > 0
-                            ctl = poll(clientToEngine);
+                        if scanControlToEngine.QueueLength > 0
+                            ctl = poll(scanControlToEngine);
                             if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
                                 stopped = true; break;
                             end
@@ -198,8 +198,8 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, clientToEngine, engin
         if stopped, break; end
 
         % Stop check after set
-        if clientToEngine.QueueLength > 0
-            ctl = poll(clientToEngine);
+        if scanControlToEngine.QueueLength > 0
+            ctl = poll(scanControlToEngine);
             if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
                 stopped = true;
             end
@@ -216,8 +216,8 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, clientToEngine, engin
         end
 
         for li = loopsToRead
-            if ~stopped && clientToEngine.QueueLength > 0
-                ctl = poll(clientToEngine);
+            if ~stopped && scanControlToEngine.QueueLength > 0
+                ctl = poll(scanControlToEngine);
                 if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
                     stopped = true;
                 end
@@ -268,15 +268,15 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, clientToEngine, engin
                 % Wait for ack or stop: record queue length, poll that many, handle each.
                 ackTimeout = datetime("now") + minutes(5);
                 while ~stopped
-                    if clientToEngine.QueueLength == 0
+                    if scanControlToEngine.QueueLength == 0
                         assert(datetime("now") < ackTimeout, "measurementEngine:AckTimeout", "Timed out waiting for ack/stop.");
                         pause(1E-6);
                         continue;
                     end
-                    n = clientToEngine.QueueLength;
+                    n = scanControlToEngine.QueueLength;
                     gotAck = false;
                     for qi = 1:n
-                        ctl = poll(clientToEngine);
+                        ctl = poll(scanControlToEngine);
                         if ~isstruct(ctl) || ~isfield(ctl, "type"), continue; end
                         if ctl.type == "ack"
                             gotAck = true;
@@ -291,8 +291,8 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, clientToEngine, engin
         end
 
         % Stop check after read
-        if ~stopped && clientToEngine.QueueLength > 0
-            ctl = poll(clientToEngine);
+        if ~stopped && scanControlToEngine.QueueLength > 0
+            ctl = poll(scanControlToEngine);
             if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
                 stopped = true;
             end
@@ -321,8 +321,8 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, clientToEngine, engin
             assert(toc(startTimer) < setCheckTimeout_s, ...
                 "measurementEngine:SetCheckTimeout", ...
                 "Timed out waiting for rackSetCheck on channels: %s.", char(strjoin(string(channelNames(:)).', ", ")));
-            if clientToEngine.QueueLength > 0
-                ctl = poll(clientToEngine);
+            if scanControlToEngine.QueueLength > 0
+                ctl = poll(scanControlToEngine);
                 if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
                     stoppedOut = true;
                 end

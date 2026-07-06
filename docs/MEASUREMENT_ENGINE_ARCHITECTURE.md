@@ -60,8 +60,8 @@ In the legacy GUIs:
 
 Each mode has a dedicated static method with a self-contained measurement loop (no shared callbacks or function-handle indirection):
 
-- `runTurboScanCore_(rack, scanObj, clientToEngine, engineToClient, requestId, snapshotInterval, logFcn)` — turbo loop.
-- `runSafeScanCore_(rack, scanObj, clientToEngine, engineToClient, requestId, logFcn)` — safe loop.
+- `runTurboScanCore_(rack, scanObj, scanControlToEngine, engineToClient, requestId, snapshotInterval, logFcn)` — turbo loop.
+- `runSafeScanCore_(rack, scanObj, scanControlToEngine, engineToClient, requestId, logFcn)` — safe loop.
 
 Both functions precompute all per-loop metadata (channels, wait times, data dimensions, strides, plot layout) before the main loop to keep the hot path fast.
 
@@ -91,9 +91,9 @@ Recent rack-side changes that affect scan/runtime behavior:
 
 ### Stop signal (worker modes)
 
-The client sends a stop signal by placing `struct("type", "stop", "requestId", runId)` on the existing `clientToEngine` PDQ. The worker scan functions check for it at multiple points in the measurement loop:
+The client sends a stop signal by placing `struct("type", "stop", "requestId", runId)` on the dedicated `scanControlToEngine` PDQ. The worker scan functions check for it at multiple points in the measurement loop:
 
-1. Check `clientToEngine.QueueLength > 0` (cheap, no blocking).
+1. Check `scanControlToEngine.QueueLength > 0` (cheap, no blocking).
 2. If > 0, `poll` the message.
 3. Verify `type == "stop"` before stopping. Non-stop messages are discarded.
 
@@ -109,7 +109,7 @@ For each data point read:
 
 1. Worker sends `safePoint` to `engineToClient`: `struct("type", "safePoint", "requestId", ..., "loopIdx", ..., "count", ..., "plotValues", ...)`.
    - `plotValues` is a column vector (length = number of display channels).
-2. Worker waits for a response on `clientToEngine`:
+2. Worker waits for a response on `scanControlToEngine`:
    - Records `QueueLength`, polls that many messages, handles each one at a time.
    - `"ack"` — proceed to the next point.
    - `"stop"` — set stopped flag and break.
@@ -181,20 +181,25 @@ All inter-process links use `parallel.pool.PollableDataQueue` (PDQ) and explicit
 
 ### PDQ channels
 
-Two PDQ channels connect the client and engine worker:
+Three PDQ channels connect the client and engine worker:
 
 - `engineToClient`: worker → client, created by the client and passed to `parfeval`. Messages: `engineReady`, `rackReady`, `safePoint`, `turboDirty`, `runDone`, `evalDone`, `rackGetDone`, `rackSetDone`, `rackDispDone`, `parfeval`.
-- `clientToEngine`: client → worker, created by the worker and sent back via `engineReady`. Messages: `run`, `stop`, `ack`, `turboReady`, `shutdown`, `eval`, `rackGet`, `rackSet`, `rackDisp`, `parfevalDone`.
+- `clientToEngine`: service/RPC client → worker queue, created by the worker and sent back via `engineReady`. Messages: `run`, `shutdown`, `eval`, `rackGet`, `rackSetWrite`, `rackSetCheck`, `rackSet`, `rackDisp`, `rackEditInfo`, `rackEditPatch`, `parfevalDone`.
+- `scanControlToEngine`: scan-control client → worker queue, created by the worker and sent back via `engineReady`. Messages: `stop`, `ack`, `turboReady`.
 
 ### Message flow during a scan
 
 ```text
-clientToEngine PDQ: client enqueues, worker polls
+clientToEngine PDQ: client enqueues service/RPC messages, worker polls outside scan cores
+scanControlToEngine PDQ: client enqueues scan-control messages, worker scan cores poll
 
 Client                            clientToEngine PDQ                 Worker
   |                                      |                              |
   |-- run ----------------------------->|                              |
-  |                                      |-- poll run ----------------->|
+  |                                      |-- poll run before scan ----->|
+  |                                      |                              |
+
+Client                       scanControlToEngine PDQ                 Worker
   |                                      |                              |
   |-- ack or stop (safe mode) --------->|                              |
   |                                      |-- poll ack/stop ----------->|

@@ -203,7 +203,7 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
             end
 
             if ~obj.isScanInProgress && ~stopSent
-                obj.safeSendToEngine_(struct("type", "stop", "requestId", runId));
+                obj.safeSendScanControl_(struct("type", "stop", "requestId", runId));
                 stopSent = true;
             end
 
@@ -263,17 +263,17 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
             checkEsc();
             if ~obj.isScanInProgress
                 if ~stopSent
-                    obj.safeSendToEngine_(struct("type", "stop", "requestId", runId));
+                    obj.safeSendScanControl_(struct("type", "stop", "requestId", runId));
                     stopSent = true;
                 else
-                    obj.safeSendToEngine_(struct("type", "ack", "requestId", runId));
+                    obj.safeSendScanControl_(struct("type", "ack", "requestId", runId));
                 end
             else
                 if ~sentFirstAck && obj.verboseClient
                     sentFirstAck = true;
                     obj.logClient_("send first ack " + runId);
                 end
-                obj.safeSendToEngine_(struct("type", "ack", "requestId", runId));
+                obj.safeSendScanControl_(struct("type", "ack", "requestId", runId));
             end
             lastUiPumpTic = tic;
             return;
@@ -290,7 +290,7 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
             drawnow limitrate;
             checkEsc();
             if isfield(msg, "seq")
-                obj.safeSendToEngine_(struct("type", "turboReady", "requestId", runId, "seq", msg.seq));
+                obj.safeSendScanControl_(struct("type", "turboReady", "requestId", runId, "seq", msg.seq));
             end
             lastUiPumpTic = tic;
             return;
