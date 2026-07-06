@@ -270,6 +270,7 @@ classdef measurementEngine < handle
                 channelNames string {mustBeNonzeroLengthText, mustBeVector}
             end
 
+            obj.assertServiceRpcAvailable_("read rack channels");
             channelNames = channelNames(:);
             if obj.constructionMode == "rack"
                 values = obj.rackLocal.rackGet(channelNames);
@@ -297,6 +298,7 @@ classdef measurementEngine < handle
                 values double {mustBeVector}
             end
 
+            obj.assertServiceRpcAvailable_("set rack channels");
             channelNames = channelNames(:);
             values = values(:);
             operationTimeout = hours(3);
@@ -356,6 +358,7 @@ classdef measurementEngine < handle
             end
 
             out = [];
+            obj.assertServiceRpcAvailable_("evaluate code on the engine");
             if obj.constructionMode == "rack"
                 if nargout == 0
                     evalin("base", char(codeString));
@@ -386,6 +389,7 @@ classdef measurementEngine < handle
         end
 
         function txt = rackDisplayString(obj)
+            obj.assertServiceRpcAvailable_("display the rack");
             if obj.constructionMode == "rack"
                 rack = obj.rackLocal;
                 txt = formattedDisplayText(rack);
@@ -412,6 +416,7 @@ classdef measurementEngine < handle
         end
 
         function info = getRackInfoForEditing(obj)
+            obj.assertServiceRpcAvailable_("inspect rack edit state");
             if obj.constructionMode == "rack"
                 info = obj.rackLocal.getRackInfoForEditing();
                 return;
@@ -577,6 +582,12 @@ classdef measurementEngine < handle
     end
 
     methods (Access = private)
+        function assertServiceRpcAvailable_(obj, actionText)
+            if obj.isScanInProgress
+                error("measurementEngine:ScanActive", "Cannot %s while a scan is in progress.", actionText);
+            end
+        end
+
         function logClient_(obj, msg)
             if ~obj.verboseClient
                 return;
@@ -1012,8 +1023,6 @@ classdef measurementEngine < handle
 
             pendingClose = false;
             lastCount = ones(1, plotState.nloops);
-            obj.isScanInProgress = true;
-
             set(figHandle, "CurrentCharacter", char(0));
             set(figHandle, "CloseRequestFcn", @onClose);
 
@@ -1068,6 +1077,7 @@ classdef measurementEngine < handle
             try
                 scanObj = obj.prepareScanConstants_(scanObj);
                 scanForSave.consts = scanObj.consts;
+                obj.isScanInProgress = true;
                 [dataOut, stopped] = measurementEngine.runScanCore_(rack, scanObj, @onRead, figHandle, duration.empty, [], @onTemp, [], @() obj.isScanInProgress);
             catch ME
                 obj.isScanInProgress = false;
