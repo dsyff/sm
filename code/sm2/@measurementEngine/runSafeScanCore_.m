@@ -42,6 +42,10 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, clientToEngine, engin
     % Set constants.
     stopped = false;
     rack.flush();
+    setCheckTimeout_s = seconds(rack.batchSetTimeout);
+    if ~(isfinite(setCheckTimeout_s) && setCheckTimeout_s > 0)
+        error("measurementEngine:InvalidSetCheckTimeout", "rack.batchSetTimeout must be a finite, positive duration.");
+    end
     if enableLog
         msg = "runSafeScanCore_ start name=" + scanObj.name + " loops=" + nloops;
         experimentContext.print(msg);
@@ -312,7 +316,11 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, clientToEngine, engin
     function stoppedOut = rackSetWithStop(channelNames, values, stoppedIn)
         rack.rackSetWrite(channelNames, values);
         stoppedOut = stoppedIn;
+        startTimer = tic;
         while ~stoppedOut && ~rack.rackSetCheck(channelNames)
+            assert(toc(startTimer) < setCheckTimeout_s, ...
+                "measurementEngine:SetCheckTimeout", ...
+                "Timed out waiting for rackSetCheck on channels: %s.", char(strjoin(string(channelNames(:)).', ", ")));
             if clientToEngine.QueueLength > 0
                 ctl = poll(clientToEngine);
                 if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"

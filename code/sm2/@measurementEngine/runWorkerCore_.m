@@ -20,7 +20,6 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
 
     stopSent = false;
     pendingClose = false;
-    obj.isScanInProgress = true;
 
     set(figHandle, "CurrentCharacter", char(0));
     set(figHandle, "CloseRequestFcn", @onClose);
@@ -142,6 +141,7 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
         scanForSave.startTime = scanStart;
         scanObj = obj.prepareScanConstants_(scanObj);
         scanForSave.consts = scanObj.consts;
+        obj.isScanInProgress = true;
         msg = struct("type", "run", "requestId", runId, "scan", scanObj);
         if scanObj.mode == "turbo"
             snapshotInterval = obj.turboSnapshotInterval;

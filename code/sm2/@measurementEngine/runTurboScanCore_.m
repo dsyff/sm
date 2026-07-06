@@ -63,6 +63,10 @@ function [data, stopped] = runTurboScanCore_(rack, scanObj, clientToEngine, engi
 
     stopped = false;
     rack.flush();
+    setCheckTimeout_s = seconds(rack.batchSetTimeout);
+    if ~(isfinite(setCheckTimeout_s) && setCheckTimeout_s > 0)
+        error("measurementEngine:InvalidSetCheckTimeout", "rack.batchSetTimeout must be a finite, positive duration.");
+    end
     if enableLog
         msg = "runTurboScanCore_ start name=" + scanObj.name + " loops=" + nloops;
         experimentContext.print(msg);
@@ -446,7 +450,11 @@ function [data, stopped] = runTurboScanCore_(rack, scanObj, clientToEngine, engi
     function stoppedOut = rackSetWithStop(channelNames, values, stoppedIn)
         rack.rackSetWrite(channelNames, values);
         stoppedOut = stoppedIn;
+        startTimer = tic;
         while ~stoppedOut && ~rack.rackSetCheck(channelNames)
+            assert(toc(startTimer) < setCheckTimeout_s, ...
+                "measurementEngine:SetCheckTimeout", ...
+                "Timed out waiting for rackSetCheck on channels: %s.", char(strjoin(string(channelNames(:)).', ", ")));
             pollControls();
             stoppedOut = stopped;
             pause(1E-6);
