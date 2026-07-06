@@ -26,6 +26,7 @@ classdef measurementEngine < handle
 
         % Worker engine (recipe mode only)
         clientToEngine parallel.pool.PollableDataQueue = parallel.pool.PollableDataQueue.empty(0, 1)
+        scanControlToEngine parallel.pool.PollableDataQueue = parallel.pool.PollableDataQueue.empty(0, 1)
         engineToClient parallel.pool.PollableDataQueue = parallel.pool.PollableDataQueue.empty(0, 1)
 
         verboseWorker (1, 1) logical = false
@@ -685,6 +686,7 @@ classdef measurementEngine < handle
         function startEngineWorker_(obj)
             obj.engineToClient = parallel.pool.PollableDataQueue;
             obj.clientToEngine = parallel.pool.PollableDataQueue.empty(0, 1);
+            obj.scanControlToEngine = parallel.pool.PollableDataQueue.empty(0, 1);
             obj.workerFprintfListener = [];
             obj.workerFprintfQueue = parallel.pool.DataQueue;
             obj.workerFprintfListener = afterEach(obj.workerFprintfQueue, @(payload) obj.onWorkerFprintf_(payload));
@@ -715,12 +717,14 @@ classdef measurementEngine < handle
                     if isstruct(msg) && isfield(msg, "type")
                         msgType = msg.type;
                         if msgType == "engineReady"
-                            if isfield(msg, "clientToEngine") && isa(msg.clientToEngine, "parallel.pool.PollableDataQueue")
+                            if isfield(msg, "clientToEngine") && isa(msg.clientToEngine, "parallel.pool.PollableDataQueue") && ...
+                                    isfield(msg, "scanControlToEngine") && isa(msg.scanControlToEngine, "parallel.pool.PollableDataQueue")
                                 obj.clientToEngine = msg.clientToEngine;
+                                obj.scanControlToEngine = msg.scanControlToEngine;
                                 gotEngineReady = true;
                                 continue;
                             end
-                            error("measurementEngine:EngineProtocolError", "engineReady did not include clientToEngine queue.");
+                            error("measurementEngine:EngineProtocolError", "engineReady did not include required command queues.");
                         end
                         if msgType == "rackReady"
                             if isfield(msg, "ok") && ~logical(msg.ok)
@@ -849,6 +853,16 @@ classdef measurementEngine < handle
                 end
             end
             send(obj.clientToEngine, msg);
+        end
+
+        function safeSendScanControl_(obj, msg)
+            if obj.constructionMode ~= "recipe"
+                return;
+            end
+            if isempty(obj.scanControlToEngine)
+                error("measurementEngine:EngineNotReady", "Engine worker scan-control queue is not initialized.");
+            end
+            send(obj.scanControlToEngine, msg);
         end
 
         function reply = waitForEngineReply_(obj, requestId, expectedType, timeout)
@@ -1558,8 +1572,8 @@ classdef measurementEngine < handle
 
         [data, stopped] = runScanCore_(rack, scanObj, onRead, figHandle, snapshotInterval, onSnapshot, onTemp, logFcn, isScanInProgressFcn)
         stopped = waitWithStop_(waitDuration, figHandle, isScanInProgressFcn)
-        [data, stopped] = runTurboScanCore_(rack, scanObj, clientToEngine, engineToClient, requestId, snapshotInterval, logFcn)
-        [data, stopped] = runSafeScanCore_(rack, scanObj, clientToEngine, engineToClient, requestId, logFcn)
+        [data, stopped] = runTurboScanCore_(rack, scanObj, scanControlToEngine, engineToClient, requestId, snapshotInterval, logFcn)
+        [data, stopped] = runSafeScanCore_(rack, scanObj, scanControlToEngine, engineToClient, requestId, logFcn)
     end
 
     methods (Static)

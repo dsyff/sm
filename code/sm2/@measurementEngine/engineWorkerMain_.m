@@ -51,11 +51,15 @@ function engineWorkerMain_(engineToClient, recipe, workerFprintfQueue, experimen
 
     keepAlive = true;
     clientToEngine = parallel.pool.PollableDataQueue;
+    scanControlToEngine = parallel.pool.PollableDataQueue;
 
     if verbose
         wlog("engine worker starting. logFile=" + logFile);
     end
-    send(engineToClient, struct("type", "engineReady", "clientToEngine", clientToEngine));
+    send(engineToClient, struct( ...
+        "type", "engineReady", ...
+        "clientToEngine", clientToEngine, ...
+        "scanControlToEngine", scanControlToEngine));
 
     try
         % Provide a generic "spawn on client" API for worker-side code.
@@ -118,7 +122,7 @@ function engineWorkerMain_(engineToClient, recipe, workerFprintfQueue, experimen
                         logCore = @wlog;
                     end
                     if mode == "safe"
-                        [~, stopped] = measurementEngine.runSafeScanCore_(rack, currentRunScanObj, clientToEngine, engineToClient, currentRunRequestId, logCore);
+                        [~, stopped] = measurementEngine.runSafeScanCore_(rack, currentRunScanObj, scanControlToEngine, engineToClient, currentRunRequestId, logCore);
                         completed = ~stopped;
                     elseif mode == "turbo"
                         snapshotInterval = seconds(0.2);
@@ -131,7 +135,7 @@ function engineWorkerMain_(engineToClient, recipe, workerFprintfQueue, experimen
                         if ~(isduration(snapshotInterval) && isfinite(seconds(snapshotInterval)) && snapshotInterval > seconds(0))
                             error("measurementEngine:InvalidTurboInterval", "Invalid snapshotInterval for turbo mode.");
                         end
-                        [~, stopped] = measurementEngine.runTurboScanCore_(rack, currentRunScanObj, clientToEngine, engineToClient, currentRunRequestId, snapshotInterval, logCore);
+                        [~, stopped] = measurementEngine.runTurboScanCore_(rack, currentRunScanObj, scanControlToEngine, engineToClient, currentRunRequestId, snapshotInterval, logCore);
                         completed = ~stopped;
                     else
                         error("measurementEngine:InvalidMode", "Unknown scan mode %s.", mode);
