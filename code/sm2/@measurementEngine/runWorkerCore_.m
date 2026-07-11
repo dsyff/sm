@@ -139,9 +139,9 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
         runId = obj.nextRequestId_();
         scanStart = datetime("now");
         scanForSave.startTime = scanStart;
+        obj.isScanInProgress = true;
         scanObj = obj.prepareScanConstants_(scanObj);
         scanForSave.consts = scanObj.consts;
-        obj.isScanInProgress = true;
         msg = struct("type", "run", "requestId", runId, "scan", scanObj);
         if scanObj.mode == "turbo"
             snapshotInterval = obj.turboSnapshotInterval;

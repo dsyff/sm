@@ -52,7 +52,26 @@ assertSavedFinish(load(filename, "scan").scan, filename);
 [scanPath, scanName] = fileparts(filename);
 assertSavedFinish(load(fullfile(scanPath, scanName + "_scan.mat"), "scan").scan, scanName + "_scan.mat");
 
-disp("PASS: finish actions run before final save and saved scans contain refreshed finish rows.");
+rack.tryTimes = 1;
+rack.tryInterval = seconds(0);
+instError = instrument_error("Error_get");
+rack.addInstrument(instError, "Error_get");
+rack.addChannel("Error_get", "error_channel", "error_get");
+rack.rackSet("gate", 5);
+errorScan = scan;
+errorScan.name = "test_scan_finish_actions_on_error";
+errorScan.loops(1).getchan = {"error_get"};
+errorScan.finish = struct("setchan", "gate", "val", 0, "set", 1);
+try
+    engine.run(errorScan, string(fullfile(testDir, "finish_error_scan.mat")), "safe");
+    error("test_scan_finish_actions_saved:ExpectedScanError", "Expected the scan get to fail.");
+catch ME
+    assert(ME.identifier == "instrument_error:GetWriteError", ...
+        "Expected original scan error after finish actions, received %s.", ME.identifier);
+end
+assert(abs(rack.rackGet("gate")) < 1E-9, "Finish set row did not run after scan error.");
+
+disp("PASS: finish actions run before final save and before scan errors are rethrown.");
 
 function assertSavedFinish(scanStruct, sourceLabel)
     assert(isfield(scanStruct, "finish"), "Missing finish field in %s.", string(sourceLabel));

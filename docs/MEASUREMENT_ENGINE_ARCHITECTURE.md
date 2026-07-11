@@ -97,6 +97,9 @@ The client sends a stop signal by placing `struct("type", "stop", "requestId", r
 2. If > 0, `poll` the message.
 3. Verify `type == "stop"` before stopping. Non-stop messages are discarded.
 
+Safe and turbo scan cores also require `requestId` to match the active run, so
+late control messages from an earlier scan cannot affect the next scan.
+
 Interruptible waits (`startwait`, `waittime`) use the same inline pattern: poll the PDQ between short `pause` steps.
 
 ### Stop signal (single-threaded)
@@ -147,6 +150,11 @@ If a scan includes any legacy "get constants" entries (`consts(k).set == 0`),
 `measurementEngine.run(...)` refreshes them once at run start (after applying
 any checked set constants) so the saved MAT/PPT metadata reflects run-start
 constant values.
+
+Startup constants execute while the scan is marked active. Canceling during a
+startup set-check stops further startup actions and proceeds to the scan's
+`finish` actions. Finish actions run after normal completion, cancellation, or
+a scan error; an error is rethrown only after those actions have been attempted.
 
 ### `instrumentRackRecipe`
 
@@ -297,6 +305,8 @@ If the request is **queued** (pool too small), the engine throws a clear error i
 
 At the end of a run:
 
+- Checked/unchecked `scan.finish` rows are set/read before final image and PPT
+  work. The refreshed rows are stored in the final MAT and PPT text.
 - The final MAT file contains `scan` and `data`.
 - The scan timing fields (start/end/duration) are saved and included in PPT header text (when PPT is enabled).
 - The scan object is also saved to a separate `*_scan.mat`.
