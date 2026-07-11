@@ -202,6 +202,10 @@ function SaveScans
         if isfield(smscan, "consts")
             smscan.consts = measurementScan.normalizeConsts(smscan.consts);
         end
+        if ~isfield(smscan, "finish")
+            smscan.finish = [];
+        end
+        smscan.finish = measurementScan.normalizeConsts(smscan.finish, "scan.finish");
         save(fullfile(targetFolder, filename + ".mat"), "smscan");
     end
 end

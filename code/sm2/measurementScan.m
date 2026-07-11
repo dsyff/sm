@@ -17,6 +17,8 @@ classdef measurementScan
         % Legacy-style constants struct array with fields:
         %   setchan (char/string or legacy scalar cellstr), val (double), set (logical/double)
         consts (1, :) struct = struct("setchan", {}, "val", {}, "set", {})
+        % Same row contract as consts; applied after a scan finishes or is canceled.
+        finish (1, :) struct = struct("setchan", {}, "val", {}, "set", {})
         % Internal run-time flag: true when scan startup already applied
         % set constants and refreshed get constants for this scan instance.
         constsPrepared (1, 1) logical = false
@@ -102,6 +104,9 @@ classdef measurementScan
 
             if isfield(scan, "consts") && ~isempty(scan.consts)
                 obj.consts = measurementScan.normalizeConsts(scan.consts);
+            end
+            if isfield(scan, "finish") && ~isempty(scan.finish)
+                obj.finish = measurementScan.normalizeConsts(scan.finish, "scan.finish");
             end
 
             legacyLoops = scan.loops;
@@ -275,13 +280,17 @@ classdef measurementScan
             end
         end
 
-        function consts = normalizeConsts(consts)
+        function consts = normalizeConsts(consts, fieldLabel)
+            if nargin < 2
+                fieldLabel = "scan.consts";
+            end
+            fieldLabel = char(fieldLabel);
             if isempty(consts)
                 consts = struct("setchan", {}, "val", {}, "set", {});
                 return;
             end
             if ~isstruct(consts)
-                error("measurementScan:InvalidConst", "scan.consts must be a struct array.");
+                error("measurementScan:InvalidConst", "%s must be a struct array.", fieldLabel);
             end
             if ~isfield(consts, "setchan")
                 [consts.setchan] = deal([]);
@@ -302,7 +311,7 @@ classdef measurementScan
                     end
                     if ~isscalar(rawName)
                         error("measurementScan:InvalidConst", ...
-                            "consts(%d).setchan must contain one channel name.", constIdx);
+                            "%s(%d).setchan must contain one channel name.", fieldLabel, constIdx);
                     end
                     rawName = rawName{1};
                 end
@@ -311,12 +320,12 @@ classdef measurementScan
                 end
                 if ~(ischar(rawName) || isstring(rawName))
                     error("measurementScan:InvalidConst", ...
-                        "consts(%d).setchan must be a string scalar or character vector.", constIdx);
+                        "%s(%d).setchan must be a string scalar or character vector.", fieldLabel, constIdx);
                 end
                 name = strip(string(rawName));
                 if ~(isscalar(name) && ~ismissing(name))
                     error("measurementScan:InvalidConst", ...
-                        "consts(%d).setchan must be one channel name.", constIdx);
+                        "%s(%d).setchan must be one channel name.", fieldLabel, constIdx);
                 end
                 if strlength(name) == 0 || name == "none"
                     continue;
@@ -325,13 +334,13 @@ classdef measurementScan
                 rawVal = consts(constIdx).val;
                 if ~(isnumeric(rawVal) && isscalar(rawVal))
                     error("measurementScan:InvalidConst", ...
-                        "consts(%d).val must be a numeric scalar.", constIdx);
+                        "%s(%d).val must be a numeric scalar.", fieldLabel, constIdx);
                 end
 
                 rawSet = consts(constIdx).set;
                 if ~((isnumeric(rawSet) || islogical(rawSet)) && isscalar(rawSet))
                     error("measurementScan:InvalidConst", ...
-                        "consts(%d).set must be a numeric or logical scalar.", constIdx);
+                        "%s(%d).set must be a numeric or logical scalar.", fieldLabel, constIdx);
                 end
 
                 normalized(end+1) = struct("setchan", name, "val", double(rawVal), "set", double(rawSet) ~= 0); %#ok<AGROW>
@@ -349,6 +358,7 @@ classdef measurementScan
             scanStruct.endTime = obj.endTime;
             scanStruct.duration = obj.duration;
             scanStruct.consts = obj.consts;
+            scanStruct.finish = obj.finish;
             scanStruct.saveloop = obj.saveloop;
             scanStruct.saveMinInterval = seconds(obj.saveMinInterval);
             scanStruct.disp = obj.disp;

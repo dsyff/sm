@@ -143,10 +143,48 @@ classdef instrument_strainController < instrumentInterface
                     "strainWatchdog is not available.");
             end
 
+            zeroChannels = ["V_str_o"; "V_str_i"];
+            obj.setWriteChannel("activeControl", 0);
+            waitForSetCheck("activeControl");
+
+            currentVoltages = [obj.getChannel("V_str_o"); obj.getChannel("V_str_i")];
+            while any(abs(currentVoltages) > 0.5)
+                nextVoltages = currentVoltages - sign(currentVoltages) .* min(abs(currentVoltages), 0.5);
+                for channelIdx = 1:numel(zeroChannels)
+                    obj.setWriteChannel(zeroChannels(channelIdx), nextVoltages(channelIdx));
+                end
+                waitForSetCheck(zeroChannels);
+                currentVoltages = [obj.getChannel("V_str_o"); obj.getChannel("V_str_i")];
+            end
+            for channelIdx = 1:numel(zeroChannels)
+                obj.setWriteChannel(zeroChannels(channelIdx), 0);
+            end
+            waitForSetCheck(zeroChannels);
+
             reply = dogQuery(obj.handle_strainWatchdog, "WARMUP", timeout);
             if ~(islogical(reply) && isscalar(reply) && reply)
                 error("instrument_strainController:WarmupFailed", ...
                     "Expected logical true reply for WARMUP. Received:\n%s", formattedDisplayText(reply));
+            end
+
+            function waitForSetCheck(channels)
+                startTime = datetime("now");
+                channels = string(channels(:));
+                while true
+                    reached = false(numel(channels), 1);
+                    for checkIdx = 1:numel(channels)
+                        reached(checkIdx) = dogCheck(obj.handle_strainWatchdog, channels(checkIdx), obj.dogCheckTimeout);
+                    end
+                    if all(reached)
+                        return;
+                    end
+                    assert(datetime("now") - startTime < obj.setTimeout, ...
+                        "instrument_strainController:SetCheckTimeout", ...
+                        "Timed out waiting for set-check on %s.", strjoin(channels, ", "));
+                    if obj.setInterval > 0
+                        pause(seconds(obj.setInterval));
+                    end
+                end
             end
         end
 

@@ -11,7 +11,7 @@ Code map:
 - Local diagnostics, ignored by git:
   `tests/autofocus testing/`
 
-Last updated 20260611.
+Last updated 20260630.
 
 ## Known Implementation Drift
 
@@ -28,9 +28,10 @@ is intentionally not being updated during the current Z-voltage test pass.
 ## Hardware Behavior
 
 - The ANC300 stick-slip axes have a two-segment voltage response. Below a
-  turn-on voltage, commanded steps produce little or no motion. Above turn-on,
-  the mean image displacement per microstep is approximately linear in voltage:
-  `px_per_step = slope * V + intercept`.
+  turn-on voltage, commanded steps produce little or no average motion, but
+  the stage can still shake stochastically and occasionally produce a finite
+  displacement. Above turn-on, the mean image displacement per microstep is
+  approximately linear in voltage: `px_per_step = slope * V + intercept`.
 - Near turn-on, percentage scatter is large. A voltage that is useful for
   detecting motion may still be too noisy for accurate correction.
 - The low-response region should not be treated as part of the active
@@ -40,7 +41,7 @@ is intentionally not being updated during the current Z-voltage test pass.
 - Oversized XY probes are self-defeating. Recent no-optics data showed that
   aiming for 2 px/microstep can push the image 20-30 px during a 4-step probe,
   degrading the registration fit and forcing slow voltage walk-down retries.
-  Moderate targets around 0.75, 1, 1.25, and 1.5 px/microstep are a better
+  Moderate targets around 0.75, 1, and 1.25 px/microstep are a better
   compromise: above the noisy 0.5 px region, but below the large-shift regime.
 - Positive and negative directions can be asymmetric. Calibration should first
   probe both directions at the same voltage so that nonzero net drift is
@@ -48,7 +49,7 @@ is intentionally not being updated during the current Z-voltage test pass.
   justified only after the data show reproducible directional clustering.
 - The camera axes need not align with positioner X/Y. The live response matrix
   must be measured from images; persisted calibration data should store scalar
-  voltage-response information, not sample-specific direction vectors.
+  voltage-response magnitudes, not sample-specific direction vectors.
 - XY and Z are weakly coupled. XY stepping can defocus the sample, and Z
   stepping can shift the image in XY. The expected convergence path is still
   simple because the coupling is small, but calibration cannot assume it is
@@ -56,6 +57,26 @@ is intentionally not being updated during the current Z-voltage test pass.
 - Temperature changes alter the step response. T/B compensation should keep
   recalibrating from recent local behavior instead of relying indefinitely on a
   stale voltage profile.
+
+## Calibration Profile Storage Contract
+
+- The instrument-folder `attodry_autofocus_positioner_voltage_profile.csv` is
+  a seed profile. Standalone diagnostics must copy it to a local working CSV
+  before reading learned values or writing updates.
+- Learned updates from smoke tests and diagnostics must be written only to the
+  local working CSV. Code updates or repository refreshes must not overwrite
+  the operator's accumulated local calibration data.
+- Persisted XY calibration stores only scalar displacement magnitude in
+  px/microstep versus voltage for each physical axis:
+  `x_active_slope_px_per_step_per_V`, `x_active_intercept_px_per_step`,
+  `y_active_slope_px_per_step_per_V`, and
+  `y_active_intercept_px_per_step`.
+- XY sample-orientation information, such as row/column response vectors, is
+  transient diagnostic/control state. It must not be stored in the voltage
+  profile because a sample can be loaded in any generic orientation.
+- Direction-split XY profiles are not the current storage format. If future
+  data justify separate + and - XY operating voltages, that should be a schema
+  change with explicit migration rather than silent averaging.
 
 ## Image And Reference Contract
 
