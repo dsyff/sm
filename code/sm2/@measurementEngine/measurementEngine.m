@@ -272,24 +272,7 @@ classdef measurementEngine < handle
             end
 
             obj.assertServiceRpcAvailable_("read rack channels");
-            channelNames = channelNames(:);
-            if obj.constructionMode == "rack"
-                values = obj.rackLocal.rackGet(channelNames);
-                values = values(:);
-                return;
-            end
-
-            requestId = obj.nextRequestId_();
-            obj.safeSendToEngine_(struct( ...
-                "type", "rackGet", ...
-                "requestId", requestId, ...
-                "channelNames", channelNames));
-
-            reply = obj.waitForEngineReply_(requestId, "rackGetDone");
-            if isfield(reply, "ok") && ~reply.ok
-                obj.throwRemoteError_(reply);
-            end
-            values = reply.values(:);
+            values = obj.rackGetInternal_(channelNames);
         end
 
         function rackSet(obj, channelNames, values)
@@ -300,55 +283,7 @@ classdef measurementEngine < handle
             end
 
             obj.assertServiceRpcAvailable_("set rack channels");
-            channelNames = channelNames(:);
-            values = values(:);
-            operationTimeout = hours(3);
-
-            if obj.constructionMode == "rack"
-                obj.rackLocal.rackSetWrite(channelNames, values);
-                startTime = datetime("now");
-                while ~obj.rackLocal.rackSetCheck(channelNames)
-                    assert(datetime("now") - startTime < operationTimeout, ...
-                        "measurementEngine:Timeout", ...
-                        "Timed out waiting for rackSetCheck.");
-                    pause(1E-6);
-                end
-                return;
-            end
-
-            requestId = obj.nextRequestId_();
-            obj.safeSendToEngine_(struct( ...
-                "type", "rackSetWrite", ...
-                "requestId", requestId, ...
-                "channelNames", channelNames, ...
-                "values", values));
-
-            reply = obj.waitForEngineReply_(requestId, "rackSetWriteDone");
-            if isfield(reply, "ok") && ~reply.ok
-                obj.throwRemoteError_(reply);
-            end
-
-            startTime = datetime("now");
-            while true
-                requestId = obj.nextRequestId_();
-                obj.safeSendToEngine_(struct( ...
-                    "type", "rackSetCheck", ...
-                    "requestId", requestId, ...
-                    "channelNames", channelNames));
-
-                reply = obj.waitForEngineReply_(requestId, "rackSetCheckDone");
-                if isfield(reply, "ok") && ~reply.ok
-                    obj.throwRemoteError_(reply);
-                end
-                if logical(reply.TF)
-                    break;
-                end
-
-                assert(datetime("now") - startTime < operationTimeout, ...
-                    "measurementEngine:Timeout", ...
-                    "Timed out waiting for rackSetCheck.");
-                pause(1E-6);
-            end
+            obj.rackSetInternal_(channelNames, values, false);
         end
 
         function out = evalOnEngine(obj, codeString, options)
@@ -583,6 +518,90 @@ classdef measurementEngine < handle
     end
 
     methods (Access = private)
+        function values = rackGetInternal_(obj, channelNames)
+            channelNames = channelNames(:);
+            if obj.constructionMode == "rack"
+                values = obj.rackLocal.rackGet(channelNames);
+                values = values(:);
+                return;
+            end
+
+            requestId = obj.nextRequestId_();
+            obj.safeSendToEngine_(struct( ...
+                "type", "rackGet", ...
+                "requestId", requestId, ...
+                "channelNames", channelNames));
+
+            reply = obj.waitForEngineReply_(requestId, "rackGetDone");
+            if isfield(reply, "ok") && ~reply.ok
+                obj.throwRemoteError_(reply);
+            end
+            values = reply.values(:);
+        end
+
+        function completed = rackSetInternal_(obj, channelNames, values, stopOnCancel)
+            channelNames = channelNames(:);
+            values = values(:);
+            operationTimeout = hours(3);
+            completed = false;
+
+            if obj.constructionMode == "rack"
+                obj.rackLocal.rackSetWrite(channelNames, values);
+                startTime = datetime("now");
+                while true
+                    if stopOnCancel && ~obj.isScanInProgress
+                        return;
+                    end
+                    if obj.rackLocal.rackSetCheck(channelNames)
+                        completed = true;
+                        return;
+                    end
+                    assert(datetime("now") - startTime < operationTimeout, ...
+                        "measurementEngine:Timeout", ...
+                        "Timed out waiting for rackSetCheck.");
+                    pause(1E-6);
+                end
+            end
+
+            requestId = obj.nextRequestId_();
+            obj.safeSendToEngine_(struct( ...
+                "type", "rackSetWrite", ...
+                "requestId", requestId, ...
+                "channelNames", channelNames, ...
+                "values", values));
+
+            reply = obj.waitForEngineReply_(requestId, "rackSetWriteDone");
+            if isfield(reply, "ok") && ~reply.ok
+                obj.throwRemoteError_(reply);
+            end
+
+            startTime = datetime("now");
+            while true
+                if stopOnCancel && ~obj.isScanInProgress
+                    return;
+                end
+                requestId = obj.nextRequestId_();
+                obj.safeSendToEngine_(struct( ...
+                    "type", "rackSetCheck", ...
+                    "requestId", requestId, ...
+                    "channelNames", channelNames));
+
+                reply = obj.waitForEngineReply_(requestId, "rackSetCheckDone");
+                if isfield(reply, "ok") && ~reply.ok
+                    obj.throwRemoteError_(reply);
+                end
+                if logical(reply.TF)
+                    completed = true;
+                    return;
+                end
+
+                assert(datetime("now") - startTime < operationTimeout, ...
+                    "measurementEngine:Timeout", ...
+                    "Timed out waiting for rackSetCheck.");
+                pause(1E-6);
+            end
+        end
+
         function assertServiceRpcAvailable_(obj, actionText)
             if obj.isScanInProgress
                 error("measurementEngine:ScanActive", "Cannot %s while a scan is in progress.", actionText);
@@ -966,7 +985,10 @@ classdef measurementEngine < handle
             chanSize = double(obj.channelSizes(idx));
         end
 
-        function actions = applyScanActions_(obj, actions, fieldLabel)
+        function actions = applyScanActions_(obj, actions, fieldLabel, stopOnCancel)
+            if nargin < 4
+                stopOnCancel = false;
+            end
             actions = measurementScan.normalizeConsts(actions, fieldLabel);
             setMask = [actions.set] ~= 0;
             if any(setMask)
@@ -974,16 +996,22 @@ classdef measurementEngine < handle
                 if isrow(setchans)
                     setchans = setchans.';
                 end
-                obj.rackSet(setchans, double([actions(setMask).val]).');
+                completed = obj.rackSetInternal_(setchans, double([actions(setMask).val]).', stopOnCancel);
+                if ~completed
+                    return;
+                end
             end
 
             getMask = ~setMask;
             if any(getMask)
+                if stopOnCancel && ~obj.isScanInProgress
+                    return;
+                end
                 getchans = string({actions(getMask).setchan});
                 if isrow(getchans)
                     getchans = getchans.';
                 end
-                newvals = double(obj.rackGet(getchans));
+                newvals = double(obj.rackGetInternal_(getchans));
                 getIdx = find(getMask);
                 for k = 1:numel(getIdx)
                     actions(getIdx(k)).val = newvals(k);
@@ -996,7 +1024,7 @@ classdef measurementEngine < handle
                 return;
             end
 
-            scanObj.consts = obj.applyScanActions_(scanObj.consts, "scan.consts");
+            scanObj.consts = obj.applyScanActions_(scanObj.consts, "scan.consts", true);
             scanObj.constsPrepared = true;
         end
 
@@ -1008,6 +1036,20 @@ classdef measurementEngine < handle
             scanForSave.finish = obj.applyScanActions_(scanForSave.finish, "scan.finish");
         end
 
+        function scanForSave = applyFinishActionsAfterRun_(obj, scanForSave, runError)
+            try
+                scanForSave = obj.applyFinishActions_(scanForSave);
+            catch finishError
+                if isempty(runError)
+                    rethrow(finishError);
+                end
+                runError = addCause(runError, finishError);
+            end
+            if ~isempty(runError)
+                rethrow(runError);
+            end
+        end
+
         function [dataOut, scanForSave] = runLocal_(obj, scanObj, filename)
             rack = obj.rackLocal;
             if isempty(rack)
@@ -1015,8 +1057,15 @@ classdef measurementEngine < handle
             end
 
             tempFile = filename + "~";
-            [dataOut, scanForSave, figHandle, pendingClose] = obj.runLocalCore_(rack, scanObj, tempFile);
-            scanForSave = obj.applyFinishActions_(scanForSave);
+            runError = MException.empty;
+            try
+                [dataOut, scanForSave, figHandle, pendingClose] = obj.runLocalCore_(rack, scanObj, tempFile);
+            catch runError
+                obj.isScanInProgress = false;
+                scanForSave = scanObj.toSaveStruct();
+                scanForSave.isComplete = false;
+            end
+            scanForSave = obj.applyFinishActionsAfterRun_(scanForSave, runError);
             obj.saveFinal_(filename, scanForSave, dataOut, figHandle);
             if pendingClose && ~isempty(figHandle) && ishandle(figHandle)
                 delete(figHandle);
@@ -1033,8 +1082,15 @@ classdef measurementEngine < handle
 
             scanObj.mode = mode;
             tempFile = filename + "~";
-            [dataOut, scanForSave, figHandle, pendingClose] = obj.runWorkerCore_(scanObj, tempFile);
-            scanForSave = obj.applyFinishActions_(scanForSave);
+            runError = MException.empty;
+            try
+                [dataOut, scanForSave, figHandle, pendingClose] = obj.runWorkerCore_(scanObj, tempFile);
+            catch runError
+                obj.isScanInProgress = false;
+                scanForSave = scanObj.toSaveStruct();
+                scanForSave.isComplete = false;
+            end
+            scanForSave = obj.applyFinishActionsAfterRun_(scanForSave, runError);
             obj.saveFinal_(filename, scanForSave, dataOut, figHandle);
             if pendingClose && ~isempty(figHandle) && ishandle(figHandle)
                 delete(figHandle);
@@ -1102,9 +1158,9 @@ classdef measurementEngine < handle
             scanStart = datetime("now");
             scanForSave.startTime = scanStart;
             try
+                obj.isScanInProgress = true;
                 scanObj = obj.prepareScanConstants_(scanObj);
                 scanForSave.consts = scanObj.consts;
-                obj.isScanInProgress = true;
                 [dataOut, stopped] = measurementEngine.runScanCore_(rack, scanObj, @onRead, figHandle, duration.empty, [], @onTemp, [], @() obj.isScanInProgress);
             catch ME
                 obj.isScanInProgress = false;

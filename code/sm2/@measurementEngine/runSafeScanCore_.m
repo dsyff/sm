@@ -63,7 +63,7 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, scanControlToEngine, 
         % Stop check
         if ~stopped && scanControlToEngine.QueueLength > 0
             ctl = poll(scanControlToEngine);
-            if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
+            if isCurrentControl(ctl) && ctl.type == "stop"
                 stopped = true;
             end
         end
@@ -83,7 +83,7 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, scanControlToEngine, 
         for li = fliplr(loopsToSet)
             if ~stopped && scanControlToEngine.QueueLength > 0
                 ctl = poll(scanControlToEngine);
-                if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
+                if isCurrentControl(ctl) && ctl.type == "stop"
                     stopped = true;
                 end
             end
@@ -162,7 +162,7 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, scanControlToEngine, 
                     while rem_ > 0 && ~stopped
                         if scanControlToEngine.QueueLength > 0
                             ctl = poll(scanControlToEngine);
-                            if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
+                            if isCurrentControl(ctl) && ctl.type == "stop"
                                 stopped = true; break;
                             end
                         end
@@ -177,7 +177,7 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, scanControlToEngine, 
                     while rem_ > 0 && ~stopped
                         if scanControlToEngine.QueueLength > 0
                             ctl = poll(scanControlToEngine);
-                            if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
+                            if isCurrentControl(ctl) && ctl.type == "stop"
                                 stopped = true; break;
                             end
                         end
@@ -200,7 +200,7 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, scanControlToEngine, 
         % Stop check after set
         if scanControlToEngine.QueueLength > 0
             ctl = poll(scanControlToEngine);
-            if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
+            if isCurrentControl(ctl) && ctl.type == "stop"
                 stopped = true;
             end
         end
@@ -218,7 +218,7 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, scanControlToEngine, 
         for li = loopsToRead
             if ~stopped && scanControlToEngine.QueueLength > 0
                 ctl = poll(scanControlToEngine);
-                if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
+                if isCurrentControl(ctl) && ctl.type == "stop"
                     stopped = true;
                 end
             end
@@ -277,7 +277,7 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, scanControlToEngine, 
                     gotAck = false;
                     for qi = 1:n
                         ctl = poll(scanControlToEngine);
-                        if ~isstruct(ctl) || ~isfield(ctl, "type"), continue; end
+                        if ~isCurrentControl(ctl), continue; end
                         if ctl.type == "ack"
                             gotAck = true;
                         elseif ctl.type == "stop"
@@ -293,7 +293,7 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, scanControlToEngine, 
         % Stop check after read
         if ~stopped && scanControlToEngine.QueueLength > 0
             ctl = poll(scanControlToEngine);
-            if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
+            if isCurrentControl(ctl) && ctl.type == "stop"
                 stopped = true;
             end
         end
@@ -313,6 +313,11 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, scanControlToEngine, 
         end
     end
 
+    function TF = isCurrentControl(ctl)
+        TF = isstruct(ctl) && isfield(ctl, "type") && isfield(ctl, "requestId") ...
+            && isequal(string(ctl.requestId), string(requestId));
+    end
+
     function stoppedOut = rackSetWithStop(channelNames, values, stoppedIn)
         rack.rackSetWrite(channelNames, values);
         stoppedOut = stoppedIn;
@@ -323,7 +328,7 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, scanControlToEngine, 
                 "Timed out waiting for rackSetCheck on channels: %s.", char(strjoin(string(channelNames(:)).', ", ")));
             if scanControlToEngine.QueueLength > 0
                 ctl = poll(scanControlToEngine);
-                if isstruct(ctl) && isfield(ctl, "type") && ctl.type == "stop"
+                if isCurrentControl(ctl) && ctl.type == "stop"
                     stoppedOut = true;
                 end
             end

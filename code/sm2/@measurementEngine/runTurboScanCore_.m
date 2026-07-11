@@ -297,7 +297,7 @@ function [data, stopped] = runTurboScanCore_(rack, scanObj, scanControlToEngine,
             if ~isstruct(ctl) || ~isfield(ctl, "type")
                 continue;
             end
-            if isfield(ctl, "requestId") && ctl.requestId ~= requestId
+            if ~isfield(ctl, "requestId") || ~isequal(string(ctl.requestId), string(requestId))
                 continue;
             end
             if ctl.type == "stop"

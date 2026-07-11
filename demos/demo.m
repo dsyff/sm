@@ -257,7 +257,7 @@ if strainController_Use
     recipe.addStatement("strain", "handle_strainController.requireSetCheck = true;");
 
     % Strain controller constructor restores tareData from logs (or tares if missing).
-    % To warm up: smeval("handle_strainController.warmup()"); % client polls activeControl off and V_str_o/V_str_i -> 0, then cryostat warmup.
+    % To warm up from the client: smstrainwarmup();
 
     recipe.addChannel("strain", "del_d", "del_d", [], [], -5E-5, 5E-5);
     recipe.addChannel("strain", "T", "T");
