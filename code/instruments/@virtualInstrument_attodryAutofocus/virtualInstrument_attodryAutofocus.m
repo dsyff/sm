@@ -149,6 +149,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
         referenceFilteredImage
         referenceFitSize_px (1, 2) double = [NaN, NaN]
         referenceFitTrim_px (1, 2) double = [NaN, NaN]
+        minimumOffsetFitRoiSize_px (1, 2) double = [300, 300] % [width, height]
 
         xyPixelPerStepMatrix (2, 2) double = NaN(2, 2)
         xyCalibrationTemperature_K (1, 1) double = NaN
@@ -1005,7 +1006,7 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             gy = gx.';
             Gx = conv2(img, gx, "same");
             Gy = conv2(img, gy, "same");
-            s = sum(Gx(:).^2 + Gy(:).^2);
+            s = mean(Gx(:).^2 + Gy(:).^2);
         end
 
         function nStepApplied = runZAutofocus(obj)
@@ -2092,24 +2093,28 @@ classdef virtualInstrument_attodryAutofocus < virtualInstrumentInterface
             if all(isnan(roi))
                 fitRows = 1:rows;
                 fitCols = 1:cols;
-                return;
-            end
-            if any(isnan(roi)) || any(~isfinite(roi)) || roi(3) <= 0 || roi(4) <= 0
+            elseif any(isnan(roi)) || any(~isfinite(roi)) || roi(3) <= 0 || roi(4) <= 0
                 error("virtualInstrument_attodryAutofocus:InvalidOffsetFitRoi", ...
                     "offsetFitRoi_px must be [x, y, width, height] with finite positive width and height, or all NaN.");
-            end
-            roi(1:2) = roi(1:2) + reshape(roiShift_xy, 1, 2);
+            else
+                roi(1:2) = roi(1:2) + reshape(roiShift_xy, 1, 2);
 
-            x1 = round(roi(1));
-            y1 = round(roi(2));
-            x2 = round(roi(1) + roi(3) - 1);
-            y2 = round(roi(2) + roi(4) - 1);
-            if x1 < 1 || y1 < 1 || x2 > cols || y2 > rows || x2 < x1 || y2 < y1
-                error("virtualInstrument_attodryAutofocus:OffsetFitRoiOutOfBounds", ...
-                    "offsetFitRoi_px must lie inside image bounds [height=%d, width=%d].", rows, cols);
+                x1 = round(roi(1));
+                y1 = round(roi(2));
+                x2 = round(roi(1) + roi(3) - 1);
+                y2 = round(roi(2) + roi(4) - 1);
+                if x1 < 1 || y1 < 1 || x2 > cols || y2 > rows || x2 < x1 || y2 < y1
+                    error("virtualInstrument_attodryAutofocus:OffsetFitRoiOutOfBounds", ...
+                        "offsetFitRoi_px must lie inside image bounds [height=%d, width=%d].", rows, cols);
+                end
+                fitRows = y1:y2;
+                fitCols = x1:x2;
             end
-            fitRows = y1:y2;
-            fitCols = x1:x2;
+            if numel(fitCols) < obj.minimumOffsetFitRoiSize_px(1) || numel(fitRows) < obj.minimumOffsetFitRoiSize_px(2)
+                error("virtualInstrument_attodryAutofocus:OffsetFitRoiTooSmall", ...
+                    "Autofocus offset-fit ROI must be at least %d x %d px. Received %d x %d px.", ...
+                    obj.minimumOffsetFitRoiSize_px(1), obj.minimumOffsetFitRoiSize_px(2), numel(fitCols), numel(fitRows));
+            end
         end
 
         function updateCameraOffsetFitOverlay(obj, roiShift_xy)

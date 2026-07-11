@@ -257,7 +257,7 @@ if strainController_Use
     recipe.addStatement("strain", "handle_strainController.requireSetCheck = true;");
 
     % Strain controller constructor restores tareData from logs (or tares if missing).
-    % To warm up: smeval("handle_strainController.warmup()");
+    % To warm up: smeval("handle_strainController.warmup()"); % client polls activeControl off and V_str_o/V_str_i -> 0, then cryostat warmup.
 
     recipe.addChannel("strain", "del_d", "del_d", [], [], -5E-5, 5E-5);
     recipe.addChannel("strain", "T", "T");
@@ -1179,7 +1179,7 @@ end
 % is found over the whole camera ROI.
 % Autofocus publishes offsetFitRoi_px to the camera's software live-view box
 % and turns cam_box on automatically.
-% XY calibration targets 0.5 px/step, probes 0.5/1/1.5 px/step with 4-step
+% XY calibration targets 0.75 px/step, probes 0.75/1/1.25 px/step with 4-step
 % +/- oscillation commands, accepts the median of the last two target pairs
 % within +/-10%, and autofocuses Z once before XY trials rather than during
 % each oscillation.
@@ -1217,7 +1217,7 @@ if virtual_attodryAutofocus_Use
         ANC300_voltage_x_ChannelName = "Vx", ...
         ANC300_voltage_y_ChannelName = "Vy", ...
         ANC300_voltage_z_ChannelName = "Vz", ...
-        targetStepSizePixel = 0.5, ...
+        targetStepSizePixel = 0.75, ...
         xyCalibrationStepSizeToleranceFraction = 0.10);
     recipe.addStatement("attodryAutofocus", "handle_virtual_attodryAutofocus.requireSetCheck = true;");
     recipe.addChannel("attodryAutofocus", "T", "T_af", [], [], 0, 400);

@@ -617,6 +617,7 @@ classdef measurementEngine < handle
             if isfield(payload, "header") && ~isempty(payload.header)
                 header = string(payload.header);
             end
+            header = upper(extractBefore(header, 2)) + extractAfter(header, 1);
 
             msg = string(payload.message);
             if strlength(msg) == 0
@@ -965,36 +966,46 @@ classdef measurementEngine < handle
             chanSize = double(obj.channelSizes(idx));
         end
 
-        function scanObj = prepareScanConstants_(obj, scanObj)
-            if isempty(scanObj.consts)
-                return;
-            end
-
-            consts = measurementScan.normalizeConsts(scanObj.consts);
-
-            setMask = [consts.set] ~= 0;
+        function actions = applyScanActions_(obj, actions, fieldLabel)
+            actions = measurementScan.normalizeConsts(actions, fieldLabel);
+            setMask = [actions.set] ~= 0;
             if any(setMask)
-                setchans = string({consts(setMask).setchan});
+                setchans = string({actions(setMask).setchan});
                 if isrow(setchans)
                     setchans = setchans.';
                 end
-                obj.rackSet(setchans, double([consts(setMask).val]).');
+                obj.rackSet(setchans, double([actions(setMask).val]).');
             end
 
             getMask = ~setMask;
             if any(getMask)
-                getchans = string({consts(getMask).setchan});
+                getchans = string({actions(getMask).setchan});
                 if isrow(getchans)
                     getchans = getchans.';
                 end
                 newvals = double(obj.rackGet(getchans));
                 getIdx = find(getMask);
                 for k = 1:numel(getIdx)
-                    consts(getIdx(k)).val = newvals(k);
+                    actions(getIdx(k)).val = newvals(k);
                 end
             end
-            scanObj.consts = consts;
+        end
+
+        function scanObj = prepareScanConstants_(obj, scanObj)
+            if isempty(scanObj.consts)
+                return;
+            end
+
+            scanObj.consts = obj.applyScanActions_(scanObj.consts, "scan.consts");
             scanObj.constsPrepared = true;
+        end
+
+        function scanForSave = applyFinishActions_(obj, scanForSave)
+            if ~isfield(scanForSave, "finish") || isempty(scanForSave.finish)
+                return;
+            end
+
+            scanForSave.finish = obj.applyScanActions_(scanForSave.finish, "scan.finish");
         end
 
         function [dataOut, scanForSave] = runLocal_(obj, scanObj, filename)
@@ -1005,6 +1016,7 @@ classdef measurementEngine < handle
 
             tempFile = filename + "~";
             [dataOut, scanForSave, figHandle, pendingClose] = obj.runLocalCore_(rack, scanObj, tempFile);
+            scanForSave = obj.applyFinishActions_(scanForSave);
             obj.saveFinal_(filename, scanForSave, dataOut, figHandle);
             if pendingClose && ~isempty(figHandle) && ishandle(figHandle)
                 delete(figHandle);
@@ -1022,6 +1034,7 @@ classdef measurementEngine < handle
             scanObj.mode = mode;
             tempFile = filename + "~";
             [dataOut, scanForSave, figHandle, pendingClose] = obj.runWorkerCore_(scanObj, tempFile);
+            scanForSave = obj.applyFinishActions_(scanForSave);
             obj.saveFinal_(filename, scanForSave, dataOut, figHandle);
             if pendingClose && ~isempty(figHandle) && ishandle(figHandle)
                 delete(figHandle);

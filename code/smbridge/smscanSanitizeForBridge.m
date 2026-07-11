@@ -21,6 +21,16 @@ if isfield(scanOut, "consts")
         return;
     end
 end
+if ~isfield(scanOut, "finish")
+    scanOut.finish = [];
+else
+    try
+        scanOut.finish = measurementScan.normalizeConsts(scanOut.finish, "scan.finish");
+    catch
+        scanOut = [];
+        return;
+    end
+end
 
 if ~(exist("bridge", "var") && ~isempty(bridge) && isobject(bridge))
     if isfield(scanOut, "disp")

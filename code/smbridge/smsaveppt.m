@@ -61,6 +61,9 @@ end
 if ~isfield(text, "consts")
     text.consts = [];
 end
+if ~isfield(text, "finish")
+    text.finish = [];
+end
 
 % Start an ActiveX session with PowerPoint:
 ppt = actxserver('PowerPoint.Application');
@@ -254,6 +257,33 @@ if ~isempty(text.consts)
             getItems(i) = sprintf("%s = %.3g", string(getConsts(i).setchan), getConsts(i).val);
         end
         blocks(end+1) = "get constants: " + strjoin(getItems, "; ");
+    end
+end
+
+if ~isempty(text.finish)
+    finishRows = text.finish;
+    if ~isfield(finishRows, "set")
+        [finishRows.set] = deal(1);
+    end
+    setMask = [finishRows.set] == 1;
+    getMask = ~setMask;
+
+    if any(setMask)
+        setFinish = finishRows(setMask);
+        setItems = strings(1, numel(setFinish));
+        for i = 1:numel(setFinish)
+            setItems(i) = sprintf("%s = %.3g", string(setFinish(i).setchan), setFinish(i).val);
+        end
+        blocks(end+1) = "when finished/canceled set: " + strjoin(setItems, "; ");
+    end
+
+    if any(getMask)
+        getFinish = finishRows(getMask);
+        getItems = strings(1, numel(getFinish));
+        for i = 1:numel(getFinish)
+            getItems(i) = sprintf("%s = %.3g", string(getFinish(i).setchan), getFinish(i).val);
+        end
+        blocks(end+1) = "when finished/canceled recorded: " + strjoin(getItems, "; ");
     end
 end
 

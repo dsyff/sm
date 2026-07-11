@@ -684,14 +684,14 @@ end
             case errorStringCommandIndex
                 dogError("error requested by man.", command);
             case warmupStringCommandIndex
-                if activeControl
-                    dogError("cannot warm up cryostat while activeControl is on", command);
-                elseif ~ismethod(handle_cryostat, "warmup")
+                if ~ismethod(handle_cryostat, "warmup")
                     dogError("cryostat %s does not support warmup", command, class(handle_cryostat));
-                else
-                    handle_cryostat.warmup();
-                    instWorker.instWorkerSendToInst(true);
                 end
+                if activeControl
+                    dogError("cannot call final warmup while activeControl is on", command);
+                end
+                handle_cryostat.warmup();
+                instWorker.instWorkerSendToInst(true);
             otherwise
                 dogError("invalid string command %s.", command, command.stringCommand);
         end

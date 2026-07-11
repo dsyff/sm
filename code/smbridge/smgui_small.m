@@ -45,6 +45,7 @@ if ~exist('smscan', 'var') || isempty(smscan)
     smscan.loops(1).waittime = 0;
     smscan.data = [];
     smscan.consts = struct('setchan', {}, 'val', {}, 'set', {});
+    smscan.finish = struct('setchan', {}, 'val', {}, 'set', {});
     % Add missing fields that scaninit expects
     smscan.saveloop = 2;  % Default to loop 2
     smscan.disp = [];     % Empty display configuration
@@ -149,6 +150,11 @@ end
         smaux.smgui.consts_pmh = []; %1d array of popups for scan constants (set)
         smaux.smgui.consts_eth = []; %1d array of edits for scan constants (set)
         smaux.smgui.setconsts_cbh=[];
+    smaux.smgui.scan_finish_ph = [];
+        smaux.smgui.update_finish_pbh = [];
+        smaux.smgui.finish_pmh = [];
+        smaux.smgui.finish_eth = [];
+        smaux.smgui.setfinish_cbh = [];
     smaux.smgui.loop_panels_ph = []; % handles to panels for each loop
     smaux.smgui.loopvars_sth = []; % handles to static text for each loop (2D)
     smaux.smgui.loopvars_eth = []; % handles to edit text for each loop (2D)
@@ -352,6 +358,12 @@ function SaveScan(hObject,eventdata)
     if isstruct(smscan) && isfield(smscan, "consts")
         smscan.consts = measurementScan.normalizeConsts(smscan.consts);
     end
+    if isstruct(smscan) && ~isfield(smscan, "finish")
+        smscan.finish = [];
+    end
+    if isstruct(smscan)
+        smscan.finish = measurementScan.normalizeConsts(smscan.finish, "scan.finish");
+    end
     defaultName = "scan.mat";
     if isstruct(smscan) && isfield(smscan, "name") && ~isempty(smscan.name)
         defaultName = string(sanitizeFilename(string(smscan.name))) + ".mat";
@@ -406,6 +418,7 @@ function ClearScan(hObject,eventdata)
     smscan.loops(1).waittime = 0;
     smscan.data = [];
     smscan.consts = struct('setchan', {}, 'val', {}, 'set', {});
+    smscan.finish = struct('setchan', {}, 'val', {}, 'set', {});
     smscan.saveloop = 2;
     smscan.disp = [];
     smscan.comments = '';
@@ -588,94 +601,144 @@ end
 
 %Callback for the constants pmh
 function ConstMenu(hObject,eventdata,i)
-global smaux smscan smdata bridge;
-    val=get(smaux.smgui.consts_pmh(i),'Value');
-    popupStrings = get(smaux.smgui.consts_pmh(i), "String");
+    ActionMenu("consts", "consts_pmh", i);
+end
+
+function FinishMenu(hObject,eventdata,i)
+    ActionMenu("finish", "finish_pmh", i);
+end
+
+function ActionMenu(fieldName, popupField, i)
+global smaux smscan;
+    fieldName = char(fieldName);
+    popupField = char(popupField);
+    actions = getScanActions(fieldName);
+    popupHandles = smaux.smgui.(popupField);
+    val=get(popupHandles(i),'Value');
+    popupStrings = get(popupHandles(i), "String");
     if iscell(popupStrings)
         popupStrings = string(popupStrings);
     elseif ischar(popupStrings)
         popupStrings = string(popupStrings);
     end
     if val==1
-        if i <= length(smscan.consts)
-            smscan.consts(i)=[];
+        if i <= length(actions)
+            actions(i)=[];
         end
     elseif val <= numel(popupStrings)
         selectedScalarChannel = popupStrings(val);
         if selectedScalarChannel == "none"
-            if i <= length(smscan.consts)
-                smscan.consts(i)=[];
+            if i <= length(actions)
+                actions(i)=[];
             end
+            smscan.(fieldName) = actions;
             makescanbody;
             return;
         end
-        smscan.consts(i).setchan = selectedScalarChannel;
-        if ~isfield(smscan.consts(i),'val') || isempty(smscan.consts(i).val)
-            smscan.consts(i).val=0;
+        actions(i).setchan = selectedScalarChannel;
+        if ~isfield(actions(i),'val') || isempty(actions(i).val)
+            actions(i).val=0;
         end
-        if ~isfield(smscan.consts(i),'set') || isempty(smscan.consts(i).set)
-            smscan.consts(i).set=1;
+        if ~isfield(actions(i),'set') || isempty(actions(i).set)
+            actions(i).set=1;
         end
     else
-        if i <= length(smscan.consts)
-            smscan.consts(i)=[];
+        if i <= length(actions)
+            actions(i)=[];
         end
     end
+    smscan.(fieldName) = actions;
     makescanbody;
 end
 
 %Callback for the constants eth
 function ConstTXT(hObject,eventdata,i)
+    ActionTXT("consts", "consts_eth", i);
+end
+
+function FinishTXT(hObject,eventdata,i)
+    ActionTXT("finish", "finish_eth", i);
+end
+
+function ActionTXT(fieldName, editField, i)
 global smaux smscan;
-    if i > length(smscan.consts) || ~isfield(smscan.consts, "setchan") || isempty(smscan.consts(i).setchan)
+    fieldName = char(fieldName);
+    editField = char(editField);
+    actions = getScanActions(fieldName);
+    if i > length(actions) || ~isfield(actions, "setchan") || isempty(actions(i).setchan)
         return;
     end
-    constName = strip(string(smscan.consts(i).setchan));
-    if ~isscalar(constName) || strlength(constName) == 0 || constName == "none"
+    actionName = strip(string(actions(i).setchan));
+    if ~isscalar(actionName) || strlength(actionName) == 0 || actionName == "none"
         return;
     end
-    val = str2double(get(smaux.smgui.consts_eth(i),'String'));
+    editHandles = smaux.smgui.(editField);
+    val = str2double(get(editHandles(i),'String'));
     if (isnan(val))
         errordlg('Please enter a real number','Invalid Input Value');
-        set(smaux.smgui.consts_eth(i),'String',0);
+        set(editHandles(i),'String',0);
         return;
     end
-    smscan.consts(i).val=val;
+    actions(i).val=val;
+    smscan.(fieldName) = actions;
 end
 
 % Callback for constants checkboxes
 function SetConsts(hObject,eventdata,i)
+    ActionSet("consts", "setconsts_cbh", i);
+end
+
+function SetFinish(hObject,eventdata,i)
+    ActionSet("finish", "setfinish_cbh", i);
+end
+
+function ActionSet(fieldName, checkField, i)
 global smaux smscan;
-    if i > length(smscan.consts) || ~isfield(smscan.consts, "setchan") || isempty(smscan.consts(i).setchan)
+    fieldName = char(fieldName);
+    checkField = char(checkField);
+    actions = getScanActions(fieldName);
+    if i > length(actions) || ~isfield(actions, "setchan") || isempty(actions(i).setchan)
         return;
     end
-    constName = strip(string(smscan.consts(i).setchan));
-    if ~isscalar(constName) || strlength(constName) == 0 || constName == "none"
+    actionName = strip(string(actions(i).setchan));
+    if ~isscalar(actionName) || strlength(actionName) == 0 || actionName == "none"
         return;
     end
-    smscan.consts(i).set = get(smaux.smgui.setconsts_cbh(i),'Value');  
+    checkHandles = smaux.smgui.(checkField);
+    actions(i).set = get(checkHandles(i),'Value');
+    smscan.(fieldName) = actions;
 end
 
 %Callback for update constants pushbutton
 function UpdateConstants(varargin)
-    global smaux smscan engine;
+    UpdateScanActions("consts", "consts_eth");
+end
 
-    % Constants channel dropdowns are scalar-only channelFriendlyNames.
+function UpdateFinishActions(varargin)
+    UpdateScanActions("finish", "finish_eth");
+end
+
+function UpdateScanActions(fieldName, editField)
+    global smaux smscan engine;
+    fieldLabel = "scan." + string(fieldName);
+    fieldName = char(fieldName);
+    editField = char(editField);
+
     if ~exist("engine", "var") || isempty(engine) || ~isa(engine, "measurementEngine")
         error("smgui_small:MissingEngine", "measurementEngine not found. Please run smready(...) first.");
     end
 
-    if ~isfield(smscan, "consts") || isempty(smscan.consts)
+    if ~isfield(smscan, fieldName) || isempty(smscan.(fieldName))
         return;
     end
 
-    consts = measurementScan.normalizeConsts(smscan.consts);
-    smscan.consts = consts;
+    actions = measurementScan.normalizeConsts(smscan.(fieldName), fieldLabel);
+    smscan.(fieldName) = actions;
 
-    setMask = [consts.set] == 1;
+    setMask = [actions.set] == 1;
     if any(setMask)
-        setchans = string({consts(setMask).setchan});
-        setvals = double([consts(setMask).val]).';
+        setchans = string({actions(setMask).setchan});
+        setvals = double([actions(setMask).val]).';
         engine.rackSet(setchans(:), setvals);
     end
 
@@ -684,19 +747,30 @@ function UpdateConstants(varargin)
         return;
     end
 
-    getchans = string({consts(getMask).setchan});
+    getchans = string({actions(getMask).setchan});
     newvals = engine.rackGet(getchans(:));
     getIdx = find(getMask);
+    editHandles = smaux.smgui.(editField);
     for k = 1:numel(getIdx)
         i = getIdx(k);
-        consts(i).val = newvals(k);
+        actions(i).val = newvals(k);
         if abs(floor(log10(newvals(k)))) > 3
-            set(smaux.smgui.consts_eth(i), "String", sprintf("%0.1e", newvals(k)));
+            set(editHandles(i), "String", sprintf("%0.1e", newvals(k)));
         else
-            set(smaux.smgui.consts_eth(i), "String", round(1000 * newvals(k)) / 1000);
+            set(editHandles(i), "String", round(1000 * newvals(k)) / 1000);
         end
     end
-    smscan.consts = consts;
+    smscan.(fieldName) = actions;
+end
+
+function actions = getScanActions(fieldName)
+    global smscan;
+    fieldName = char(fieldName);
+    if ~isfield(smscan, fieldName) || isempty(smscan.(fieldName))
+        actions = struct('setchan', {}, 'val', {}, 'set', {});
+    else
+        actions = smscan.(fieldName);
+    end
 end
 
  % Callback for data file location pushbutton
@@ -1165,6 +1239,10 @@ function ToScans(varargin)
         if isfield(smscan, "consts")
             smscan.consts = measurementScan.normalizeConsts(smscan.consts);
         end
+        if ~isfield(smscan, "finish")
+            smscan.finish = [];
+        end
+        smscan.finish = measurementScan.normalizeConsts(smscan.finish, "scan.finish");
         smaux.scans{end+1}=smscan;
         sm
         sm_Callback('UpdateToGUI');
@@ -1195,6 +1273,10 @@ function ToQueue(varargin)
         if isfield(smscan, "consts")
             smscan.consts = measurementScan.normalizeConsts(smscan.consts);
         end
+        if ~isfield(smscan, "finish")
+            smscan.finish = [];
+        end
+        smscan.finish = measurementScan.normalizeConsts(smscan.finish, "scan.finish");
         smaux.smq{end+1}=smscan;
         sm
         sm_Callback('UpdateToGUI');
@@ -1232,6 +1314,7 @@ function Update(varargin)
         smscan.disp(1).dim=[];
         smscan.disp(1).name="";
         smscan.consts=[];
+        smscan.finish=[];
         smscan.comments='';
         smscan.name='';
         scaninit
@@ -1286,6 +1369,9 @@ function scaninit(varargin)
          if ~isfield(smscan,'consts')
              smscan.consts = [];
          end
+         if ~isfield(smscan,'finish')
+             smscan.finish = [];
+         end
         if isfield(smscan,'comments')
             set(smaux.smgui.commenttext_eth,'String',smscan.comments);
         else
@@ -1312,8 +1398,18 @@ function makescanbody(varargin)
         return;
     end
 
+    if ~isfield(smscan, "consts")
+        smscan.consts = [];
+    end
+    if ~isfield(smscan, "finish")
+        smscan.finish = [];
+    end
+    smscan.consts = measurementScan.normalizeConsts(smscan.consts);
+    smscan.finish = measurementScan.normalizeConsts(smscan.finish, "scan.finish");
+
     outerScroll = getStoredScroll("scan_body_scroll", "scan_body_scroll_slh", 0);
     constScroll = getStoredScroll("const_scroll", "const_scroll_slh", 0);
+    finishScroll = getStoredScroll("finish_scroll", "finish_scroll_slh", 0);
     loopScrolls = zeros(1, numloops);
     if isfield(smaux.smgui, "loop_scroll")
         old = smaux.smgui.loop_scroll;
@@ -1325,6 +1421,9 @@ function makescanbody(varargin)
     smaux.smgui.consts_pmh = [];
     smaux.smgui.consts_eth = [];
     smaux.smgui.setconsts_cbh = [];
+    smaux.smgui.finish_pmh = [];
+    smaux.smgui.finish_eth = [];
+    smaux.smgui.setfinish_cbh = [];
     smaux.smgui.loop_panels_ph = [];
     smaux.smgui.loop_content_ph = [];
     smaux.smgui.loop_content_scroll_slh = [];
@@ -1338,6 +1437,9 @@ function makescanbody(varargin)
     constRows = max(1, ceil((length(smscan.consts) + 1) / m.constCols));
     constVisibleRows = min(m.maxContentRows, constRows);
     constHeight = m.titlePad + m.rowH * (constVisibleRows + 1) + m.bottomPad;
+    finishRows = max(1, ceil((length(smscan.finish) + 1) / m.constCols));
+    finishVisibleRows = min(m.maxContentRows, finishRows);
+    finishHeight = m.titlePad + m.rowH * (finishVisibleRows + 1) + m.bottomPad;
 
     smscan.loops = normalizeLoopFields(smscan.loops);
     loopHeights = zeros(1, numloops);
@@ -1353,7 +1455,7 @@ function makescanbody(varargin)
         loopHeights(i) = m.titlePad + m.rowH * (1 + visibleRows) + m.bottomPad;
     end
 
-    contentHeight = constHeight + m.margin + sum(loopHeights) + m.margin * max(0, numloops - 1);
+    contentHeight = constHeight + m.margin + sum(loopHeights) + m.margin * numloops + finishHeight;
     bodyBottom = 5;
     posNull = get(smaux.smgui.nullpanel, "Position");
     bodyHeight = max(100, posNull(4) - m.topPad - smguiFixedInfoHeight(m) - m.margin - bodyBottom);
@@ -1376,6 +1478,8 @@ function makescanbody(varargin)
             loopSetRows(i), loopRecordRows(i), loopContentRows(i), loopScrolls(i));
         y = y - m.margin;
     end
+    y = y - finishHeight;
+    makeFinishPanel(smaux.smgui.scan_body_content_ph, [0 y m.panelW finishHeight], finishRows, finishScroll);
 
     set(smaux.smgui.loop_panels_ph(numloops), "Title", sprintf("Loop %d (outer)", numloops));
     set(smaux.smgui.loop_panels_ph(1), "Title", sprintf("Loop %d (inner)", 1));
@@ -1386,43 +1490,69 @@ function makescanbody(varargin)
 end
 
 function makeConstantsPanel(parent, panelPos, constRows, constScroll)
+    opts = struct("list", "consts", "panel", "scan_constants_ph", ...
+        "button", "update_consts_pbh", "popup", "consts_pmh", "edit", "consts_eth", ...
+        "check", "setconsts_cbh", "scroll", "const_scroll", "slider", "const_scroll_slh", ...
+        "title", "Constants (check to set, uncheck to record)", "buttonText", "Update Constants", ...
+        "tag", "const", "updateCb", @UpdateConstants, "menuCb", @ConstMenu, ...
+        "editCb", @ConstTXT, "checkCb", @SetConsts);
+    makeActionPanel(parent, panelPos, constRows, constScroll, opts);
+end
+
+function makeFinishPanel(parent, panelPos, finishRows, finishScroll)
+    opts = struct("list", "finish", "panel", "scan_finish_ph", ...
+        "button", "update_finish_pbh", "popup", "finish_pmh", "edit", "finish_eth", ...
+        "check", "setfinish_cbh", "scroll", "finish_scroll", "slider", "finish_scroll_slh", ...
+        "title", "When finished or canceled (check to set and uncheck to record)", ...
+        "buttonText", "Update", "tag", "finish", "updateCb", @UpdateFinishActions, ...
+        "menuCb", @FinishMenu, "editCb", @FinishTXT, "checkCb", @SetFinish);
+    makeActionPanel(parent, panelPos, finishRows, finishScroll, opts);
+end
+
+function makeActionPanel(parent, panelPos, actionRows, scrollValue, opts)
     global smaux smscan;
     m = smguiLayoutMetrics();
-    visibleRows = min(m.maxContentRows, constRows);
-    smaux.smgui.scan_constants_ph = uipanel("Parent", parent, "Title", "Constants (check to set, uncheck to record)", ...
+    for optNameCell = {"list", "panel", "button", "popup", "edit", "check", "scroll", "slider", "tag"}
+        optName = optNameCell{1};
+        opts.(optName) = char(opts.(optName));
+    end
+    visibleRows = min(m.maxContentRows, actionRows);
+    smaux.smgui.(opts.panel) = uipanel("Parent", parent, "Title", opts.title, ...
         "Units", "pixels", "Position", panelPos);
-    smaux.smgui.update_consts_pbh = uicontrol("Parent", smaux.smgui.scan_constants_ph, ...
+    smaux.smgui.(opts.button) = uicontrol("Parent", smaux.smgui.(opts.panel), ...
         "Style", "pushbutton", ...
-        "String", "Update Constants", ...
+        "String", opts.buttonText, ...
         "Position", [m.panelW - 140 m.bottomPad + m.ctrlPadY 130 m.ctrlH], ...
-        "Callback", @UpdateConstants);
+        "Callback", opts.updateCb);
 
     rowViewY = m.bottomPad + m.rowH;
     rowViewH = visibleRows * m.rowH;
-    [rowContent, smaux.smgui.const_scroll_slh, constScroll] = createScrollContent( ...
-        smaux.smgui.scan_constants_ph, smaux.smgui.scan_constants_ph, ...
+    [rowContent, smaux.smgui.(opts.slider), scrollValue] = createScrollContent( ...
+        smaux.smgui.(opts.panel), smaux.smgui.(opts.panel), ...
         [m.internalSliderX rowViewY m.scrollW rowViewH], ...
-        m.rowViewW, rowViewH, constRows * m.rowH, constScroll, "const", 0, [5 rowViewY m.rowViewW rowViewH]);
-    smaux.smgui.const_scroll = constScroll;
+        m.rowViewW, rowViewH, actionRows * m.rowH, scrollValue, opts.tag, 0, [5 rowViewY m.rowViewW rowViewH]);
+    smaux.smgui.(opts.scroll) = scrollValue;
 
+    actions = getScanActions(opts.list);
     channelnames = getChannelNamesForContext("pure-scalar");
-    for i = 1:length(smscan.consts)
-        chanval = find(strcmp(channelnames, smscan.consts(i).setchan));
+    for i = 1:length(actions)
+        chanval = find(strcmp(channelnames, actions(i).setchan));
         if isempty(chanval)
             chanval = 1;
         else
             chanval = chanval + 1;
         end
-        if isempty(smscan.consts(i).set)
-            smscan.consts(i).set = 1;
+        if isempty(actions(i).set)
+            actions(i).set = 1;
         end
-        makeConstControls(rowContent, i, chanval, smscan.consts(i).val, smscan.consts(i).set, constRows, channelnames);
+        makeActionControls(rowContent, i, chanval, actions(i).val, actions(i).set, actionRows, channelnames, actions, opts);
     end
-    makeConstControls(rowContent, length(smscan.consts) + 1, 1, 0, 1, constRows, channelnames);
+    smscan.(opts.list) = actions;
+    makeActionControls(rowContent, length(actions) + 1, 1, 0, 1, actionRows, channelnames, actions, opts);
 end
 
-function makeConstControls(parent, i, chanval, constVal, setVal, constRows, channelnames)
-    global smaux smscan;
+function makeActionControls(parent, i, chanval, actionVal, setVal, actionRows, channelnames, actions, opts)
+    global smaux;
     m = smguiLayoutMetrics();
     channelnames = string(channelnames(:));
     currentName = "";
@@ -1430,11 +1560,11 @@ function makeConstControls(parent, i, chanval, constVal, setVal, constRows, chan
         currentName = channelnames(chanval - 1);
     end
     selectedNames = string.empty(0, 1);
-    for constIdx = 1:length(smscan.consts)
-        if constIdx == i || ~isfield(smscan.consts, "setchan") || isempty(smscan.consts(constIdx).setchan)
+    for actionIdx = 1:length(actions)
+        if actionIdx == i || ~isfield(actions, "setchan") || isempty(actions(actionIdx).setchan)
             continue;
         end
-        selectedName = string(smscan.consts(constIdx).setchan);
+        selectedName = string(actions(actionIdx).setchan);
         if strlength(selectedName) > 0 && selectedName ~= "none"
             selectedNames(end+1, 1) = selectedName; %#ok<AGROW>
         end
@@ -1452,27 +1582,27 @@ function makeConstControls(parent, i, chanval, constVal, setVal, constRows, chan
     end
     row = floor((i-1) / m.constCols) + 1;
     col = mod(i-1, m.constCols);
-    y = constRows * m.rowH - row * m.rowH + m.ctrlPadY;
+    y = actionRows * m.rowH - row * m.rowH + m.ctrlPadY;
     colW = m.rowViewW / m.constCols;
     x = colW * col;
-    smaux.smgui.consts_pmh(i) = uicontrol("Parent", parent, ...
+    smaux.smgui.(opts.popup)(i) = uicontrol("Parent", parent, ...
         "Style", "popupmenu", ...
         "String", ["none"; availableNames], ...
         "Value", chanval, ...
         "HorizontalAlignment", "center", ...
         "Position", [x y m.constPopupW m.ctrlH], ...
-        "Callback", {@ConstMenu,i});
-    smaux.smgui.consts_eth(i) = uicontrol("Parent", parent, ...
+        "Callback", {opts.menuCb,i});
+    smaux.smgui.(opts.edit)(i) = uicontrol("Parent", parent, ...
         "Style", "edit", ...
-        "String", constVal, ...
+        "String", actionVal, ...
         "HorizontalAlignment", "center", ...
         "Position", [x + m.constPopupW + m.inlineGap y m.constEditW m.ctrlH], ...
-        "Callback", {@ConstTXT,i});
-    smaux.smgui.setconsts_cbh(i) = uicontrol("Parent", parent, ...
+        "Callback", {opts.editCb,i});
+    smaux.smgui.(opts.check)(i) = uicontrol("Parent", parent, ...
         "Style", "checkbox", ...
         "Position", [x + m.constPopupW + m.constEditW + 2*m.inlineGap y m.constCheckW m.ctrlH], ...
         "Value", setVal, ...
-        "Callback", {@SetConsts,i});
+        "Callback", {opts.checkCb,i});
 end
 
 function makeLoopPanel(parent, panelPos, i, setRows, recordRows, contentRows, scrollValue)
@@ -1644,6 +1774,7 @@ end
 
 function ScrollContent(slider, ~, content, viewH, contentH, kind, idx)
     global smaux;
+    kind = string(kind);
     maxScroll = max(0, contentH - viewH);
     scrollValue = maxScroll - get(slider, "Value");
     scrollValue = min(max(scrollValue, 0), maxScroll);
@@ -1654,6 +1785,8 @@ function ScrollContent(slider, ~, content, viewH, contentH, kind, idx)
         smaux.smgui.scan_body_scroll = scrollValue;
     elseif kind == "const"
         smaux.smgui.const_scroll = scrollValue;
+    elseif kind == "finish"
+        smaux.smgui.finish_scroll = scrollValue;
     elseif kind == "loop"
         smaux.smgui.loop_scroll(idx) = scrollValue;
     end

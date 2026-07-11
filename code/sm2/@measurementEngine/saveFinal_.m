@@ -153,6 +153,11 @@ function saveFinal_(obj, filename, scanForSave, data, figHandle)
                 else
                     text_data.consts = [];
                 end
+                if isfield(scanForSave, "finish")
+                    text_data.finish = scanForSave.finish;
+                else
+                    text_data.finish = [];
+                end
                 if isfield(scanForSave, "comments") && ~isempty(scanForSave.comments)
                     if iscell(scanForSave.comments)
                         text_data.body = char(scanForSave.comments{:});

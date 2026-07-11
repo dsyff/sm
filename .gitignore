@@ -21,6 +21,7 @@ demos/data/
 *.log
 strain_logs/
 strain_data/
+attodry_autofocus_positioner_voltage_profile.csv
 
 # Temporary files
 *~
