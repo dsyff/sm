@@ -111,12 +111,14 @@ function engineWorkerMain_(engineToClient, recipe, workerFprintfQueue, experimen
                 ok = true;
                 err = [];
                 completed = false;
+                stopContextCleanup = onCleanup(@() experimentContext.setScanStopHandler([]));
                 try
                     if ~isa(currentRunScanObj, "measurementScan")
                         error("measurementEngine:InvalidScan", "run expects a measurementScan.");
                     end
 
                     mode = currentRunScanObj.mode;
+                    experimentContext.setScanStopHandler(@sendScanStopRequest);
                     logCore = [];
                     if verbose
                         logCore = @wlog;
@@ -145,6 +147,8 @@ function engineWorkerMain_(engineToClient, recipe, workerFprintfQueue, experimen
                     ok = false;
                     err = measurementEngine.serializeException_(ME);
                 end
+
+                clear stopContextCleanup;
 
                 send(engineToClient, struct( ...
                     "type", "runDone", ...
@@ -434,6 +438,11 @@ function engineWorkerMain_(engineToClient, recipe, workerFprintfQueue, experimen
             assert(datetime("now") - startTime < timeout, "measurementEngine:ParfevalTimeout", "Timed out waiting for parfevalDone.");
             pause(1E-6);
         end
+    end
+
+    function sendScanStopRequest(message)
+        send(engineToClient, struct("type", "scanStopRequested", ...
+            "requestId", currentRunRequestId, "message", string(message)));
     end
 
 end
