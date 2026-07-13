@@ -437,6 +437,19 @@ classdef (Sealed) instrumentRack < handle
                 end
             end
         end
+
+        function rackSetWriteImmediate(obj, channelFriendlyNames, values)
+            arguments
+                obj
+                channelFriendlyNames string {mustBeNonzeroLengthText, mustBeVector}
+                values double {mustBeVector}
+            end
+
+            channelRowIndices = obj.findChannelIndices(channelFriendlyNames);
+            setValues = obj.buildSetValuesForRows(channelRowIndices, values(:));
+            obj.rackSetWriteHelperNoRamp(channelRowIndices, setValues);
+            obj.cacheCommandedValues(channelRowIndices, setValues);
+        end
         
         function rackSet(obj, channelFriendlyNames, values)
             arguments

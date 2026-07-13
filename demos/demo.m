@@ -195,11 +195,22 @@ virtual_nE_Use = 0;
 virtual_nE_V_bg_limits = [-6, 6];
 virtual_nE_V_tg_limits = [-6, 6];
 
-virtual_hysteresis_gate_Use = 0;
+virtual_gate_bg_Use = 0;
+virtual_gate_bg_currentMin = -inf;
+virtual_gate_bg_currentMax = inf;
+virtual_gate_bg_occurrence = 3;
+virtual_gate_tg_Use = 0;
+virtual_gate_tg_currentMin = -inf;
+virtual_gate_tg_currentMax = inf;
+virtual_gate_tg_occurrence = 3;
+
+virtual_hysteresis_V_bg_Use = 0;
 virtual_hysteresis_V_bg_points = [-5, 5];
+virtual_hysteresis_V_tg_Use = 0;
 virtual_hysteresis_V_tg_points = [-5, 5];
 
-virtual_hysteresis_nE_Use = 0;
+virtual_hysteresis_n_Use = 0;
+virtual_hysteresis_E_Use = 0;
 
 virtual_hysteresis_B_Use = 0;
 virtual_hysteresis_B_points = [-1, 1];
@@ -213,6 +224,8 @@ recipe.slack_notification_account_email = "";
 % recipe.addVirtualInstrument("handleVar", "virtualInstrument_ClassName", "friendlyName", constructorArgs..., nameValueArgs...);
 % recipe.addStatement("instrumentFriendlyName", "worker-side MATLAB code string");
 % recipe.addChannel("instrumentFriendlyName", "channel", "channelFriendlyName", rampRate, rampThreshold, softwareMin, softwareMax);
+% After smready: smget("instrumentName", "propertyName") reads a public/read-only property;
+% smset("instrumentName", "propertyName", value) writes a public settable property.
 
 if CS165MU_Use && CS165CU_Use
     error("demo:MultipleCS165Cameras", "Enable only one CS165 camera because both use the shared cam_* aliases.");
@@ -765,9 +778,9 @@ if K2450_A_Use && ~strainController_Use
     recipe.addStatement("K2450_A", "writeline(h, ':SENSe:CURRent:NPLCycles 1');");
     recipe.addStatement("K2450_A", "writeline(h, ':OUTPut ON');");
     recipe.addStatement("K2450_A", "pause(2);");
-    recipe.addChannel("K2450_A", "V_source", "V_" + K2450_A_keyword, 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
-    recipe.addChannel("K2450_A", "I_measure", "I_" + K2450_A_keyword);
-    recipe.addChannel("K2450_A", "VI", "VI_" + K2450_A_keyword);
+    recipe.addChannel("K2450_A", "V_source", "V_" + K2450_A_keyword + "_keithley", 1, 0.5, -10, 10); % virtual gate exposes V_bg/V_tg
+    recipe.addChannel("K2450_A", "I_measure", "I_" + K2450_A_keyword + "_keithley");
+    recipe.addChannel("K2450_A", "VI", "VI_" + K2450_A_keyword + "_keithley");
 end
 
 if K2450_B_Use && ~strainController_Use
@@ -784,9 +797,9 @@ if K2450_B_Use && ~strainController_Use
     recipe.addStatement("K2450_B", "writeline(h, ':SENSe:CURRent:NPLCycles 1');");
     recipe.addStatement("K2450_B", "writeline(h, ':OUTPut ON');");
     recipe.addStatement("K2450_B", "pause(2);");
-    recipe.addChannel("K2450_B", "V_source", "V_" + K2450_B_keyword, 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
-    recipe.addChannel("K2450_B", "I_measure", "I_" + K2450_B_keyword);
-    recipe.addChannel("K2450_B", "VI", "VI_" + K2450_B_keyword);
+    recipe.addChannel("K2450_B", "V_source", "V_" + K2450_B_keyword + "_keithley", 1, 0.5, -10, 10); % virtual gate exposes V_bg/V_tg
+    recipe.addChannel("K2450_B", "I_measure", "I_" + K2450_B_keyword + "_keithley");
+    recipe.addChannel("K2450_B", "VI", "VI_" + K2450_B_keyword + "_keithley");
 end
 
 if K2450_C_Use
@@ -803,9 +816,9 @@ if K2450_C_Use
     recipe.addStatement("K2450_C", "writeline(h, ':SENSe:CURRent:NPLCycles 1');");
     recipe.addStatement("K2450_C", "writeline(h, ':OUTPut ON');");
     recipe.addStatement("K2450_C", "pause(2);");
-    recipe.addChannel("K2450_C", "V_source", "V_" + K2450_C_keyword, 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
-    recipe.addChannel("K2450_C", "I_measure", "I_" + K2450_C_keyword);
-    recipe.addChannel("K2450_C", "VI", "VI_" + K2450_C_keyword);
+    recipe.addChannel("K2450_C", "V_source", "V_" + K2450_C_keyword + "_keithley", 1, 0.5, -10, 10); % virtual gate exposes V_bg/V_tg
+    recipe.addChannel("K2450_C", "I_measure", "I_" + K2450_C_keyword + "_keithley");
+    recipe.addChannel("K2450_C", "VI", "VI_" + K2450_C_keyword + "_keithley");
 end
 
 if K2400_A_Use
@@ -821,9 +834,9 @@ if K2400_A_Use
     recipe.addStatement("K2400_A", "writeline(h, ':CURRent:NPLCycles 1');");
     recipe.addStatement("K2400_A", "writeline(h, ':OUTPut ON');");
     recipe.addStatement("K2400_A", "pause(2);");
-    recipe.addChannel("K2400_A", "V_source", "V_" + K2400_A_keyword, 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
-    recipe.addChannel("K2400_A", "I_measure", "I_" + K2400_A_keyword);
-    recipe.addChannel("K2400_A", "VI", "VI_" + K2400_A_keyword);
+    recipe.addChannel("K2400_A", "V_source", "V_" + K2400_A_keyword + "_keithley", 1, 0.5, -10, 10); % virtual gate exposes V_bg/V_tg
+    recipe.addChannel("K2400_A", "I_measure", "I_" + K2400_A_keyword + "_keithley");
+    recipe.addChannel("K2400_A", "VI", "VI_" + K2400_A_keyword + "_keithley");
 end
 
 if K2400_B_Use
@@ -839,9 +852,9 @@ if K2400_B_Use
     recipe.addStatement("K2400_B", "writeline(h, ':CURRent:NPLCycles 1');");
     recipe.addStatement("K2400_B", "writeline(h, ':OUTPut ON');");
     recipe.addStatement("K2400_B", "pause(2);");
-    recipe.addChannel("K2400_B", "V_source", "V_" + K2400_B_keyword, 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
-    recipe.addChannel("K2400_B", "I_measure", "I_" + K2400_B_keyword);
-    recipe.addChannel("K2400_B", "VI", "VI_" + K2400_B_keyword);
+    recipe.addChannel("K2400_B", "V_source", "V_" + K2400_B_keyword + "_keithley", 1, 0.5, -10, 10); % virtual gate exposes V_bg/V_tg
+    recipe.addChannel("K2400_B", "I_measure", "I_" + K2400_B_keyword + "_keithley");
+    recipe.addChannel("K2400_B", "VI", "VI_" + K2400_B_keyword + "_keithley");
 end
 
 if K2400_C_Use
@@ -857,9 +870,9 @@ if K2400_C_Use
     recipe.addStatement("K2400_C", "writeline(h, ':CURRent:NPLCycles 1');");
     recipe.addStatement("K2400_C", "writeline(h, ':OUTPut ON');");
     recipe.addStatement("K2400_C", "pause(2);");
-    recipe.addChannel("K2400_C", "V_source", "V_" + K2400_C_keyword, 1, 0.5, -10, 10); % 1 V/s ramp rate, 0.5 V threshold
-    recipe.addChannel("K2400_C", "I_measure", "I_" + K2400_C_keyword);
-    recipe.addChannel("K2400_C", "VI", "VI_" + K2400_C_keyword);
+    recipe.addChannel("K2400_C", "V_source", "V_" + K2400_C_keyword + "_keithley", 1, 0.5, -10, 10); % virtual gate exposes V_bg/V_tg
+    recipe.addChannel("K2400_C", "I_measure", "I_" + K2400_C_keyword + "_keithley");
+    recipe.addChannel("K2400_C", "VI", "VI_" + K2400_C_keyword + "_keithley");
 end
 
 if HP34401A_A_Use
@@ -1139,6 +1152,26 @@ end
 
 %% Virtual Instruments
 
+if virtual_gate_bg_Use
+    recipe.addVirtualInstrument("handle_virtual_gate_bg", "virtualInstrument_gate", "virtual_gate_bg", "virtual_gate_bg", ...
+        voltageChannelName = "V_bg_keithley", currentChannelName = "I_bg_keithley", viChannelName = "VI_bg_keithley", ...
+        currentMin = virtual_gate_bg_currentMin, currentMax = virtual_gate_bg_currentMax, occurrence = virtual_gate_bg_occurrence);
+    recipe.addStatement("virtual_gate_bg", "handle_virtual_gate_bg.requireSetCheck = true;");
+    recipe.addChannel("virtual_gate_bg", "voltage", "V_bg");
+    recipe.addChannel("virtual_gate_bg", "current", "I_bg");
+    recipe.addChannel("virtual_gate_bg", "VI", "VI_bg");
+end
+
+if virtual_gate_tg_Use
+    recipe.addVirtualInstrument("handle_virtual_gate_tg", "virtualInstrument_gate", "virtual_gate_tg", "virtual_gate_tg", ...
+        voltageChannelName = "V_tg_keithley", currentChannelName = "I_tg_keithley", viChannelName = "VI_tg_keithley", ...
+        currentMin = virtual_gate_tg_currentMin, currentMax = virtual_gate_tg_currentMax, occurrence = virtual_gate_tg_occurrence);
+    recipe.addStatement("virtual_gate_tg", "handle_virtual_gate_tg.requireSetCheck = true;");
+    recipe.addChannel("virtual_gate_tg", "voltage", "V_tg");
+    recipe.addChannel("virtual_gate_tg", "current", "I_tg");
+    recipe.addChannel("virtual_gate_tg", "VI", "VI_tg");
+end
+
 if virtual_del_V_Use
     recipe.addVirtualInstrument("handle_virtual_del_V", "virtualInstrument_del_V", "virtual_delta", "virtual_delta", ...
         vGetChannelName = "V_WSe2", vSetChannelName = "V_tg");
@@ -1225,24 +1258,30 @@ if virtual_attodryAutofocus_Use
     recipe.addChannel("attodryAutofocus", "color", "af_color", [], [], 0, 1);
 end
 
-if virtual_hysteresis_gate_Use
+if virtual_hysteresis_V_bg_Use
     recipe.addVirtualInstrument("handle_virtual_hysteresis_V_bg", "virtualInstrument_hysteresis", "virtual_hysteresis_V_bg", "virtual_hysteresis_V_bg", ...
         setChannelName = "V_bg", point1 = virtual_hysteresis_V_bg_points(1), point2 = virtual_hysteresis_V_bg_points(2));
     recipe.addStatement("virtual_hysteresis_V_bg", "handle_virtual_hysteresis_V_bg.requireSetCheck = false;");
     recipe.addChannel("virtual_hysteresis_V_bg", "hysteresis", "hys_V_bg", [], [], 0, 1);
 
+end
+
+if virtual_hysteresis_V_tg_Use
     recipe.addVirtualInstrument("handle_virtual_hysteresis_V_tg", "virtualInstrument_hysteresis", "virtual_hysteresis_V_tg", "virtual_hysteresis_V_tg", ...
         setChannelName = "V_tg", point1 = virtual_hysteresis_V_tg_points(1), point2 = virtual_hysteresis_V_tg_points(2));
     recipe.addStatement("virtual_hysteresis_V_tg", "handle_virtual_hysteresis_V_tg.requireSetCheck = false;");
     recipe.addChannel("virtual_hysteresis_V_tg", "hysteresis", "hys_V_tg", [], [], 0, 1);
 end
 
-if virtual_hysteresis_nE_Use
+if virtual_hysteresis_n_Use
     recipe.addVirtualInstrument("handle_virtual_hysteresis_n", "virtualInstrument_hysteresis", "virtual_hysteresis_n", "virtual_hysteresis_n", ...
         setChannelName = "n_normalized", point1 = 0, point2 = 1);
     recipe.addStatement("virtual_hysteresis_n", "handle_virtual_hysteresis_n.requireSetCheck = false;");
     recipe.addChannel("virtual_hysteresis_n", "hysteresis", "hys_n", [], [], 0, 1);
 
+end
+
+if virtual_hysteresis_E_Use
     recipe.addVirtualInstrument("handle_virtual_hysteresis_E", "virtualInstrument_hysteresis", "virtual_hysteresis_E", "virtual_hysteresis_E", ...
         setChannelName = "E_normalized", point1 = 0, point2 = 1);
     recipe.addStatement("virtual_hysteresis_E", "handle_virtual_hysteresis_E.requireSetCheck = false;");

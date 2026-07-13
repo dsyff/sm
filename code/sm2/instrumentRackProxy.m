@@ -25,6 +25,10 @@ classdef (Sealed) instrumentRackProxy < handle
             obj.getMasterRack().rackSetWrite(channelFriendlyNames, setValues);
         end
 
+        function rackSetWriteImmediate(obj, channelFriendlyNames, setValues)
+            obj.getMasterRack().rackSetWriteImmediate(channelFriendlyNames, setValues);
+        end
+
         function rackSet(obj, channelFriendlyNames, setValues)
             obj.getMasterRack().rackSet(channelFriendlyNames, setValues);
         end
