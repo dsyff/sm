@@ -102,6 +102,15 @@ late control messages from an earlier scan cannot affect the next scan.
 
 Interruptible waits (`startwait`, `waittime`) use the same inline pattern: poll the PDQ between short `pause` steps.
 
+Worker-side instruments can also request a graceful stop through
+`experimentContext.requestScanStop(message)`. The hook is active only for the
+current run, so calls outside a scan are no-ops. The first request is latched,
+printed through the worker relay, and sent to the client as a run-ID-scoped
+`scanStopRequested` message. The worker scan core stops normally, the client
+prints the message, finish actions and final saving still run, and run metadata
+records `stopRequested` plus `stopMessage`. Queue mode breaks without removing
+or starting the next queued entry.
+
 ### Stop signal (single-threaded)
 
 In rack mode, `runScanCore_` receives the live figure handle. At each check point it reads `get(figHandle, "CurrentCharacter")` for ESC and checks the engine's `isScanInProgress` flag (set false by the close-request callback).
@@ -191,8 +200,8 @@ All inter-process links use `parallel.pool.PollableDataQueue` (PDQ) and explicit
 
 Three PDQ channels connect the client and engine worker:
 
-- `engineToClient`: worker → client, created by the client and passed to `parfeval`. Messages: `engineReady`, `rackReady`, `safePoint`, `turboDirty`, `runDone`, `evalDone`, `rackGetDone`, `rackSetDone`, `rackDispDone`, `parfeval`.
-- `clientToEngine`: service/RPC client → worker queue, created by the worker and sent back via `engineReady`. Messages: `run`, `shutdown`, `eval`, `rackGet`, `rackSetWrite`, `rackSetCheck`, `rackSet`, `rackDisp`, `rackEditInfo`, `rackEditPatch`, `parfevalDone`.
+- `engineToClient`: worker → client, created by the client and passed to `parfeval`. Messages: `engineReady`, `rackReady`, `safePoint`, `turboDirty`, `scanStopRequested`, `runDone`, `evalDone`, `rackGetDone`, `rackSetDone`, `instrumentPropertyGetDone`, `instrumentPropertySetDone`, `rackDispDone`, `parfeval`.
+- `clientToEngine`: service/RPC client → worker queue, created by the worker and sent back via `engineReady`. Messages: `run`, `shutdown`, `eval`, `rackGet`, `rackSetWrite`, `rackSetCheck`, `rackSet`, `instrumentPropertyGet`, `instrumentPropertySet`, `rackDisp`, `rackEditInfo`, `rackEditPatch`, `parfevalDone`.
 - `scanControlToEngine`: scan-control client → worker queue, created by the worker and sent back via `engineReady`. Messages: `stop`, `ack`, `turboReady`.
 
 ### Message flow during a scan
@@ -248,6 +257,12 @@ Rule for core runtime code: in `code/sm2` and `code/instruments`, use `experimen
 
 - **Client eval (Queue GUI statements)**: Queue statements are evaluated on the client via `evalin("base", ...)` (not via `smeval`).
 - **Worker eval (optional output)**: `smeval(codeString)` calls `measurementEngine.evalOnEngine(...)` in recipe mode and can return a single output when called with an output argument.
+- **Instrument properties**: `smget("instrument", "property")` permits public
+  or read-only properties; `smset("instrument", "property", value)` additionally
+  requires public set access. Instrument lookup, property lookup, access, and
+  the actual read/write are screened separately on the rack. Worker operations
+  are caught and returned as step-specific messages printed via
+  `experimentContext`.
 
 ## Instrument workers (generic spawning)
 
