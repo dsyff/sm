@@ -1,4 +1,4 @@
-function values = smget(channelNames)
+function values = smget(channelNames, propertyName)
 % Wrapper around instrumentRack.rackGet.
 %
 % This function intentionally does NOT translate or expand channel names.
@@ -7,12 +7,26 @@ function values = smget(channelNames)
 % Usage:
 %   values = smget("chan")
 %   values = smget(["ch1","ch2"])
+%   value = smget("instrumentName", "propertyName")
 %
 % Notes:
 % - channelNames must be a 1-D list; it will be converted to a column vector.
 % - values is the raw numeric column vector returned by rackGet (concatenated).
 
 global engine %#ok<GVMIS>
+
+if nargin == 2
+    if ~isstring(channelNames) || ~isscalar(channelNames) || ...
+            ~isstring(propertyName) || ~isscalar(propertyName)
+        error("smget:invalidPropertyRequest", "Instrument and property names must be string scalars.")
+    end
+    hasEngine = exist("engine", "var") && ~isempty(engine) && isa(engine, "measurementEngine");
+    if ~hasEngine
+        error("smget:no_backend", "No measurementEngine is available. Please run smready(...) first.")
+    end
+    values = engine.getInstrumentProperty(channelNames, propertyName);
+    return;
+end
 
 if isempty(channelNames)
     values = [];

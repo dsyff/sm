@@ -509,6 +509,30 @@ classdef (Sealed) instrumentRack < handle
             experimentContext.print(obj.formattedDisplayText());
         end
 
+        function value = getInstrumentProperty(obj, instrumentFriendlyName, propertyName)
+            instrument = obj.findInstrumentForProperty_(instrumentFriendlyName);
+            property = obj.findPublicProperty_(instrument, propertyName, false);
+            try
+                value = instrument.(property.Name);
+            catch ME
+                error("instrumentRack:PropertyGetFailed", ...
+                    "Property read failed for instrument ""%s"", property ""%s"": %s", ...
+                    instrumentFriendlyName, propertyName, ME.message);
+            end
+        end
+
+        function setInstrumentProperty(obj, instrumentFriendlyName, propertyName, value)
+            instrument = obj.findInstrumentForProperty_(instrumentFriendlyName);
+            property = obj.findPublicProperty_(instrument, propertyName, true);
+            try
+                instrument.(property.Name) = value;
+            catch ME
+                error("instrumentRack:PropertySetFailed", ...
+                    "Property write failed for instrument ""%s"", property ""%s"": %s", ...
+                    instrumentFriendlyName, propertyName, ME.message);
+            end
+        end
+
         function txt = formattedDisplayText(obj)
             divider = join(repelem("=", 120), "");
 
@@ -901,6 +925,40 @@ classdef (Sealed) instrumentRack < handle
             experimentContext.print(datetime("now"));
         end
         
+    end
+
+    methods (Access = private)
+        function instrument = findInstrumentForProperty_(obj, instrumentFriendlyName)
+            mask = obj.instrumentTable.instrumentFriendlyNames == instrumentFriendlyName;
+            if ~any(mask)
+                error("instrumentRack:PropertyInstrumentNotFound", ...
+                    "Instrument lookup failed: instrument ""%s"" does not exist.", instrumentFriendlyName);
+            end
+            instrument = obj.instrumentTable.instruments(find(mask, 1));
+        end
+
+        function property = findPublicProperty_(~, instrument, propertyName, requireSetAccess)
+            propertyList = metaclass(instrument).PropertyList;
+            property = propertyList(find(string({propertyList.Name}) == propertyName, 1));
+            if isempty(property)
+                error("instrumentRack:PropertyNotFound", ...
+                    "Property lookup failed: property ""%s"" does not exist on instrument ""%s"".", ...
+                    propertyName, class(instrument));
+            end
+            access = property.GetAccess;
+            if requireSetAccess
+                access = property.SetAccess;
+            end
+            if ~ischar(access) && ~isstring(access) || string(access) ~= "public"
+                operation = "read";
+                if requireSetAccess
+                    operation = "write";
+                end
+                error("instrumentRack:PropertyAccessDenied", ...
+                    "Property access check failed: property ""%s"" is not public for %s access.", ...
+                    propertyName, operation);
+            end
+        end
     end
     
     

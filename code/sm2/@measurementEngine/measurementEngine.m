@@ -286,6 +286,57 @@ classdef measurementEngine < handle
             obj.rackSetInternal_(channelNames, values, false);
         end
 
+        function value = getInstrumentProperty(obj, instrumentName, propertyName)
+            arguments
+                obj
+                instrumentName (1, 1) string {mustBeNonzeroLengthText}
+                propertyName (1, 1) string {mustBeNonzeroLengthText}
+            end
+
+            obj.assertServiceRpcAvailable_("read an instrument property");
+            if obj.constructionMode == "rack"
+                value = obj.rackLocal.getInstrumentProperty(instrumentName, propertyName);
+                return;
+            end
+
+            requestId = obj.nextRequestId_();
+            obj.safeSendToEngine_(struct("type", "instrumentPropertyGet", ...
+                "requestId", requestId, "instrumentName", instrumentName, "propertyName", propertyName));
+            reply = obj.waitForEngineReply_(requestId, "instrumentPropertyGetDone");
+            if ~reply.ok
+                obj.throwRemoteError_(reply);
+            end
+            value = reply.value;
+        end
+
+        function setInstrumentProperty(obj, instrumentName, propertyName, value)
+            arguments
+                obj
+                instrumentName (1, 1) string {mustBeNonzeroLengthText}
+                propertyName (1, 1) string {mustBeNonzeroLengthText}
+                value
+            end
+
+            obj.assertServiceRpcAvailable_("write an instrument property");
+            if obj.constructionMode == "rack"
+                obj.rackLocal.setInstrumentProperty(instrumentName, propertyName, value);
+                return;
+            end
+
+            if ~measurementEngine.isEvalOutputValueSerializable_(value)
+                error("measurementEngine:PropertyNotSerializable", ...
+                    "Property write failed: value for property ""%s"" cannot be sent to the engine worker.", propertyName);
+            end
+            requestId = obj.nextRequestId_();
+            obj.safeSendToEngine_(struct("type", "instrumentPropertySet", ...
+                "requestId", requestId, "instrumentName", instrumentName, ...
+                "propertyName", propertyName, "value", value));
+            reply = obj.waitForEngineReply_(requestId, "instrumentPropertySetDone");
+            if ~reply.ok
+                obj.throwRemoteError_(reply);
+            end
+        end
+
         function out = evalOnEngine(obj, codeString, options)
             arguments
                 obj

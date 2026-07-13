@@ -8,7 +8,8 @@
 - Explicit-rack debug-only scripts belong in `tests/` (git-ignored), not `demos/`
 - For rack-script migration to recipe, see `docs/INSTRUMENT_SETUP_GUIDE.txt` ("RACK SCRIPT -> RECIPE SCRIPT MIGRATION")
 - The familiar GUI interface is largely unchanged from the original system
-- Use `smget("channel")` and `smset("channel", value)` for quick access
+- Use `smget("channel")` and `smset("channel", value)` for quick channel access
+- Use `smget("instrument", "property")` and `smset("instrument", "property", value)` for screened public-property access on the engine rack
 - Use `smplot('filename.mat')` to recreate plots
 - Use `smload('filename.mat')` to load saved data into a struct for analysis:
 	- `payload.scan`: original scan struct
