@@ -61,6 +61,9 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, scanControlToEngine, 
 
     for ptIdx = 1:totpoints
         % Stop check
+        if experimentContext.isScanStopRequested()
+            stopped = true;
+        end
         if ~stopped && scanControlToEngine.QueueLength > 0
             ctl = poll(scanControlToEngine);
             if isCurrentControl(ctl) && ctl.type == "stop"
@@ -258,6 +261,10 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, scanControlToEngine, 
                     "channelIdx", channelIdx, ...
                     "flatIdx", repmat(linIdx, numel(channelIdx), 1), ...
                     "values", newdata(1:numel(channelIdx))));
+                if experimentContext.isScanStopRequested()
+                    stopped = true;
+                    break;
+                end
                 if enableLog && ~firstSafe
                     firstSafe = true;
                     msg = "runSafeScanCore_ first safePoint " + requestId;
@@ -331,6 +338,9 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, scanControlToEngine, 
                 if isCurrentControl(ctl) && ctl.type == "stop"
                     stoppedOut = true;
                 end
+            end
+            if experimentContext.isScanStopRequested()
+                stoppedOut = true;
             end
             pause(1E-6);
         end

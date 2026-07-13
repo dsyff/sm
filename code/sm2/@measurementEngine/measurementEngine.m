@@ -468,7 +468,8 @@ classdef measurementEngine < handle
                 mode (1, 1) string {mustBeMember(mode, ["safe", "turbo"])} = "safe"
             end
 
-            runMetadata = struct("filename", "", "pngFile", "", "pngSaved", false, "duration", seconds(NaN), "isComplete", false);
+            runMetadata = struct("filename", "", "pngFile", "", "pngSaved", false, ...
+                "duration", seconds(NaN), "isComplete", false, "stopRequested", false, "stopMessage", "");
             scanObj = scan;
             if isstruct(scanObj)
                 scanObj = measurementScan.fromLegacy(scanObj, @(name) obj.channelSizeOf_(name), mode);
@@ -549,6 +550,10 @@ classdef measurementEngine < handle
             end
             if isfield(scanForSave, "isComplete")
                 runMetadata.isComplete = logical(scanForSave.isComplete);
+            end
+            if isfield(scanForSave, "stopRequested")
+                runMetadata.stopRequested = logical(scanForSave.stopRequested);
+                runMetadata.stopMessage = string(scanForSave.stopMessage);
             end
         end
 
@@ -1153,6 +1158,8 @@ classdef measurementEngine < handle
 
             scanForSave = scanObj.toSaveStruct();
             scanForSave.isComplete = false;
+            scanForSave.stopRequested = false;
+            scanForSave.stopMessage = "";
             [figHandle, plotState] = obj.initLiveFigure_(scanObj, scanForSave);
 
             pendingClose = false;
@@ -1193,6 +1200,12 @@ classdef measurementEngine < handle
                 drawnow;
             end
 
+            function onScanStopRequested(message)
+                scanForSave.stopRequested = true;
+                scanForSave.stopMessage = string(message);
+                obj.isScanInProgress = false;
+            end
+
             function onTemp(~, data, ~)
                 if strlength(tempFile) == 0
                     return;
@@ -1210,6 +1223,8 @@ classdef measurementEngine < handle
             scanForSave.startTime = scanStart;
             try
                 obj.isScanInProgress = true;
+                experimentContext.setScanStopHandler(@onScanStopRequested);
+                scanStopCleanup = onCleanup(@() experimentContext.setScanStopHandler([]));
                 scanObj = obj.prepareScanConstants_(scanObj);
                 scanForSave.consts = scanObj.consts;
                 [dataOut, stopped] = measurementEngine.runScanCore_(rack, scanObj, @onRead, figHandle, duration.empty, [], @onTemp, [], @() obj.isScanInProgress);

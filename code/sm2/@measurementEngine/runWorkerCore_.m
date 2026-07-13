@@ -3,6 +3,8 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
 
     scanForSave = scanObj.toSaveStruct();
     scanForSave.isComplete = false;
+    scanForSave.stopRequested = false;
+    scanForSave.stopMessage = "";
 
     [figHandle, plotState] = obj.initLiveFigure_(scanObj, scanForSave);
     layout = measurementEngine.computeFlatDataLayout_(scanObj);
@@ -293,6 +295,14 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
                 obj.safeSendScanControl_(struct("type", "turboReady", "requestId", runId, "seq", msg.seq));
             end
             lastUiPumpTic = tic;
+            return;
+        end
+
+        if msgType == "scanStopRequested"
+            scanForSave.stopRequested = true;
+            scanForSave.stopMessage = string(msg.message);
+            experimentContext.print("Engine worker requested scan stop: %s", scanForSave.stopMessage);
+            obj.isScanInProgress = false;
             return;
         end
 

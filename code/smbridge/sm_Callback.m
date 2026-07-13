@@ -518,6 +518,11 @@ function Run
                     error("sm:MissingEngine", "measurementEngine not found. Please run smready(...) first.");
                 end
                 [~, runMetadata] = engine.run(scan, "", "turbo");
+                if isfield(runMetadata, "stopRequested") && runMetadata.stopRequested
+                    UpdateToGUI;
+                    drawnow;
+                    break;
+                end
                 if isfield(runMetadata, "isComplete") && runMetadata.isComplete
                     notificationSettings = engine.slack_notification_settings;
                     if isfield(scan, "slack_notification_account_email") && strlength(string(scan.slack_notification_account_email)) > 0

@@ -28,6 +28,24 @@ classdef experimentContext
             future = spawnOnClient(string(requestedBy), fcn, double(nOut), varargin{:});
         end
 
+        function requested = requestScanStop(message)
+            arguments
+                message (1, 1) string {mustBeNonzeroLengthText}
+            end
+
+            state = experimentContext.scanStopStore_();
+            requested = ~isempty(state.handler);
+            if ~requested || state.requested
+                return;
+            end
+
+            state.requested = true;
+            state.message = message;
+            experimentContext.scanStopStore_(state);
+            experimentContext.print("Scan stop requested: %s", message);
+            state.handler(message);
+        end
+
         function nChars = print(varargin)
             if nargin < 1
                 error("experimentContext:PrintInvalidUsage", "print requires a message or format string.");
@@ -133,6 +151,22 @@ classdef experimentContext
 
             experimentContext.spawnOnClientStore_(spawnOnClient);
         end
+
+        function setScanStopHandler(handler)
+            arguments
+                handler = []
+            end
+            if ~isempty(handler) && ~isa(handler, "function_handle")
+                error("experimentContext:InvalidScanStopHandler", ...
+                    "setScanStopHandler expects a function_handle or [].");
+            end
+            experimentContext.scanStopStore_(struct( ...
+                "handler", handler, "requested", false, "message", ""));
+        end
+
+        function requested = isScanStopRequested()
+            requested = experimentContext.scanStopStore_().requested;
+        end
     end
 
     methods (Static, Access = private)
@@ -204,6 +238,18 @@ classdef experimentContext
             else
                 spawnOnClient = stored;
             end
+        end
+
+
+        function state = scanStopStore_(newValue)
+            persistent stored
+            if isempty(stored)
+                stored = struct("handler", [], "requested", false, "message", "");
+            end
+            if nargin >= 1
+                stored = newValue;
+            end
+            state = stored;
         end
     end
 end

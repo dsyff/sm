@@ -292,6 +292,9 @@ function [data, stopped] = runTurboScanCore_(rack, scanObj, scanControlToEngine,
     flushDirty(true);
 
     function pollControls()
+        if experimentContext.isScanStopRequested()
+            stopped = true;
+        end
         while scanControlToEngine.QueueLength > 0
             ctl = poll(scanControlToEngine);
             if ~isstruct(ctl) || ~isfield(ctl, "type")
