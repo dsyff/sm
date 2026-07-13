@@ -3,6 +3,7 @@ legacy/
 debug/
 temp/
 tests/
+personal setup scripts/
 
 
 # MATLAB specific ignores
