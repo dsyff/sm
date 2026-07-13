@@ -467,7 +467,13 @@ function loopvars_eth_Callback(hObject,eventdata,i,j)
             return;
         else
             smscan.loops(i).npoints = val;
-            makescanbody;
+            if isfield(smscan.loops(i), "setchanranges")
+                for c = 1:smscan.loops(i).numchans
+                    refreshLoopChannelRange(i, c);
+                end
+            elseif smscan.loops(i).numchans > 0
+                refreshLoopChannelRange(i, 1);
+            end
         end        
     elseif j==2  %Ramptime being changed
         val = str2double(get(obj,'String'));         
@@ -526,7 +532,11 @@ function loopcvars_eth_Callback(hObject,eventdata,i,j,k)
         smscan.loops(i).npoints=floor(range/val+1);
         set(smaux.smgui.loopvars_eth(i,1),'String',smscan.loops(i).npoints);
     end
-    makescanbody;
+    if k == 1
+        makescanbody;
+    else
+        refreshLoopChannelRange(i, j);
+    end
 end
 
 
@@ -561,7 +571,24 @@ function loopcvarsLOCKT_eth_Callback(hObject,eventdata,i,j,k)
         smscan.loops(i).npoints=floor(range/val+1);
         set(smaux.smgui.loopvars_eth(i,1),'String',smscan.loops(i).npoints);
     end
-    makescanbody;
+    if k == 1
+        makescanbody;
+    else
+        refreshLoopChannelRange(i, j);
+    end
+end
+
+function refreshLoopChannelRange(i, j)
+    global smaux smscan;
+    if isfield(smscan.loops(i), "setchanranges")
+        range = smscan.loops(i).setchanranges{j};
+    else
+        range = smscan.loops(i).rng;
+    end
+    values = [range(1), range(2), mean(range), diff(range), diff(range) / (smscan.loops(i).npoints - 1)];
+    for k = 2:6
+        set(smaux.smgui.loopcvars_eth(i,j,k), "String", values(k-1));
+    end
 end
 
 %Callback for getchannel pmh
