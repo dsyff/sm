@@ -353,6 +353,37 @@ function engineWorkerMain_(engineToClient, recipe, workerFprintfQueue, experimen
                 end
                 send(engineToClient, struct("type", "rackSetDone", "requestId", requestId, "ok", ok, "error", err));
 
+            case "instrumentPropertyGet"
+                requestId = msg.requestId;
+                ok = true;
+                err = [];
+                value = [];
+                try
+                    value = rack.getInstrumentProperty(string(msg.instrumentName), string(msg.propertyName));
+                    if ~measurementEngine.isEvalOutputValueSerializable_(value)
+                        error("instrumentRack:PropertyNotSerializable", ...
+                            "Property read failed: property ""%s"" cannot be returned to the client.", string(msg.propertyName));
+                    end
+                catch ME
+                    ok = false;
+                    err = measurementEngine.serializeException_(ME);
+                end
+                send(engineToClient, struct("type", "instrumentPropertyGetDone", ...
+                    "requestId", requestId, "ok", ok, "value", value, "error", err));
+
+            case "instrumentPropertySet"
+                requestId = msg.requestId;
+                ok = true;
+                err = [];
+                try
+                    rack.setInstrumentProperty(string(msg.instrumentName), string(msg.propertyName), msg.value);
+                catch ME
+                    ok = false;
+                    err = measurementEngine.serializeException_(ME);
+                end
+                send(engineToClient, struct("type", "instrumentPropertySetDone", ...
+                    "requestId", requestId, "ok", ok, "error", err));
+
             otherwise
                 % ignore unknown
         end

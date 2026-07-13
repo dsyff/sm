@@ -1,4 +1,4 @@
-function smset(channelNames, values, ~)
+function smset(channelNames, values, propertyValue)
 % Wrapper around instrumentRack.rackSet.
 %
 % This function intentionally does NOT translate or expand channel names.
@@ -7,6 +7,7 @@ function smset(channelNames, values, ~)
 % Usage:
 %   smset("chan", value)
 %   smset(["ch1","ch2"], [v1; v2])
+%   smset("instrumentName", "propertyName", value)
 %
 % Notes:
 % - channelNames must be a 1-D list; it will be converted to a column vector.
@@ -14,6 +15,18 @@ function smset(channelNames, values, ~)
 % - Any rampRate third argument is accepted but ignored (rack controls ramping).
 
 global engine %#ok<GVMIS>
+
+if nargin == 3 && isstring(values)
+    if ~isstring(channelNames) || ~isscalar(channelNames) || ~isscalar(values)
+        error("smset:invalidPropertyRequest", "Instrument and property names must be string scalars.")
+    end
+    hasEngine = exist("engine", "var") && ~isempty(engine) && isa(engine, "measurementEngine");
+    if ~hasEngine
+        error("smset:no_backend", "No measurementEngine is available. Please run smready(...) first.")
+    end
+    engine.setInstrumentProperty(channelNames, values, propertyValue);
+    return;
+end
 
 if isempty(channelNames)
     return
