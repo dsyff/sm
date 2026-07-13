@@ -70,6 +70,13 @@ Pattern:
 
 See `code/instruments/virtualInstrument_nE.m` for a concrete example.
 
+`virtualInstrument_gate` is the protected Keithley gate wrapper. Its `voltage`,
+`current`, and `VI` channels proxy physical rack channels. `currentMin`,
+`currentMax`, and `occurrence` are public properties with defaults `-inf`,
+`inf`, and `3`. After `occurrence` consecutive out-of-range current reads, it
+writes zero through the rack's immediate safety-write path and calls
+`experimentContext.requestScanStop(...)`.
+
 Current `virtualInstrument_nE` channel names:
   - `n`
   - `E`
@@ -112,6 +119,8 @@ To add a virtual instrument to a recipe:
   - If a virtual instrument truly needs a non-channel method such as camera image
     acquisition, use `masterRackProxy.getReviewedInstrumentHandleForNonChannelMethod(...)`
     and document why the exception is not physical channel I/O.
+  - `rackSetWriteImmediate(...)` is reserved for safety actions that must bypass
+    configured ramps, such as the gate current-limit zeroing path.
 
 
 ================================================================================
