@@ -102,14 +102,22 @@ late control messages from an earlier scan cannot affect the next scan.
 
 Interruptible waits (`startwait`, `waittime`) use the same inline pattern: poll the PDQ between short `pause` steps.
 
-Worker-side instruments can also request a graceful stop through
+Instrument callbacks executing on the engine worker can request a graceful stop through
 `experimentContext.requestScanStop(message)`. The hook is active only for the
 current run, so calls outside a scan are no-ops. The first request is latched,
 printed through the worker relay, and sent to the client as a run-ID-scoped
 `scanStopRequested` message. The worker scan core stops normally, the client
-prints the message, finish actions and final saving still run, and run metadata
-records `stopRequested` plus `stopMessage`. Queue mode breaks without removing
-or starting the next queued entry.
+prints the message, finish actions still run, and `saveFinal_` writes the MAT
+files and attempts PNG, PowerPoint, and FIG export before `engine.run` returns.
+Run metadata records `stopRequested` plus `stopMessage`. Queue mode then breaks
+without removing or starting the next queued entry.
+
+Secondary instrument workers spawned through `instrumentWorker` currently
+receive the `experimentContext.print` relay but not the run-scoped scan-stop
+handler. A direct `experimentContext.requestScanStop(...)` call in such a worker
+therefore returns false. Supporting that path requires relaying a structured
+stop event to the client, tagging it with the active run ID, and forwarding it
+to the engine scan-control queue; ordinary print relaying alone is insufficient.
 
 ### Stop signal (single-threaded)
 
