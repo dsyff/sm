@@ -60,6 +60,10 @@ classdef measurementEngine < handle
         engineToClientBacklog (1, :) cell = cell(1, 0)
         workerFprintfQueue = parallel.pool.DataQueue.empty(0, 1)
         workerFprintfListener = []
+        workerEventQueue = parallel.pool.DataQueue.empty(0, 1)
+        workerEventListener = []
+        activeRunRequestId (1, 1) string = ""
+        secondaryStopForwardedRunId (1, 1) string = ""
     end
 
     methods (Static)
@@ -176,11 +180,15 @@ classdef measurementEngine < handle
                     obj.workerFprintfListener = [];
                     obj.workerFprintfQueue = parallel.pool.DataQueue;
                     obj.workerFprintfListener = afterEach(obj.workerFprintfQueue, @(payload) obj.onWorkerFprintf_(payload));
+                    obj.workerEventQueue = parallel.pool.DataQueue;
+                    obj.workerEventListener = afterEach(obj.workerEventQueue, @(payload) obj.onWorkerEvent_(payload));
                     spawnOnClientFcn = @(requestedBy, fcn, nOut, varargin) obj.spawnOnClientLocal_(requestedBy, fcn, nOut, varargin{:});
                 else
                     obj.pool = gcp("nocreate");
                     obj.workerFprintfListener = [];
                     obj.workerFprintfQueue = parallel.pool.DataQueue.empty(0, 1);
+                    obj.workerEventListener = [];
+                    obj.workerEventQueue = parallel.pool.DataQueue.empty(0, 1);
                     spawnOnClientFcn = [];
                 end
                 obj.rackLocal = measurementEngine.buildRackFromRecipe_(recipe, spawnOnClientFcn);
@@ -213,6 +221,8 @@ classdef measurementEngine < handle
             try
                 obj.workerFprintfListener = [];
                 obj.workerFprintfQueue = parallel.pool.DataQueue.empty(0, 1);
+                obj.workerEventListener = [];
+                obj.workerEventQueue = parallel.pool.DataQueue.empty(0, 1);
             catch
             end
 
@@ -745,6 +755,27 @@ classdef measurementEngine < handle
             end
         end
 
+        function onWorkerEvent_(obj, payload)
+            if ~isstruct(payload) || ~isfield(payload, "type") || payload.type ~= "scanStopRequest" || ...
+                    ~isfield(payload, "message") || strlength(string(payload.message)) == 0 || ~obj.isScanInProgress
+                return;
+            end
+
+            message = string(payload.message);
+            if obj.constructionMode == "rack"
+                experimentContext.requestScanStop(message);
+                return;
+            end
+
+            runId = obj.activeRunRequestId;
+            if strlength(runId) == 0 || obj.secondaryStopForwardedRunId == runId
+                return;
+            end
+            obj.secondaryStopForwardedRunId = runId;
+            obj.safeSendScanControl_(struct( ...
+                "type", "stop", "requestId", runId, "message", message));
+        end
+
         function fut = engineWorkerFuture_(obj)
             fut = [];
             if isempty(obj.spawnedFutures)
@@ -802,6 +833,9 @@ classdef measurementEngine < handle
             obj.workerFprintfListener = [];
             obj.workerFprintfQueue = parallel.pool.DataQueue;
             obj.workerFprintfListener = afterEach(obj.workerFprintfQueue, @(payload) obj.onWorkerFprintf_(payload));
+            obj.workerEventListener = [];
+            obj.workerEventQueue = parallel.pool.DataQueue;
+            obj.workerEventListener = afterEach(obj.workerEventQueue, @(payload) obj.onWorkerEvent_(payload));
 
             workerVerbose = obj.verboseWorker;
             logFile = obj.workerLogFile;
@@ -889,9 +923,12 @@ classdef measurementEngine < handle
             if isempty(obj.workerFprintfQueue) || ~isa(obj.workerFprintfQueue, "parallel.pool.DataQueue")
                 error("measurementEngine:MissingFprintfQueue", "Instrument worker relay queue is not initialized.");
             end
+            if isempty(obj.workerEventQueue) || ~isa(obj.workerEventQueue, "parallel.pool.DataQueue")
+                error("measurementEngine:MissingWorkerEventQueue", "Instrument worker event queue is not initialized.");
+            end
 
             fut = obj.parfevalOnClient(@measurementEngine.workerTaskMain_, nOut, ...
-                obj.workerFprintfQueue, requestedBy, fcn, varargin{:});
+                obj.workerFprintfQueue, obj.workerEventQueue, requestedBy, fcn, varargin{:});
             if ~isempty(obj.spawnedFutures)
                 obj.spawnedFutures(end).requestedBy = requestedBy;
             end
@@ -925,7 +962,7 @@ classdef measurementEngine < handle
             state = "";
             try
                 fut = obj.parfevalOnClient(@measurementEngine.workerTaskMain_, nOut, ...
-                    obj.workerFprintfQueue, requestedBy, fcn, args{:});
+                    obj.workerFprintfQueue, obj.workerEventQueue, requestedBy, fcn, args{:});
                 try
                     if ~isempty(fut) && isprop(fut, "State")
                         state = fut.State;
@@ -1750,9 +1787,12 @@ classdef measurementEngine < handle
 
     methods (Static)
         engineWorkerMain_(engineToClient, recipe, workerFprintfQueue, experimentRootPath, options)
-        function varargout = workerTaskMain_(workerFprintfQueue, requestedBy, fcn, varargin)
+        function varargout = workerTaskMain_(workerFprintfQueue, workerEventQueue, requestedBy, fcn, varargin)
             if isempty(workerFprintfQueue) || ~isa(workerFprintfQueue, "parallel.pool.DataQueue")
                 error("measurementEngine:MissingFprintfQueue", "workerTaskMain_ requires parallel.pool.DataQueue relay.");
+            end
+            if isempty(workerEventQueue) || ~isa(workerEventQueue, "parallel.pool.DataQueue")
+                error("measurementEngine:MissingWorkerEventQueue", "workerTaskMain_ requires parallel.pool.DataQueue event relay.");
             end
             if ~isa(fcn, "function_handle")
                 error("measurementEngine:InvalidWorkerSpawnFcn", "workerTaskMain_ expects a function_handle.");
@@ -1767,12 +1807,16 @@ classdef measurementEngine < handle
                 experimentContext.setExperimentRootPath(rootPath);
             end
             experimentContext.setFprintfRelay(workerFprintfQueue, requestedBy);
+            experimentContext.setScanStopRelay(@(message) send(workerEventQueue, struct( ...
+                "type", "scanStopRequest", "requestedBy", requestedBy, "message", string(message))));
+            stopRelayCleanup = onCleanup(@() experimentContext.setScanStopRelay([]));
 
             if nargout > 0
                 [varargout{1:nargout}] = fcn(varargin{:});
             else
                 fcn(varargin{:});
             end
+            clear stopRelayCleanup;
         end
     end
 end

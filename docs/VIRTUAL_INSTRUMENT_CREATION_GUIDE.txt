@@ -77,6 +77,11 @@ See `code/instruments/virtualInstrument_nE.m` for a concrete example.
 writes zero through the rack's immediate safety-write path and calls
 `experimentContext.requestScanStop(...)`.
 
+The same `experimentContext.requestScanStop(message)` call is supported inside
+secondary instrument workers created through `instrumentWorker`. The worker
+event is ignored when no scan is active; otherwise it is forwarded with the
+active run ID and follows the normal graceful-stop/final-save path.
+
 `virtualInstrument_hysteresis` maps `0 -> point1`, `0.5 -> point2`, and
 `1 -> point1`. Its full channel range is `[-0.25, 1.25]`. When the configured
 endpoint range includes zero, both outer endpoints map to physical zero and

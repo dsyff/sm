@@ -34,8 +34,17 @@ classdef experimentContext
             end
 
             state = experimentContext.scanStopStore_();
-            requested = ~isempty(state.handler);
-            if ~requested || state.requested
+            if isempty(state.handler)
+                relay = experimentContext.scanStopRelayStore_();
+                requested = ~isempty(relay);
+                if requested
+                    relay(message);
+                end
+                return;
+            end
+
+            requested = true;
+            if state.requested
                 return;
             end
 
@@ -164,6 +173,17 @@ classdef experimentContext
                 "handler", handler, "requested", false, "message", ""));
         end
 
+        function setScanStopRelay(relay)
+            arguments
+                relay = []
+            end
+            if ~isempty(relay) && ~isa(relay, "function_handle")
+                error("experimentContext:InvalidScanStopRelay", ...
+                    "setScanStopRelay expects a function_handle or [].");
+            end
+            experimentContext.scanStopRelayStore_(relay);
+        end
+
         function requested = isScanStopRequested()
             requested = experimentContext.scanStopStore_().requested;
         end
@@ -250,6 +270,18 @@ classdef experimentContext
                 stored = newValue;
             end
             state = stored;
+        end
+
+        function relay = scanStopRelayStore_(newValue)
+            persistent stored
+            if nargin >= 1
+                stored = newValue;
+            end
+            if isempty(stored)
+                relay = [];
+            else
+                relay = stored;
+            end
         end
     end
 end
