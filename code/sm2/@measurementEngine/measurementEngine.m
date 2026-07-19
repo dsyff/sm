@@ -33,7 +33,8 @@ classdef measurementEngine < handle
         workerLogFile (1, 1) string = ""
         clientLogFile (1, 1) string = ""
 
-        % Channel metadata (recipe mode)
+        % Rack metadata (recipe mode)
+        instrumentFriendlyNames (:, 1) string = string.empty(0, 1)
         channelFriendlyNames (:, 1) string = string.empty(0, 1)
         channelSizes (:, 1) double = double.empty(0, 1)
 
@@ -307,6 +308,41 @@ classdef measurementEngine < handle
                 obj.throwRemoteError_(reply);
             end
             value = reply.value;
+        end
+
+        function TF = hasInstrument(obj, instrumentName)
+            arguments
+                obj
+                instrumentName (1, 1) string {mustBeNonzeroLengthText}
+            end
+
+            names = obj.instrumentFriendlyNames;
+            if obj.constructionMode == "rack"
+                names = obj.rackLocal.instrumentTable.instrumentFriendlyNames;
+            end
+            TF = any(names == instrumentName);
+        end
+
+        function properties = getInstrumentProperties(obj, instrumentName)
+            arguments
+                obj
+                instrumentName (1, 1) string {mustBeNonzeroLengthText}
+            end
+
+            obj.assertServiceRpcAvailable_("list instrument properties");
+            if obj.constructionMode == "rack"
+                properties = obj.rackLocal.getInstrumentProperties(instrumentName);
+                return;
+            end
+
+            requestId = obj.nextRequestId_();
+            obj.safeSendToEngine_(struct("type", "instrumentPropertiesGet", ...
+                "requestId", requestId, "instrumentName", instrumentName));
+            reply = obj.waitForEngineReply_(requestId, "instrumentPropertiesGetDone");
+            if ~reply.ok
+                obj.throwRemoteError_(reply);
+            end
+            properties = reply.properties;
         end
 
         function setInstrumentProperty(obj, instrumentName, propertyName, value)
@@ -806,6 +842,7 @@ classdef measurementEngine < handle
                             if isfield(msg, "ok") && ~logical(msg.ok)
                                 obj.throwRemoteError_(msg);
                             end
+                            obj.instrumentFriendlyNames = msg.instrumentFriendlyNames(:);
                             obj.channelFriendlyNames = msg.channelFriendlyNames(:);
                             obj.channelSizes = msg.channelSizes(:);
                             break;

@@ -7,11 +7,13 @@ function values = smget(channelNames, propertyName)
 % Usage:
 %   values = smget("chan")
 %   values = smget(["ch1","ch2"])
+%   properties = smget("instrumentName")
 %   value = smget("instrumentName", "propertyName")
 %
 % Notes:
 % - channelNames must be a 1-D list; it will be converted to a column vector.
-% - values is the raw numeric column vector returned by rackGet (concatenated).
+% - A scalar instrument name lists all publicly readable properties.
+% - Channel values are the raw numeric column vector returned by rackGet (concatenated).
 
 global engine %#ok<GVMIS>
 
@@ -44,6 +46,11 @@ end
 
 if ~isvector(channelNames)
     error("smget:invalidChannelsShape", "channelNames must be a 1-D string array.")
+end
+
+if isscalar(channelNames) && engine.hasInstrument(channelNames)
+    values = engine.getInstrumentProperties(channelNames);
+    return
 end
 
 channelNames = channelNames(:);

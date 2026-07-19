@@ -1,7 +1,12 @@
 classdef virtualInstrument_gate < virtualInstrumentInterface
+    % Protected gate wrapper around raw Keithley voltage/current channels.
+    % After smready, change live limits on the engine worker with, for example:
+    %   smset("virtual_gate_tg", "currentMin", -1.5E-9)
+    %   smset("virtual_gate_tg", "currentMax", 1.5E-9)
+    %   smset("virtual_gate_tg", "occurrence", 3)
     properties
-        currentMin (1, 1) double = -inf
-        currentMax (1, 1) double = inf
+        currentMin (1, 1) double = -1.5E-9
+        currentMax (1, 1) double = 1.5E-9
         occurrence (1, 1) double {mustBePositive, mustBeInteger} = 3
     end
 
@@ -23,8 +28,8 @@ classdef virtualInstrument_gate < virtualInstrumentInterface
                 NameValueArgs.voltageChannelName (1, 1) string {mustBeNonzeroLengthText}
                 NameValueArgs.currentChannelName (1, 1) string {mustBeNonzeroLengthText}
                 NameValueArgs.viChannelName (1, 1) string {mustBeNonzeroLengthText}
-                NameValueArgs.currentMin (1, 1) double = -inf
-                NameValueArgs.currentMax (1, 1) double = inf
+                NameValueArgs.currentMin (1, 1) double = -1.5E-9
+                NameValueArgs.currentMax (1, 1) double = 1.5E-9
                 NameValueArgs.occurrence (1, 1) double {mustBePositive, mustBeInteger} = 3
             end
 

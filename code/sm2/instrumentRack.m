@@ -534,6 +534,41 @@ classdef (Sealed) instrumentRack < handle
             end
         end
 
+        function properties = getInstrumentProperties(obj, instrumentFriendlyName)
+            instrument = obj.findInstrumentForProperty_(instrumentFriendlyName);
+            propertyList = metaclass(instrument).PropertyList;
+            propertyList = propertyList(string({propertyList.GetAccess}) == "public");
+            [propertyName, order] = sort(string({propertyList.Name}).');
+            propertyList = propertyList(order);
+
+            access = repmat("read-only", numel(propertyList), 1);
+            valueClass = strings(numel(propertyList), 1);
+            value = strings(numel(propertyList), 1);
+            for idx = 1:numel(propertyList)
+                setAccess = propertyList(idx).SetAccess;
+                if (ischar(setAccess) || isstring(setAccess)) && string(setAccess) == "public"
+                    access(idx) = "read/write";
+                end
+                try
+                    propertyValue = instrument.(propertyList(idx).Name);
+                catch ME
+                    error("instrumentRack:PropertyListReadFailed", ...
+                        "Property listing failed while reading instrument ""%s"", property ""%s"": %s", ...
+                        instrumentFriendlyName, propertyList(idx).Name, ME.message);
+                end
+                try
+                    valueClass(idx) = string(class(propertyValue));
+                    valueText = regexprep(string(formattedDisplayText(propertyValue)), "<[^>]+>", "");
+                    value(idx) = strtrim(regexprep(valueText, "\s+", " "));
+                catch ME
+                    error("instrumentRack:PropertyListFormatFailed", ...
+                        "Property listing failed while formatting instrument ""%s"", property ""%s"": %s", ...
+                        instrumentFriendlyName, propertyList(idx).Name, ME.message);
+                end
+            end
+            properties = table(propertyName, access, valueClass, value);
+        end
+
         function setInstrumentProperty(obj, instrumentFriendlyName, propertyName, value)
             instrument = obj.findInstrumentForProperty_(instrumentFriendlyName);
             property = obj.findPublicProperty_(instrument, propertyName, true);
