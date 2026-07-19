@@ -1,12 +1,14 @@
 classdef virtualInstrument_hysteresis < virtualInstrumentInterface
-    % virtualInstrument_hysteresis - Map normalized inputs to a point1->point2->point1 setpoint.
+    % virtualInstrument_hysteresis - Map hysteresis inputs to a point1->point2->point1 setpoint.
     %
-    % Uses a single virtual channel ("hysteresis") that accepts normalized
-    % values in [0, 1]. The target hardware channel designated by
+    % Uses a single virtual channel ("hysteresis") that accepts values in
+    % [-0.25, 1.25]. The target hardware channel designated by
     % setChannelName is driven such that:
+    %   * -0.25 -> 0 when point1..point2 includes 0; otherwise point1
     %   * 0   -> point1
     %   * 0.5 -> point2
     %   * 1   -> point1
+    %   * 1.25 -> 0 when point1..point2 includes 0; otherwise point1
     % Intermediate inputs are piecewise-linear between these anchors.
     %
     % Thomas 20251113
@@ -45,9 +47,9 @@ classdef virtualInstrument_hysteresis < virtualInstrumentInterface
         function setWriteChannelHelper(obj, channelIndex, setValues)
             switch channelIndex
                 case 1
-                    normalizedInput = setValues(1);
-                    obj.validateNormalizedInput(normalizedInput);
-                    setTarget = obj.computeSetTarget(normalizedInput);
+                    hysteresisInput = setValues(1);
+                    obj.validateInput(hysteresisInput);
+                    setTarget = obj.computeSetTarget(hysteresisInput);
 
                     masterRackProxy = obj.getMasterRackProxy();
                     masterRackProxy.rackSetWrite(obj.setChannelName, setTarget);
@@ -75,26 +77,26 @@ classdef virtualInstrument_hysteresis < virtualInstrumentInterface
 
     methods (Access = private)
 
-        function validateNormalizedInput(~, normalizedInput)
-            if ~isfinite(normalizedInput)
+        function validateInput(~, hysteresisInput)
+            if ~isfinite(hysteresisInput)
                 error("virtualInstrument_hysteresis:NonFiniteInput", ...
                     "Hysteresis channel input must be finite.");
             end
-            if normalizedInput < 0 || normalizedInput > 1
+            if hysteresisInput < -0.25 || hysteresisInput > 1.25
                 error("virtualInstrument_hysteresis:InputOutOfRange", ...
-                    "Hysteresis channel input must be within [0, 1]. Received %g.", normalizedInput);
+                    "Hysteresis channel input must be within [-0.25, 1.25]. Received %g.", hysteresisInput);
             end
         end
 
-        function setTarget = computeSetTarget(obj, normalizedInput)
-            span = obj.point2 - obj.point1;
-            if normalizedInput <= 0.5
-                weight = normalizedInput / 0.5; % maps [0, 0.5] -> [0, 1]
-                setTarget = obj.point1 + weight * span;
-            else
-                weight = (normalizedInput - 0.5) / 0.5; % maps (0.5, 1] -> [0, 1]
-                setTarget = obj.point2 - weight * span;
+        function setTarget = computeSetTarget(obj, hysteresisInput)
+            outerTarget = obj.point1;
+            if min(obj.point1, obj.point2) <= 0 && max(obj.point1, obj.point2) >= 0
+                outerTarget = 0;
             end
+            setTarget = interp1( ...
+                [-0.25, 0, 0.5, 1, 1.25], ...
+                [outerTarget, obj.point1, obj.point2, obj.point1, outerTarget], ...
+                hysteresisInput);
         end
 
     end
