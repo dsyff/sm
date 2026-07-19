@@ -72,6 +72,7 @@ function engineWorkerMain_(engineToClient, recipe, workerFprintfQueue, experimen
         end
         send(engineToClient, struct( ...
             "type", "rackReady", ...
+            "instrumentFriendlyNames", rack.instrumentTable.instrumentFriendlyNames(:), ...
             "channelFriendlyNames", rack.channelTable.channelFriendlyNames(:), ...
             "channelSizes", double(rack.channelTable.channelSizes(:))));
 
@@ -79,7 +80,9 @@ function engineWorkerMain_(engineToClient, recipe, workerFprintfQueue, experimen
         if verbose
             wlog("rackReady failed: " + ME.identifier + " " + ME.message);
         end
-        send(engineToClient, struct("type", "rackReady", "channelFriendlyNames", string.empty(0, 1), "channelSizes", double.empty(0, 1), "ok", false, "error", measurementEngine.serializeException_(ME)));
+        send(engineToClient, struct("type", "rackReady", "instrumentFriendlyNames", string.empty(0, 1), ...
+            "channelFriendlyNames", string.empty(0, 1), "channelSizes", double.empty(0, 1), ...
+            "ok", false, "error", measurementEngine.serializeException_(ME)));
         return;
     end
 
@@ -374,6 +377,20 @@ function engineWorkerMain_(engineToClient, recipe, workerFprintfQueue, experimen
                 end
                 send(engineToClient, struct("type", "instrumentPropertyGetDone", ...
                     "requestId", requestId, "ok", ok, "value", value, "error", err));
+
+            case "instrumentPropertiesGet"
+                requestId = msg.requestId;
+                ok = true;
+                err = [];
+                properties = table();
+                try
+                    properties = rack.getInstrumentProperties(string(msg.instrumentName));
+                catch ME
+                    ok = false;
+                    err = measurementEngine.serializeException_(ME);
+                end
+                send(engineToClient, struct("type", "instrumentPropertiesGetDone", ...
+                    "requestId", requestId, "ok", ok, "properties", properties, "error", err));
 
             case "instrumentPropertySet"
                 requestId = msg.requestId;
