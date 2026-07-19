@@ -72,10 +72,16 @@ See `code/instruments/virtualInstrument_nE.m` for a concrete example.
 
 `virtualInstrument_gate` is the protected Keithley gate wrapper. Its `voltage`,
 `current`, and `VI` channels proxy physical rack channels. `currentMin`,
-`currentMax`, and `occurrence` are public properties with defaults `-inf`,
-`inf`, and `3`. After `occurrence` consecutive out-of-range current reads, it
+`currentMax`, and `occurrence` are public properties with defaults `-1.5E-9`,
+`1.5E-9`, and `3`. After `occurrence` consecutive out-of-range current reads, it
 writes zero through the rack's immediate safety-write path and calls
 `experimentContext.requestScanStop(...)`.
+
+`virtualInstrument_hysteresis` maps `0 -> point1`, `0.5 -> point2`, and
+`1 -> point1`. Its full channel range is `[-0.25, 1.25]`. When the configured
+endpoint range includes zero, both outer endpoints map to physical zero and
+the intervening segments are linear. Otherwise `-0.25` aliases `0` and `1.25`
+aliases `1`.
 
 Current `virtualInstrument_nE` channel names:
   - `n`
