@@ -139,6 +139,8 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
 
     try
         runId = obj.nextRequestId_();
+        obj.activeRunRequestId = runId;
+        obj.secondaryStopForwardedRunId = "";
         scanStart = datetime("now");
         scanForSave.startTime = scanStart;
         obj.isScanInProgress = true;
@@ -224,8 +226,12 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
         scanForSave.isComplete = runComplete;
         dataOut = measurementEngine.reshapeFlatData_(dataFlat, layout);
         obj.isScanInProgress = false;
+        obj.activeRunRequestId = "";
+        obj.secondaryStopForwardedRunId = "";
     catch ME
         obj.isScanInProgress = false;
+        obj.activeRunRequestId = "";
+        obj.secondaryStopForwardedRunId = "";
         rethrow(ME);
     end
 

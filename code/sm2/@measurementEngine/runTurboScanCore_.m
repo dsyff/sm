@@ -304,6 +304,9 @@ function [data, stopped] = runTurboScanCore_(rack, scanObj, scanControlToEngine,
                 continue;
             end
             if ctl.type == "stop"
+                if isfield(ctl, "message") && strlength(string(ctl.message)) > 0
+                    experimentContext.requestScanStop(string(ctl.message));
+                end
                 stopped = true;
             elseif ctl.type == "turboReady"
                 if ~isfield(ctl, "seq") || double(ctl.seq) == inFlightSeq

@@ -112,12 +112,14 @@ files and attempts PNG, PowerPoint, and FIG export before `engine.run` returns.
 Run metadata records `stopRequested` plus `stopMessage`. Queue mode then breaks
 without removing or starting the next queued entry.
 
-Secondary instrument workers spawned through `instrumentWorker` currently
-receive the `experimentContext.print` relay but not the run-scoped scan-stop
-handler. A direct `experimentContext.requestScanStop(...)` call in such a worker
-therefore returns false. Supporting that path requires relaying a structured
-stop event to the client, tagging it with the active run ID, and forwarding it
-to the engine scan-control queue; ordinary print relaying alone is insufficient.
+Secondary instrument workers spawned through `instrumentWorker` receive both
+the `experimentContext.print` relay and a structured scan-stop event relay.
+The client discards secondary-worker stop requests when no scan is active.
+During a scan it deduplicates the first request, attaches the active run ID, and
+forwards the message through the engine scan-control queue. The engine then
+invokes its normal `experimentContext.requestScanStop(...)` handler, so logging,
+metadata, final saving, and queue behavior match an engine-worker instrument
+request. The same event invokes the local handler in single-threaded mode.
 
 ### Stop signal (single-threaded)
 
