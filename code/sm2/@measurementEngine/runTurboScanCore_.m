@@ -103,6 +103,7 @@ function [data, stopped] = runTurboScanCore_(rack, scanObj, scanControlToEngine,
     didLogGet = false;
     firstDirty = false;
 
+    try
     for ptIdx = 1:totpoints
         pollControls();
         if stopped, break; end
@@ -287,6 +288,11 @@ function [data, stopped] = runTurboScanCore_(rack, scanObj, scanControlToEngine,
                 j = j + 1;
             end
         end
+    end
+    catch ME
+        stopped = true;
+        experimentContext.requestScanStop( ...
+            "Scan stopped after acquisition error: " + string(ME.message));
     end
 
     flushDirty(true);

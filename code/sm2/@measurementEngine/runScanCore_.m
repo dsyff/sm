@@ -103,6 +103,7 @@ function [data, stopped] = runScanCore_(rack, scanObj, onRead, figHandle, snapsh
     count = ones(1, nloops);
     totpoints = prod(npoints);
 
+    try
     for pointIdx = 1:totpoints
         % Stop check (figure handle)
         if ~stopped, stopped = shouldStop(); end
@@ -291,6 +292,11 @@ function [data, stopped] = runScanCore_(rack, scanObj, onRead, figHandle, snapsh
                 j = j + 1;
             end
         end
+    end
+    catch ME
+        stopped = true;
+        experimentContext.requestScanStop( ...
+            "Scan stopped after acquisition error: " + string(ME.message));
     end
 
     if enableSnapshot

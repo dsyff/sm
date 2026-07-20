@@ -136,8 +136,7 @@ classdef instrument_SR830 < instrumentInterface
                     tauIndex = str2double(strip(readline(handle)));
                     getValues = obj.timeConstValues(tauIndex + 1);
                 case {18, 19, 20, 21} % Vector channels: XY, XTheta, YTheta, RTheta
-                    response = strip(readline(handle));
-                    getValues = str2double(split(response, ','));
+                    getValues = obj.robustReadVector(handle, channelIndex);
                 otherwise
                     error('Unsupported channel index: %d', channelIndex);
             end
@@ -176,6 +175,33 @@ classdef instrument_SR830 < instrumentInterface
     end
 
     methods (Access = private)
+
+        function values = robustReadVector(obj, handle, channelIndex)
+            maxAttempts = 5;
+            detail = "";
+            for attempt = 1:maxAttempts
+                try
+                    if attempt > 1
+                        obj.getWriteChannelHelper(channelIndex);
+                    end
+                    response = strip(readline(handle));
+                    values = str2double(split(response, ","));
+                    if numel(values) == 2 && all(isfinite(values))
+                        return;
+                    end
+                    detail = "invalid response: " + response;
+                catch ME
+                    detail = "communication error: " + ME.message;
+                end
+                if attempt < maxAttempts
+                    experimentContext.print("SR830 SNAP %s (attempt %d/%d); retrying.", ...
+                        detail, attempt, maxAttempts);
+                end
+            end
+            error("instrument_SR830:InvalidSnapResponse", ...
+                "SR830 failed to provide a valid two-value SNAP response after %d attempts: %s", ...
+                maxAttempts, detail);
+        end
         
         function sensIndex = valueToSensitivityIndex(obj, sensValue)
             % Convert sensitivity value to instrument index
