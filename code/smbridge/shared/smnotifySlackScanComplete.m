@@ -1,10 +1,12 @@
-function resolvedUserId = smnotifySlackScanComplete(scanName, imagePath, dataFilePath, scanDuration, slack_notification_settings)
+function resolvedUserId = smnotifySlackScanComplete(scanName, imagePath, dataFilePath, scanDuration, slack_notification_settings, stopRequested, stopMessage)
     arguments
         scanName (1, 1) string
         imagePath (1, 1) string
         dataFilePath (1, 1) string = ""
         scanDuration (1, 1) duration = seconds(NaN)
         slack_notification_settings (1, 1) struct = struct("webhook", "", "api_token", "", "channel_id", "", "user_id", "", "account_email", "")
+        stopRequested (1, 1) logical = false
+        stopMessage (1, 1) string = ""
     end
     resolvedUserId = "";
 
@@ -12,18 +14,15 @@ function resolvedUserId = smnotifySlackScanComplete(scanName, imagePath, dataFil
         scanName = "scan";
     end
     if ~(isduration(scanDuration) && isfinite(seconds(scanDuration)) && scanDuration >= seconds(0))
-        warning("sm:MissingScanDuration", ...
-            "Slack image notification skipped: missing measured scan duration for scan %s", scanName);
+        slackWarning("Slack image notification skipped: missing measured scan duration for scan %s", scanName);
         return;
     end
     if ~isfile(imagePath)
-        warning("sm:MissingScanImage", ...
-            "Slack image notification skipped: image file not found %s", imagePath);
+        slackWarning("Slack image notification skipped: image file not found %s", imagePath);
         return;
     end
     if strlength(dataFilePath) == 0 || ~isfile(dataFilePath)
-        warning("sm:MissingScanDataFile", ...
-            "Slack image notification skipped: scan data file not found %s", dataFilePath);
+        slackWarning("Slack image notification skipped: scan data file not found %s", dataFilePath);
         return;
     end
 
@@ -44,7 +43,17 @@ function resolvedUserId = smnotifySlackScanComplete(scanName, imagePath, dataFil
     imageFilename = imageName + imageExt;
     [~, dataName, dataExt] = fileparts(dataFilePath);
     dataFilename = dataName + dataExt;
-    messageText = "Scan """ + scanName + """ from your queue has completed. The scan took " + durationText + ". Saved data file: " + dataFilename + ".";
+    if stopRequested
+        stopMessage = strip(stopMessage);
+        if strlength(stopMessage) == 0
+            stopMessage = "No stop reason was recorded.";
+        end
+        messageText = "Scan """ + scanName + """ from your queue was stopped after " + durationText + ...
+            ". Stop request: " + stopMessage + newline + "Saved partial data file: " + dataFilename + ".";
+    else
+        messageText = "Scan """ + scanName + """ from your queue has completed. The scan took " + durationText + ...
+            ". Saved data file: " + dataFilename + ".";
+    end
 
     token = "";
     if isfield(slack_notification_settings, "api_token")
@@ -52,8 +61,7 @@ function resolvedUserId = smnotifySlackScanComplete(scanName, imagePath, dataFil
     end
     token = strip(token);
     if strlength(token) == 0
-        warning("sm:MissingSlackApiToken", ...
-            "Slack image notification skipped: slack_notification_settings.api_token is empty.");
+        slackWarning("Slack image notification skipped: slack_notification_settings.api_token is empty.");
         return;
     end
 
@@ -63,8 +71,7 @@ function resolvedUserId = smnotifySlackScanComplete(scanName, imagePath, dataFil
     end
     cachedUserId = strip(cachedUserId);
     if ~isscalar(cachedUserId)
-        warning("sm:InvalidSlackNotificationSettings", ...
-            "Slack image notification skipped: cached Slack recipient id must be a scalar string.");
+        slackWarning("Slack image notification skipped: cached Slack recipient id must be a scalar string.");
         return;
     end
 
@@ -76,8 +83,7 @@ function resolvedUserId = smnotifySlackScanComplete(scanName, imagePath, dataFil
     end
     accountEmail = strip(accountEmail);
     if ~isscalar(accountEmail)
-        warning("sm:InvalidSlackNotificationSettings", ...
-            "Slack image notification skipped: slack_notification_settings.account_email must be a scalar string.");
+        slackWarning("Slack image notification skipped: slack_notification_settings.account_email must be a scalar string.");
         return;
     end
 
@@ -89,8 +95,7 @@ function resolvedUserId = smnotifySlackScanComplete(scanName, imagePath, dataFil
     end
     channelId = strip(channelId);
     if ~isscalar(channelId)
-        warning("sm:InvalidSlackNotificationSettings", ...
-            "Slack image notification skipped: slack_notification_settings.channel_id must be a scalar string.");
+        slackWarning("Slack image notification skipped: slack_notification_settings.channel_id must be a scalar string.");
         return;
     end
 
@@ -115,7 +120,7 @@ function resolvedUserId = smnotifySlackScanComplete(scanName, imagePath, dataFil
             try
                 lookupResp = webread(lookupUrl, optsGet);
             catch ME
-                warning("sm:SlackUserLookupFailed", "Slack image notification skipped: users.lookupByEmail failed (%s).", ME.message);
+                slackWarning("Slack image notification skipped: users.lookupByEmail failed (%s).", ME.message);
                 return;
             end
             if ~(isstruct(lookupResp) && isfield(lookupResp, "ok") && logical(lookupResp.ok))
@@ -123,13 +128,13 @@ function resolvedUserId = smnotifySlackScanComplete(scanName, imagePath, dataFil
                 if isstruct(lookupResp) && isfield(lookupResp, "error")
                     errText = string(lookupResp.error);
                 end
-                warning("sm:SlackUserLookupFailed", ...
+                slackWarning( ...
                     "Slack image notification skipped: users.lookupByEmail returned not-ok for account_email %s (%s).", ...
                     accountEmail, errText);
                 return;
             end
             if ~isfield(lookupResp, "user") || ~isfield(lookupResp.user, "id")
-                warning("sm:SlackUserLookupFailed", "Slack image notification skipped: users.lookupByEmail missing user id.");
+                slackWarning("Slack image notification skipped: users.lookupByEmail missing user id.");
                 return;
             end
             userId = string(lookupResp.user.id);
@@ -139,22 +144,22 @@ function resolvedUserId = smnotifySlackScanComplete(scanName, imagePath, dataFil
             openResp = webwrite("https://slack.com/api/conversations.open", ...
                 "users", char(userId), optsForm);
         catch ME
-            warning("sm:SlackDmOpenFailed", "Slack image notification skipped: conversations.open failed (%s).", ME.message);
+            slackWarning("Slack image notification skipped: conversations.open failed (%s).", ME.message);
             return;
         end
         if ~(isstruct(openResp) && isfield(openResp, "ok") && logical(openResp.ok))
-            warning("sm:SlackDmOpenFailed", "Slack image notification skipped: conversations.open returned not-ok.");
+            slackWarning("Slack image notification skipped: conversations.open returned not-ok.");
             return;
         end
         if ~isfield(openResp, "channel") || ~isfield(openResp.channel, "id")
-            warning("sm:SlackDmOpenFailed", "Slack image notification skipped: conversations.open missing channel id.");
+            slackWarning("Slack image notification skipped: conversations.open missing channel id.");
             return;
         end
         targetChannelId = string(openResp.channel.id);
     end
 
     if strlength(targetChannelId) == 0
-        warning("sm:MissingSlackChannelId", ...
+        slackWarning( ...
             "Slack image notification skipped: set slack_notification_settings.channel_id for default channel sends.");
         return;
     end
@@ -167,14 +172,14 @@ function resolvedUserId = smnotifySlackScanComplete(scanName, imagePath, dataFil
             uploadFilename = uploadFilenames(k);
             fid = fopen(currentPath, "rb");
             if fid < 0
-                warning("sm:UploadFileOpenFailed", "Slack image notification skipped: cannot open file %s", currentPath);
+                slackWarning("Slack image notification skipped: cannot open file %s", currentPath);
                 return;
             end
-            fileCloser = onCleanup(@() fclose(fid)); %#ok<NASGU>
+            fileCloser = onCleanup(@() fclose(fid));
             fileBytes = fread(fid, Inf, "*uint8");
             fileLen = numel(fileBytes);
             if fileLen == 0
-                warning("sm:EmptyUploadFile", "Slack image notification skipped: upload file is empty %s", currentPath);
+                slackWarning("Slack image notification skipped: upload file is empty %s", currentPath);
                 return;
             end
 
@@ -183,11 +188,11 @@ function resolvedUserId = smnotifySlackScanComplete(scanName, imagePath, dataFil
                 "length", char(string(fileLen)), ...
                 optsForm);
             if ~(isstruct(r1) && isfield(r1, "ok") && logical(r1.ok))
-                warning("sm:SlackUploadInitFailed", "Slack image notification skipped: files.getUploadURLExternal returned not-ok.");
+                slackWarning("Slack image notification skipped: files.getUploadURLExternal returned not-ok.");
                 return;
             end
             if ~isfield(r1, "upload_url") || ~isfield(r1, "file_id")
-                warning("sm:SlackUploadInitFailed", "Slack image notification skipped: upload url or file id missing.");
+                slackWarning("Slack image notification skipped: upload url or file id missing.");
                 return;
             end
             uploadUrl = string(r1.upload_url);
@@ -198,7 +203,7 @@ function resolvedUserId = smnotifySlackScanComplete(scanName, imagePath, dataFil
                 uint8(fileBytes));
             resp2 = req2.send(matlab.net.URI(char(uploadUrl)));
             if double(resp2.StatusCode) < 200 || double(resp2.StatusCode) >= 300
-                warning("sm:SlackUploadPutFailed", ...
+                slackWarning( ...
                     "Slack image notification skipped: upload to pre-signed URL failed with HTTP %d.", double(resp2.StatusCode));
                 return;
             end
@@ -215,7 +220,7 @@ function resolvedUserId = smnotifySlackScanComplete(scanName, imagePath, dataFil
                 if isstruct(r3) && isfield(r3, "error")
                     errText = string(r3.error);
                 end
-                warning("sm:SlackUploadCompleteFailed", "Slack image notification skipped: files.completeUploadExternal returned not-ok (%s).", errText);
+                slackWarning("Slack image notification skipped: files.completeUploadExternal returned not-ok (%s).", errText);
                 return;
             end
         end
@@ -229,11 +234,15 @@ function resolvedUserId = smnotifySlackScanComplete(scanName, imagePath, dataFil
             if isstruct(r4) && isfield(r4, "error")
                 errText = string(r4.error);
             end
-            warning("sm:SlackPostMessageFailed", "Slack image notification sent files but message post failed (%s).", errText);
+            slackWarning("Slack image notification sent files but message post failed (%s).", errText);
             return;
         end
     catch ME
-        warning("sm:SlackNotificationFailed", "Slack image notification skipped: %s", ME.message);
+        slackWarning("Slack image notification skipped: %s", ME.message);
         return;
     end
+end
+
+function slackWarning(message, varargin)
+    experimentContext.print("Slack notification warning: " + string(sprintf(char(message), varargin{:})));
 end

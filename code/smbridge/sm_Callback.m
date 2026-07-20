@@ -518,12 +518,9 @@ function Run
                     error("sm:MissingEngine", "measurementEngine not found. Please run smready(...) first.");
                 end
                 [~, runMetadata] = engine.run(scan, "", "turbo");
-                if isfield(runMetadata, "stopRequested") && runMetadata.stopRequested
-                    UpdateToGUI;
-                    drawnow;
-                    break;
-                end
-                if isfield(runMetadata, "isComplete") && runMetadata.isComplete
+                stopRequested = isfield(runMetadata, "stopRequested") && runMetadata.stopRequested;
+                isComplete = isfield(runMetadata, "isComplete") && runMetadata.isComplete;
+                if isComplete || stopRequested
                     notificationSettings = engine.slack_notification_settings;
                     if isfield(scan, "slack_notification_account_email") && strlength(string(scan.slack_notification_account_email)) > 0
                         overrideEmail = strip(string(scan.slack_notification_account_email));
@@ -535,10 +532,22 @@ function Run
                         end
                         notificationSettings.account_email = overrideEmail;
                     end
-                    resolvedUserId = smnotifySlackScanComplete(scan_name_for_notification, runMetadata.pngFile, runMetadata.filename, runMetadata.duration, notificationSettings);
-                    if strlength(string(resolvedUserId)) > 0 && isfield(notificationSettings, "account_email")
-                        engine.cacheSlackNotificationUserId(string(notificationSettings.account_email), string(resolvedUserId));
+                    try
+                        resolvedUserId = smnotifySlackScanComplete(scan_name_for_notification, runMetadata.pngFile, ...
+                            runMetadata.filename, runMetadata.duration, notificationSettings, ...
+                            stopRequested, string(runMetadata.stopMessage));
+                        if strlength(string(resolvedUserId)) > 0 && isfield(notificationSettings, "account_email")
+                            engine.cacheSlackNotificationUserId(string(notificationSettings.account_email), string(resolvedUserId));
+                        end
+                    catch ME
+                        experimentContext.print("Slack notification warning: notification for scan %s failed (%s).", ...
+                            scan_name_for_notification, ME.message);
                     end
+                end
+                if stopRequested
+                    UpdateToGUI;
+                    drawnow;
+                    break;
                 end
                 UpdateToGUI;
                 drawnow;
