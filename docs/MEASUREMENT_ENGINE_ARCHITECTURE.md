@@ -67,6 +67,12 @@ Both functions precompute all per-loop metadata (channels, wait times, data dime
 
 A third function, `runScanCore_`, handles **single-threaded** (rack mode) scans. It uses the live figure handle for stop detection instead of a PDQ.
 
+Recipe-built racks make two attempts for channel get/set operations in worker
+mode. If an acquisition-loop error still escapes that retry boundary, the scan
+core converts it into a run-scoped stop request. Turbo mode flushes its pending
+dirty data before `runDone`; the client then applies finish actions and writes
+the normal partial final save with `stopRequested` and `stopMessage` metadata.
+
 ## instrumentRack hot-path notes (2026-02)
 
 Recent rack-side changes that affect scan/runtime behavior:
@@ -173,7 +179,8 @@ constant values.
 Startup constants execute while the scan is marked active. Canceling during a
 startup set-check stops further startup actions and proceeds to the scan's
 `finish` actions. Finish actions run after normal completion, cancellation, or
-a scan error; an error is rethrown only after those actions have been attempted.
+an acquisition error. Acquisition-loop errors follow the graceful-stop path so
+partial data is saved; setup or finalization errors are rethrown after cleanup.
 
 ### `instrumentRackRecipe`
 

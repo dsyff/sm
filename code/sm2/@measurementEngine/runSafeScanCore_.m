@@ -59,6 +59,7 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, scanControlToEngine, 
     didLogGet = false;
     firstSafe = false;
 
+    try
     for ptIdx = 1:totpoints
         % Stop check
         if experimentContext.isScanStopRequested()
@@ -318,6 +319,11 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, scanControlToEngine, 
                 j = j + 1;
             end
         end
+    end
+    catch ME
+        stopped = true;
+        experimentContext.requestScanStop( ...
+            "Scan stopped after acquisition error: " + string(ME.message));
     end
 
     function TF = isCurrentControl(ctl)

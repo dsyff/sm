@@ -7,7 +7,7 @@ function rack = buildRackFromRecipe_(recipe, spawnOnClientFcn)
     if isempty(spawnOnClientFcn)
         rack.tryTimes = inf;
     else
-        rack.tryTimes = 1;
+        rack.tryTimes = 2;
     end
     assignin("base", "rack", rack);
     experimentContext.setSpawnOnClient(spawnOnClientFcn);
