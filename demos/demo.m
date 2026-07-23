@@ -197,7 +197,7 @@ virtual_nE_V_tg_limits = [-6, 6];
 
 % Protected gate current limits can be set here before smready, or changed later with:
 % smset("virtual_gate_bg", "currentMin", -1.5E-9); smset("virtual_gate_bg", "currentMax", 1.5E-9);
-% smset("virtual_gate_bg", "occurrence", 3); % consecutive out-of-limit current reads required
+% smset("virtual_gate_bg", "occurrence", 3); % at least 2 out-of-limit reads at strictly increasing |SET voltage|
 % Use "virtual_gate_tg" in the same commands for the top gate.
 virtual_gate_bg_Use = 0;
 virtual_gate_bg_currentMin = -1.5E-9;

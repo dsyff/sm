@@ -73,9 +73,13 @@ See `code/instruments/virtualInstrument_nE.m` for a concrete example.
 `virtualInstrument_gate` is the protected Keithley gate wrapper. Its `voltage`,
 `current`, and `VI` channels proxy physical rack channels. `currentMin`,
 `currentMax`, and `occurrence` are public properties with defaults `-1.5E-9`,
-`1.5E-9`, and `3`. After `occurrence` consecutive out-of-range current reads, it
+`1.5E-9`, and `3`; `occurrence` cannot be below `2`. Each current read is
+associated with the latest SET voltage. After `occurrence` consecutive
+out-of-range reads whose SET voltages increase strictly in absolute value, it
 writes zero through the rack's immediate safety-write path and calls
-`experimentContext.requestScanStop(...)`.
+`experimentContext.requestScanStop(...)`. An in-range read, unknown SET
+voltage, or non-increasing absolute SET voltage restarts the sequence at the
+current read.
 
 The same `experimentContext.requestScanStop(message)` call is supported inside
 secondary instrument workers created through `instrumentWorker`. The worker
