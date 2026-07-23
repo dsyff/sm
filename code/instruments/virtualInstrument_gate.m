@@ -4,10 +4,12 @@ classdef virtualInstrument_gate < virtualInstrumentInterface
     %   smset("virtual_gate_tg", "currentMin", -1.5E-9)
     %   smset("virtual_gate_tg", "currentMax", 1.5E-9)
     %   smset("virtual_gate_tg", "occurrence", 3)
+    % A current-limit sequence only advances while successive SET voltages
+    % increase strictly in absolute value.
     properties
         currentMin (1, 1) double = -1.5E-9
         currentMax (1, 1) double = 1.5E-9
-        occurrence (1, 1) double {mustBePositive, mustBeInteger} = 3
+        occurrence (1, 1) double {mustBeInteger, mustBeGreaterThanOrEqual(occurrence, 2)} = 3
     end
 
     properties (SetAccess = immutable)
@@ -18,6 +20,8 @@ classdef virtualInstrument_gate < virtualInstrumentInterface
 
     properties (Access = private)
         consecutiveLimitCount (1, 1) double = 0
+        latestSetVoltage (1, 1) double = NaN
+        previousLimitVoltage (1, 1) double = NaN
     end
 
     methods
@@ -30,7 +34,8 @@ classdef virtualInstrument_gate < virtualInstrumentInterface
                 NameValueArgs.viChannelName (1, 1) string {mustBeNonzeroLengthText}
                 NameValueArgs.currentMin (1, 1) double = -1.5E-9
                 NameValueArgs.currentMax (1, 1) double = 1.5E-9
-                NameValueArgs.occurrence (1, 1) double {mustBePositive, mustBeInteger} = 3
+                NameValueArgs.occurrence (1, 1) double ...
+                    {mustBeInteger, mustBeGreaterThanOrEqual(NameValueArgs.occurrence, 2)} = 3
             end
 
             obj@virtualInstrumentInterface(address, masterRackProxy);
@@ -54,6 +59,7 @@ classdef virtualInstrument_gate < virtualInstrumentInterface
                 error("virtualInstrument_gate:SetUnsupported", "Only the voltage channel is settable.");
             end
             obj.getMasterRackProxy().rackSetWrite(obj.voltageChannelName, setValues);
+            obj.latestSetVoltage = setValues(1);
         end
 
         function getValues = getReadChannelHelper(obj, channelIndex)
@@ -86,20 +92,36 @@ classdef virtualInstrument_gate < virtualInstrumentInterface
                     "currentMin must not exceed currentMax.");
             end
             if current >= obj.currentMin && current <= obj.currentMax
-                obj.consecutiveLimitCount = 0;
+                obj.resetLimitSequence_();
                 return;
             end
 
-            obj.consecutiveLimitCount = obj.consecutiveLimitCount + 1;
+            voltage = obj.latestSetVoltage;
+            if ~isfinite(voltage)
+                obj.resetLimitSequence_();
+                return;
+            end
+            if obj.consecutiveLimitCount == 0 || abs(voltage) > abs(obj.previousLimitVoltage)
+                obj.consecutiveLimitCount = obj.consecutiveLimitCount + 1;
+            else
+                obj.consecutiveLimitCount = 1;
+            end
+            obj.previousLimitVoltage = voltage;
             if obj.consecutiveLimitCount < obj.occurrence
                 return;
             end
 
-            obj.consecutiveLimitCount = 0;
+            obj.resetLimitSequence_();
             obj.getMasterRackProxy().rackSetWriteImmediate(obj.voltageChannelName, 0);
+            obj.latestSetVoltage = 0;
             experimentContext.requestScanStop(sprintf( ...
-                "%s current limit triggered: %.6g A is outside [%.6g, %.6g] A for %d consecutive reads; voltage was set to zero.", ...
-                obj.address, current, obj.currentMin, obj.currentMax, obj.occurrence));
+                "%s current limit triggered: %.6g A is outside [%.6g, %.6g] A for %d consecutive reads while |SET voltage| increased; latest SET voltage was %.6g V and was set to zero.", ...
+                obj.address, current, obj.currentMin, obj.currentMax, obj.occurrence, voltage));
+        end
+
+        function resetLimitSequence_(obj)
+            obj.consecutiveLimitCount = 0;
+            obj.previousLimitVoltage = NaN;
         end
     end
 end
