@@ -2,20 +2,24 @@ classdef instrument_SDG2042X_mixed_TARB < instrumentInterface
     % SDG2042X mixed multi-tone uploader using TrueARB sample-rate mode.
     %
     % Channels (all set-only; read returns cached values):
-    % - amplitude_1..7 (Vpp)
-    % - phase_1..7 (deg)
-    % - frequency_1..7 (Hz)
+    % - amplitude_1..25 (Vpp)
+    % - phase_1..25 (deg)
+    % - frequency_1..25 (Hz)
     % - global_phase_offset (deg)
     %
     % Upload happens every time any parameter is changed (setWrite).
 
     properties (Access = private)
-        cachedAmplitude (7, 1) double = zeros(7, 1);
-        cachedPhaseDeg (7, 1) double = zeros(7, 1);
-        cachedFrequencyHz (7, 1) double = zeros(7, 1);
+        cachedAmplitude (25, 1) double = zeros(25, 1);
+        cachedPhaseDeg (25, 1) double = zeros(25, 1);
+        cachedFrequencyHz (25, 1) double = zeros(25, 1);
         cachedGlobalPhaseOffsetDeg (1, 1) double = 0;
 
         waveformName (1, 1) string = "TARB_MIX";
+    end
+
+    properties (Constant, Access = private)
+        maxTones (1, 1) double = 25;
     end
 
     properties (SetAccess = immutable, GetAccess = private)
@@ -55,7 +59,7 @@ classdef instrument_SDG2042X_mixed_TARB < instrumentInterface
             obj.address = address;
             obj.communicationHandle = handle;
 
-            for sineIndex = 1:7
+            for sineIndex = 1:obj.maxTones
                 obj.addChannel(string(sprintf("amplitude_%d", sineIndex)));
                 obj.addChannel(string(sprintf("phase_%d", sineIndex)));
                 obj.addChannel(string(sprintf("frequency_%d", sineIndex)));
@@ -72,9 +76,9 @@ classdef instrument_SDG2042X_mixed_TARB < instrumentInterface
         end
 
         function getValues = getReadChannelHelper(obj, channelIndex)
-            if channelIndex <= 21
+            if channelIndex <= 3 * obj.maxTones
                 idx0 = channelIndex - 1;
-                groupIdx = floor(idx0 / 3) + 1; % 1..7
+                groupIdx = floor(idx0 / 3) + 1; % 1..25
                 typeIdx = mod(idx0, 3);         % 0..2
                 switch typeIdx
                     case 0
@@ -92,9 +96,9 @@ classdef instrument_SDG2042X_mixed_TARB < instrumentInterface
         end
 
         function setWriteChannelHelper(obj, channelIndex, setValues)
-            if channelIndex <= 21
+            if channelIndex <= 3 * obj.maxTones
                 idx0 = channelIndex - 1;
-                groupIdx = floor(idx0 / 3) + 1; % 1..7
+                groupIdx = floor(idx0 / 3) + 1; % 1..25
                 typeIdx = mod(idx0, 3);         % 0..2
                 switch typeIdx
                     case 0
@@ -174,7 +178,7 @@ classdef instrument_SDG2042X_mixed_TARB < instrumentInterface
             mixedData = zeros(1, numPoints);
 
             globalOffsetDeg = obj.cachedGlobalPhaseOffsetDeg;
-            for sineIndex = 1:7
+            for sineIndex = 1:obj.maxTones
                 ampVpp = obj.cachedAmplitude(sineIndex);
                 freqHz = obj.cachedFrequencyHz(sineIndex);
                 phaseDeg = obj.cachedPhaseDeg(sineIndex);
