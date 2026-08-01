@@ -186,6 +186,7 @@ MFLI_Use = 0;
 SDG2042X_mixed_Use = 0;
 SDG2042X_pure_Use = 0;
 SDG2042X_mixed_TARB_Use = 0;
+n_tones = 25; % Number of mixed-generator tones added to the rack (1-25)
 
 virtual_del_V_Use = 0;
 
@@ -1112,7 +1113,7 @@ if SDG2042X_mixed_Use
         uploadFundamentalFrequencyHz = 1, ...
         internalTimebase = true);
     recipe.addStatement("SDG2042X_mixed", "handle_SDG2042X_mixed.requireSetCheck = true;");
-    for i = 1:7
+    for i = 1:n_tones
         recipe.addChannel("SDG2042X_mixed", "amplitude_" + string(i), "mix_A_" + string(i));
         recipe.addChannel("SDG2042X_mixed", "phase_" + string(i), "mix_Th_" + string(i));
         recipe.addChannel("SDG2042X_mixed", "frequency_" + string(i), "mix_f_" + string(i));
@@ -1146,7 +1147,7 @@ if SDG2042X_mixed_TARB_Use
         uploadFundamentalFrequencyHz = 1, ...
         internalTimebase = true);
     recipe.addStatement("SDG2042X_mixed_TARB", "handle_SDG2042X_mixed_TARB.requireSetCheck = true;");
-    for i = 1:7
+    for i = 1:n_tones
         recipe.addChannel("SDG2042X_mixed_TARB", "amplitude_" + string(i), "mixTARB_A_" + string(i));
         recipe.addChannel("SDG2042X_mixed_TARB", "phase_" + string(i), "mixTARB_Th_" + string(i));
         recipe.addChannel("SDG2042X_mixed_TARB", "frequency_" + string(i), "mixTARB_f_" + string(i));
