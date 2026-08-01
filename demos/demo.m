@@ -186,7 +186,10 @@ MFLI_Use = 0;
 SDG2042X_mixed_Use = 0;
 SDG2042X_pure_Use = 0;
 SDG2042X_mixed_TARB_Use = 0;
-n_tones = 25; % Number of mixed-generator tones added to the rack (1-25)
+n_tones = 10; % Number of mixed-generator tones added to the rack (1-25)
+if ~isnumeric(n_tones) || ~isscalar(n_tones) || ~isfinite(n_tones) || n_tones ~= fix(n_tones) || n_tones < 1 || n_tones > 25
+    error("n_tones must be an integer from 1 to 25.");
+end
 
 virtual_del_V_Use = 0;
 
