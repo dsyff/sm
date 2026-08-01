@@ -133,7 +133,7 @@ The DDS classes set both channels to the selected reference oscillator and confi
 The mixed instruments always expose all 25 tones internally. The top-level `n_tones` setting in `demos/demo.m` controls only how many tone triplets are added to the rack:
 
 ```matlab
-n_tones = 25; % 1-25
+n_tones = 10; % 1-25
 
 for i = 1:n_tones
     recipe.addChannel("SDG2042X_mixed", "amplitude_" + string(i), "mix_A_" + string(i));
@@ -143,7 +143,7 @@ end
 recipe.addChannel("SDG2042X_mixed", "global_phase_offset", "mix_Th");
 ```
 
-The TARB block uses the same `n_tones` setting with `mixTARB_*` friendly names. The pure instrument always adds its two physical tone groups and does not use `n_tones`.
+The demo throws an error unless `n_tones` is an integer from 1 through 25. The TARB block uses the same setting with `mixTARB_*` friendly names. The pure instrument always adds its two physical tone groups and does not use `n_tones`.
 
 ## Operational notes
 
