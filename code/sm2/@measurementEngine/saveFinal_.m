@@ -192,9 +192,13 @@ function saveFinal_(obj, filename, scanForSave, data, figHandle)
     end
 
     try
+        originalVisible = exportFig.Visible;
+        restoreVisible = onCleanup(@() set(exportFig, "Visible", originalVisible));
+        exportFig.Visible = "on";
         savefig(exportFig, figstring);
     catch
     end
+    clear restoreVisible
 
     if useExportCopy && ~isempty(exportFig) && ishandle(exportFig)
         delete(exportFig);
