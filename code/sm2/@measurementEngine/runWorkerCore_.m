@@ -21,6 +21,7 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
     end
 
     stopSent = false;
+    userStopMessage = "";
     pendingClose = false;
 
     set(figHandle, "CurrentCharacter", char(0));
@@ -39,6 +40,7 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
         if selection ~= "Stop"
             return;
         end
+        userStopMessage = "Scan stopped by closing the figure.";
         obj.isScanInProgress = false;
         pendingClose = true;
     end
@@ -54,6 +56,7 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
         end
         if isequal(current_char, char(27))
             set(figHandle, "CurrentCharacter", char(0));
+            userStopMessage = "Scan stopped with Escape.";
             obj.isScanInProgress = false;
         end
     end
@@ -207,7 +210,8 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
             end
 
             if ~obj.isScanInProgress && ~stopSent
-                obj.safeSendScanControl_(struct("type", "stop", "requestId", runId));
+                obj.safeSendScanControl_(struct( ...
+                    "type", "stop", "requestId", runId, "message", userStopMessage));
                 stopSent = true;
             end
 
@@ -271,7 +275,8 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
             checkEsc();
             if ~obj.isScanInProgress
                 if ~stopSent
-                    obj.safeSendScanControl_(struct("type", "stop", "requestId", runId));
+                    obj.safeSendScanControl_(struct( ...
+                        "type", "stop", "requestId", runId, "message", userStopMessage));
                     stopSent = true;
                 else
                     obj.safeSendScanControl_(struct("type", "ack", "requestId", runId));

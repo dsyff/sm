@@ -1298,14 +1298,22 @@ classdef measurementEngine < handle
             try
                 obj.isScanInProgress = true;
                 experimentContext.setScanStopHandler(@onScanStopRequested);
-                scanStopCleanup = onCleanup(@() experimentContext.setScanStopHandler([]));
                 scanObj = obj.prepareScanConstants_(scanObj);
                 scanForSave.consts = scanObj.consts;
                 [dataOut, stopped] = measurementEngine.runScanCore_(rack, scanObj, @onRead, figHandle, duration.empty, [], @onTemp, [], @() obj.isScanInProgress);
+                if stopped && ~scanForSave.stopRequested
+                    stopMessage = "Scan stopped with Escape.";
+                    if pendingClose
+                        stopMessage = "Scan stopped by closing the figure.";
+                    end
+                    experimentContext.requestScanStop(stopMessage);
+                end
             catch ME
+                experimentContext.setScanStopHandler([]);
                 obj.isScanInProgress = false;
                 rethrow(ME);
             end
+            experimentContext.setScanStopHandler([]);
             scanEnd = datetime("now");
             scanForSave.startTime = scanStart;
             scanForSave.endTime = scanEnd;
