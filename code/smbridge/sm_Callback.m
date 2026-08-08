@@ -39,6 +39,9 @@ function Open(h)
         smrunEnsureGlobals();
 
         smaux.sm=h;
+        if isfield(smaux.sm, "run_pbh") && ishandle(smaux.sm.run_pbh)
+            set(smaux.sm.run_pbh, "Interruptible", "off", "BusyAction", "cancel");
+        end
         if isfield(smaux.sm, "editrack") && ishandle(smaux.sm.editrack)
             setappdata(smaux.sm.editrack, "smEditRackBaseLabel", erase(string(get(smaux.sm.editrack, "Label")), " (scan active)"));
         end
@@ -479,6 +482,10 @@ end
 
 function Run
     global smaux engine
+    if ~isempty(engine) && isa(engine, "measurementEngine") && engine.isScanInProgress
+        return;
+    end
+
     smbridgeAddSharedPaths();
     smbridgeUpdateEditRackMenuState(true);
     cleanupEditRackMenu = onCleanup(@() smbridgeUpdateEditRackMenuState(false));

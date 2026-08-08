@@ -339,6 +339,8 @@ end
         'FontSize',14,...
         'Position',[leftX panYbuttons-2*(buttonH+buttonGap) leftW buttonH],...
         'BackgroundColor','green',...
+        'Interruptible','off',...
+        'BusyAction','cancel',...
         'Callback',@Run);
     
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1217,6 +1219,10 @@ end
 % Callback for running the scan (call to smrun)
 function Run(varargin)
     global smaux smscan engine;
+
+    if ~isempty(engine) && isa(engine, "measurementEngine") && engine.isScanInProgress
+        return;
+    end
 
     smbridgeAddSharedPaths();
     syncScanPptFromGUI();
