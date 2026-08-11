@@ -105,14 +105,6 @@ slide_count = get(op.Slides,'Count');
 slide_count = int32(double(slide_count)+1);
 new_slide = invoke(op.Slides,'Add',slide_count,11);
 
-% Insert text into the title object:
-set(new_slide.Shapes.Title.TextFrame.TextRange,'Text',text.title);
-set(new_slide.Shapes.Title, 'Left', 100);
-set(new_slide.Shapes.Title, 'Top', 0);
-set(new_slide.Shapes.Title, 'Height', 30);
-set(new_slide.Shapes.Title.TextFrame.TextRange.Font,'Size',single(20));
-set(new_slide.Shapes.Title.TextFrame.TextRange.Font,'Bold',true);
-
 % Get height and width of slide:
 slide_H = double(op.PageSetup.SlideHeight);
 slide_W = double(op.PageSetup.SlideWidth);
@@ -120,13 +112,18 @@ if ~isfinite(slide_H) || ~isfinite(slide_W) || slide_H <= 0 || slide_W <= 0
     error("smsaveppt:InvalidSlideSize", ...
         "PowerPoint slide size is invalid (width=%g, height=%g).", slide_W, slide_H);
 end
-titleTop = 0;
-titleHeight = 100;
-try
-    titleTop = double(get(new_slide.Shapes.Title, "Top"));
-    titleHeight = double(get(new_slide.Shapes.Title, "Height"));
-catch
-end
+
+% Place the title below the timestamp at the left slide edge.
+titleTop = 20;
+titleHeight = 30;
+set(new_slide.Shapes.Title.TextFrame.TextRange,'Text',text.title);
+set(new_slide.Shapes.Title, 'Left', 0);
+set(new_slide.Shapes.Title, 'Top', titleTop);
+set(new_slide.Shapes.Title, 'Width', slide_W);
+set(new_slide.Shapes.Title, 'Height', titleHeight);
+set(new_slide.Shapes.Title.TextFrame.TextRange.Font,'Size',single(20));
+set(new_slide.Shapes.Title.TextFrame.TextRange.Font,'Bold',true);
+
 contentTop = min(slide_H, max(0, titleTop + titleHeight));
 maxwidth = slide_W;
 maxheight = max(1, slide_H - contentTop);
@@ -305,9 +302,10 @@ end
 
 
 % Make a textbox for comments
-text1 = invoke(new_slide.Shapes(1),'AddTextbox',1,single(300),single(0),single(600),single(100));
+text1 = invoke(new_slide.Shapes(1),'AddTextbox',1,single(slide_W / 2),single(0),single(slide_W / 2),single(100));
 set(text1.TextFrame.TextRange.Font,'Size',single(9));
 set(text1.TextFrame.TextRange,'Text',char(g));
+set(text1.TextFrame.TextRange.ParagraphFormat,'Alignment',3);
 
 % Make a textbox for timestamp
 text2 = invoke(new_slide.Shapes(1),'AddTextbox',1,single(0),single(0),single(175),single(100));
