@@ -18,5 +18,9 @@ Key concepts:
 - The measurement engine runs in a separate process.
 - Scan GUI `Run` = safe mode. Point-by-point updates. Slower, safer. Use for gate-range tests.
 - Queue GUI `Run` = turbo mode. Asynchronous, fast.
-- Press `Escape` to stop. Instant only in safe mode.
+- "When finished or canceled" is Set After: checked rows set channels, then unchecked rows record final values before the final save.
+- Protected `V_bg`/`V_tg` channels can immediately zero a gate and gracefully stop after 3 out-of-limit current reads at strictly increasing absolute SET voltage (configurable, minimum 2); use the protected current/VI channels, not `_raw`, for this check.
+- Press `Escape` or confirm closing the plot window to stop gracefully. Finish actions and final saving still run, and queued entries that have not started remain pending.
+- Numeric range edits in the scan GUI preserve textbox focus; repeated Run clicks during an active scan are ignored.
+- The programmatic queue-GUI redesign is documented in `docs/QUEUE_GUI_DESIGN.md` but is not implemented yet.
 - Save and load scan definitions to reuse common scans and avoid rebuilding them each session.

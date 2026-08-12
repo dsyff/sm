@@ -7,7 +7,7 @@
 - For recipe-based local debugging (no engine worker), call `smready(recipe, singleThreaded=true)`
 - Explicit-rack debug-only scripts belong in `tests/` (git-ignored), not `demos/`
 - For rack-script migration to recipe, see `docs/INSTRUMENT_SETUP_GUIDE.txt` ("RACK SCRIPT -> RECIPE SCRIPT MIGRATION")
-- The familiar GUI interface is largely unchanged from the original system
+- Use `smgui_small` to edit and run one scan; use `sm` for the scans library and turbo queue
 - Use `smget("channel")` and `smset("channel", value)` for quick channel access
 - Use `smget("instrument", "property")` and `smset("instrument", "property", value)` for screened public-property access on the engine rack
 - Use `smplot('filename.mat')` to recreate plots
@@ -24,14 +24,16 @@
 - **Worker Engine (safe/turbo)**: Turbo mode uses a multi-process pipeline (client GUI + worker engine process) and asynchronous snapshot updates to achieve extremely fast scan speed. When constructed from an `instrumentRackRecipe`, measurements run on a worker engine by default; use `singleThreaded=true` to materialize the recipe on the client for local debugging. The scan GUI "Run" uses safe mode, while the queue GUI "Run" uses turbo mode.
 - **Class-First Design**: The new codebase uses classes extensively for cleaner structure. Instrument classes inherit `instrumentInterface`, so most plumbing is already handled; simple instruments should require minimal code (typically just constructor/channel definitions plus small get/set helper methods).
 - **Slack Notifications**: Completed and stop-requested queue scans can send their saved image/data and status to Slack; stop notifications include the stop reason. Set `recipe.slack_notification_account_email` to your Slack account email to send a private DM notification; leave it empty to send to the configured group channel. Slack connection/API failures are non-fatal and are reported through `experimentContext`.
-- **GUI Split**: `smgui_small` edits a single scan; `sm`/`sm_Callback` manage the scans library + queue. Rack menu items in the scan GUI are placeholders.
+- **Finish Actions ("Set After")**: The scan GUI's **When finished or canceled** panel uses checked rows to set scalar channels and unchecked rows to record their final values. All sets run before the reads, and the actions run before final saving after normal completion, cancellation, or a handled acquisition error. Refreshed rows are saved in `scan.finish` and included in MAT/PPT output.
+- **Protected Gates**: Enable `virtual_gate_bg_Use` or `virtual_gate_tg_Use` in `demos/demo.m`, then use the protected `V_bg`/`V_tg` and `I_bg`/`VI_bg` channels rather than their `_raw` counterparts. After `occurrence` out-of-range current reads (default 3, minimum 2) at strictly increasing absolute protected SET voltages, the gate is zeroed immediately without a ramp and the active scan stops gracefully, preserving its reason and partial final data. Change live limits with `smset("virtual_gate_bg", "currentMin", ...)`, `currentMax`, or `occurrence`.
+- **GUI Updates**: `smgui_small` now has scrollable Constants, loop, and finish-action sections, and numeric range edits update in place so the active textbox keeps focus. **File > Edit Rack** can apply ramp-rate, ramp-threshold, and software-limit changes while no scan is active. The current `sm` queue GUI still manages `smaux.scans`/`smaux.smq`; its programmatic singleton replacement is specified in `docs/QUEUE_GUI_DESIGN.md` but is not implemented yet. Repeated Run clicks during an active scan are ignored.
 - **Loading Data**: `smload` returns a `payload` struct with named channel arrays in `.channels` and set axes in `.setchannels`.
 - **Data Compatibility**: Same file format as legacy system - existing analysis code works unchanged
 - **Virtual Instruments**: Create complex scans (e.g., non-linear ramping) and parameter conversions (e.g., gate voltages to n/E)
 	- Base class `virtualInstrumentInterface` lives in `code/sm2`; concrete helpers in `code/instruments` should follow the layout shown in `instrument_demo.m`.
-- **Scan Stop (Escape)**: Use the Escape key to stop a scan. Plot updates are blocking, so you can stop immediately if something is wrong.
-- **Close Button (X)**: Clicking the close “X” will not close the scan figure immediately; it pauses the scan and asks for confirmation.
-- **Avoid Nested rackGet**: The rack rejects new batch gets while hardware channels are active; virtual instruments run after that lock is released, so call the rack only from `virtualGetChannelRead` if you need derived reads
+- **Scan Stop**: Escape, a confirmed plot-window close, and instrument-requested safety stops follow the same graceful-stop path: finish actions and final saving still run, the stop reason is recorded, and a queue leaves its remaining entries pending.
+- **Close Button (X)**: Clicking the plot-window close “X” during a scan asks for confirmation before stopping and closing it.
+- **Avoid Nested `rackGet`**: The rack rejects nested batch gets while physical channels are active. Virtual channels run after that lock is released, so derived reads belong in a virtual instrument's `getReadChannelHelper` and must use its `instrumentRackProxy`.
 - **Worker-Safe Logging (Required)**: In `code/sm2` and `code/instruments`, always use `experimentContext.print(...)` for terminal/status output. Do not use base MATLAB `fprintf(...)`/`disp(...)` there for status logging; worker-to-client log routing depends on `experimentContext.print(...)`. (Demo/utility scripts can use local printing when worker routing is irrelevant.)
 
 ## 📘 CANONICAL GUIDES
@@ -42,6 +44,7 @@
 - `docs/MEASUREMENT_ENGINE_ARCHITECTURE.md` (engine/recipe/safe/turbo architecture + worker protocol)
 - `docs/general_coding_guidelines.md` (repo-wide coding guidelines; includes git guidelines)
 - `docs/SMBRIDGE_GUI_ARCHITECTURE.txt` (smbridge GUI structure and scan flow)
+- `docs/QUEUE_GUI_DESIGN.md` (current design for the not-yet-implemented programmatic queue GUI)
 - `docs/ATTODRY_AUTOFOCUS_AUTOSHIFT_DESIGN.md` (XY autoshift control design, stepper physics, tolerance rationale)
 
 ## 🔧 TROUBLESHOOTING:
@@ -51,4 +54,4 @@
 
 ---
 
-📅 **Last Updated**: 20260610
+📅 **Last Updated**: 20260812

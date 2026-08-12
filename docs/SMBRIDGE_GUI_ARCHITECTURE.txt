@@ -46,11 +46,28 @@ Scan GUI vs Queue GUI
 ---------------------
 - Scan GUI (smgui_small)
   - Edits a single smscan: loop ranges, set/get channels, constants, plots.
+  - Provides a scrollable "When finished or canceled" panel for `scan.finish`:
+    checked rows set scalar channels and unchecked rows record final values.
+  - Numeric range edits refresh affected controls in place so the active edit
+    box retains focus; changing a channel selector still rebuilds the section.
+  - File > Edit Rack opens `smeditrack` for ramp-rate, ramp-threshold, and
+    software-limit changes; editing is disabled while a scan is active.
   - Stores plot selections in smscan.disp (1D/2D entries).
   - Uses shared state helpers for data path, PPT, and run number.
 - Queue/Main GUI (sm + sm_Callback)
   - Manages smaux.scans (available scans) and smaux.smq (queue).
   - Launches smgui_small for editing, and measurementEngine.run for execution.
+  - Leaves pending queue entries in place after Escape, a confirmed scan-figure
+    close, or an instrument-requested stop.
+
+Both Run callbacks ignore repeated clicks while a scan is already active.
+
+Current vs planned queue GUI
+----------------------------
+The current queue GUI remains the GUIDE-based `sm`/`sm_Callback` implementation.
+`docs/QUEUE_GUI_DESIGN.md` records the not-yet-implemented programmatic singleton
+replacement; its proposed controls and close behavior must not be described as
+current behavior.
 
 Paths and shared state
 ----------------------
@@ -60,11 +77,6 @@ Paths and shared state
   - run/:  smrun* (run number state)
 - measurementEngine resolves relative PPT paths using experimentContext.getExperimentRootPath() when set.
 - Default data folder is computed under experimentContext.getExperimentRootPath() when available.
-
-Menu items not yet implemented
-------------------------------
-- Scan GUI menu:
-  - Open Rack / Save Rack / Edit Rack are placeholders (show Not Implemented).
 
 Notes
 -----
@@ -118,3 +130,5 @@ Each scan writes a .mat file containing:
   - scan.disp : display selections with fields {loop, channel, dim} referencing
     indices into the scalar channel list used for plotting.
   - scan.consts : preserved; set constants applied at run start.
+  - scan.finish : applied before final saving; checked rows are set first and
+    unchecked rows are then refreshed with their final recorded values.
