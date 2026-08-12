@@ -36,6 +36,27 @@
 - **Avoid Nested `rackGet`**: The rack rejects nested batch gets while physical channels are active. Virtual channels run after that lock is released, so derived reads belong in a virtual instrument's `getReadChannelHelper` and must use its `instrumentRackProxy`.
 - **Worker-Safe Logging (Required)**: In `code/sm2` and `code/instruments`, always use `experimentContext.print(...)` for terminal/status output. Do not use base MATLAB `fprintf(...)`/`disp(...)` there for status logging; worker-to-client log routing depends on `experimentContext.print(...)`. (Demo/utility scripts can use local printing when worker routing is irrelevant.)
 
+## 🔔 SLACK API SETUP
+
+Create `secrets.env` in the repository root, next to `README.md`. The file is already git-ignored; never commit Slack tokens or copy them into a demo/recipe.
+
+For the normal private-DM workflow, the only required secret is the Slack API token:
+
+```dotenv
+slack_notification_api_token=xoxb-your-bot-token
+```
+
+Set the recipient in the copied recipe:
+
+```matlab
+recipe.slack_notification_account_email = "you@example.com";
+```
+
+- To send to the configured group channel instead, leave `recipe.slack_notification_account_email` empty and add `slack_notification_channel_id=C0123456789` to `secrets.env`.
+- `slack_notification_account_email` is also accepted in `secrets.env`, but normally omit it so each copied recipe controls its DM recipient. If set there, it takes precedence over the recipe value and over the channel ID.
+- Run or rerun `sminit` after creating or changing `secrets.env`, then call `smready(...)` so the loaded settings reach the measurement engine.
+- `slack_notification_webhook` is still loaded for compatibility, but webhook-only setup is not sufficient for the current image/data upload path.
+
 ## 📘 CANONICAL GUIDES
 - `docs/INSTRUMENT_SETUP_GUIDE.txt` (setup workflow, rack usage)
 - `docs/INSTRUMENT_CREATION_GUIDE.txt` (instrument authoring best practices)
