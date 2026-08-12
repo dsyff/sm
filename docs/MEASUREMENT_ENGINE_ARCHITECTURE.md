@@ -163,6 +163,7 @@ Worker scan functions do not package full temp-save payloads. During worker scan
 `measurementScan` is a self-contained, serializable scan description. It records:
 
 - constants (`consts`)
+- finish actions (`finish`; the scan GUI's "Set After" controls)
 - loop definitions (`loops`, including `startwait`/`waittime` as `duration`)
 - save-loop metadata (`saveloop`)
 - plot selections (`disp`)
@@ -175,6 +176,15 @@ If a scan includes any legacy "get constants" entries (`consts(k).set == 0`),
 `measurementEngine.run(...)` refreshes them once at run start (after applying
 any checked set constants) so the saved MAT/PPT metadata reflects run-start
 constant values.
+
+`scan.finish` uses the same row contract as `scan.consts`. Nonzero `set` rows
+set scalar channels first; zero `set` rows then read and store the final values:
+
+```matlab
+scan.finish = [ ...
+    struct("setchan", "V_bg", "val", 0, "set", 1), ...
+    struct("setchan", "I_bg", "val", NaN, "set", 0)];
+```
 
 Startup constants execute while the scan is marked active. Canceling during a
 startup set-check stops further startup actions and proceeds to the scan's

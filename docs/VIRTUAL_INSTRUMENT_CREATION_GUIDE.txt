@@ -77,9 +77,10 @@ See `code/instruments/virtualInstrument_nE.m` for a concrete example.
 associated with the latest SET voltage. After `occurrence` consecutive
 out-of-range reads whose SET voltages increase strictly in absolute value, it
 writes zero through the rack's immediate safety-write path and calls
-`experimentContext.requestScanStop(...)`. An in-range read, unknown SET
-voltage, or non-increasing absolute SET voltage restarts the sequence at the
-current read.
+`experimentContext.requestScanStop(...)`. Only SETs made through the protected
+virtual `voltage` channel update this history; raw-channel writes bypass it. An
+in-range read or unknown SET voltage clears the sequence. A non-increasing
+absolute SET voltage on an out-of-range read restarts the sequence at count 1.
 
 The same `experimentContext.requestScanStop(message)` call is supported inside
 secondary instrument workers created through `instrumentWorker`. The worker

@@ -1,6 +1,6 @@
 # Programmatic Queue GUI Design
 
-Status: living design record. Confirmed decisions are binding; unresolved items remain listed at the end until the design interview closes.
+Status: design only; implementation has not started. Confirmed decisions are binding; unresolved items remain listed at the end until the design interview closes.
 
 ## Goals
 
