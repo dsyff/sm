@@ -32,9 +32,18 @@ classdef instrument_K2450 < instrumentInterface
         end
 
         function flush(obj)
-            % Trigger one-time auto-zero and flush communication buffer.
-            writeline(obj.communicationHandle, ":SENSe:AZERo:ONCE");
-            flush(obj.communicationHandle);
+            handle = obj.communicationHandle;
+            flush(handle);
+            writeline(handle, ":SENSe:CURRent:AZERo:STATe?");
+            response = strip(readline(handle));
+            autoZeroEnabled = str2double(response);
+            if ~ismember(autoZeroEnabled, [0, 1])
+                error("instrument_K2450:InvalidAutoZeroState", ...
+                    "Keithley 2450 returned invalid current auto-zero state: %s.", response);
+            end
+            if ~autoZeroEnabled
+                writeline(handle, ":SENSe:AZERo:ONCE");
+            end
         end
 
     end
