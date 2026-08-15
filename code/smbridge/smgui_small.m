@@ -110,6 +110,7 @@ end
        'MenuBar','none', ...
        'NumberTitle','off',...
        'IntegerHandle','off',...
+       'Units','pixels',...
        'Position',[0,0,figWidth,figHeight],...
        'Toolbar','none',...
        'Resize','off');
@@ -350,9 +351,133 @@ end
     Update();
     registerSmallGuiWithPptState();
     registerSmallGuiWithDataState();
+    initialFigurePosition = get(smaux.smgui.figure1, "Position");
+    setappdata(smaux.smgui.figure1, "smguiMinimumSize", initialFigurePosition(3:4));
+    setappdata(smaux.smgui.figure1, "smguiLastHeight", initialFigurePosition(4));
+    setappdata(smaux.smgui.figure1, "smguiResizeBusy", false);
+    set(smaux.smgui.figure1, "SizeChangedFcn", @ResizeFigure, "Resize", "on");
+    ResizeFigure(smaux.smgui.figure1, []);
     set(smaux.smgui.figure1,'Visible','on')
 
 end 
+
+
+function ResizeFigure(fig, ~)
+    global smaux
+    if ~isgraphics(fig) || ~isstruct(smaux) || ~isfield(smaux, "smgui")
+        return;
+    end
+    minimumSize = getappdata(fig, "smguiMinimumSize");
+    if isempty(minimumSize) || isequal(getappdata(fig, "smguiResizeBusy"), true)
+        return;
+    end
+
+    setappdata(fig, "smguiResizeBusy", true);
+    resizeCleanup = onCleanup(@() setappdata(fig, "smguiResizeBusy", false));
+    pos = get(fig, "Position");
+    top = pos(2) + pos(4);
+    pos(3) = minimumSize(1);
+    if pos(4) < minimumSize(2)
+        pos(4) = minimumSize(2);
+        pos(2) = top - pos(4);
+    end
+    if ~isequal(pos, get(fig, "Position"))
+        set(fig, "Position", pos);
+    end
+
+    previousHeight = getappdata(fig, "smguiLastHeight");
+    if isempty(previousHeight)
+        previousHeight = pos(4);
+    end
+    heightChange = pos(4) - previousHeight;
+    if isfield(smaux.smgui, "nullpanel") && isgraphics(smaux.smgui.nullpanel)
+        set(smaux.smgui.nullpanel, "Position", [0 0 minimumSize(1)+5 pos(4)]);
+    end
+    if heightChange ~= 0
+        adjustGuiPositions([ ...
+            "scantitle_panel", "datapanel", "pptpanel", "commenttext_sth", ...
+            "numloops_sth", "numloops_eth", "saveloop_sth", "saveloop_eth", ...
+            "oneDplot_sth", "twoDplot_sth"], heightChange, 0);
+        adjustGuiPositions(["oneDplot_lbh", "twoDplot_lbh"], 0, heightChange);
+    end
+    resizeScanBody(pos(4));
+    setappdata(fig, "smguiLastHeight", pos(4));
+end
+
+
+function adjustGuiPositions(fieldNames, yChange, heightChange)
+    global smaux
+    for fieldName = fieldNames
+        if ~isfield(smaux.smgui, fieldName) || ~isgraphics(smaux.smgui.(fieldName))
+            continue;
+        end
+        pos = get(smaux.smgui.(fieldName), "Position");
+        pos(2) = pos(2) + yChange;
+        pos(4) = pos(4) + heightChange;
+        set(smaux.smgui.(fieldName), "Position", pos);
+    end
+end
+
+
+function resizeScanBody(figHeight)
+    global smaux
+    if ~isfield(smaux.smgui, "scan_body_view_ph") || ...
+            ~isgraphics(smaux.smgui.scan_body_view_ph) || ...
+            ~isfield(smaux.smgui, "scan_body_content_ph") || ...
+            ~isgraphics(smaux.smgui.scan_body_content_ph)
+        return;
+    end
+
+    m = smguiLayoutMetrics();
+    bodyBottom = 5;
+    bodyHeight = max(100, figHeight - m.topPad - smguiFixedInfoHeight(m) - m.margin - bodyBottom);
+    scrollValue = getStoredScroll("scan_body_scroll", "scan_body_scroll_slh", 0);
+    if isfield(smaux.smgui, "scan_body_resize_scroll")
+        requestedScroll = smaux.smgui.scan_body_resize_scroll;
+    else
+        requestedScroll = scrollValue;
+    end
+    content = smaux.smgui.scan_body_content_ph;
+    contentPos = get(content, "Position");
+    contentHeight = contentPos(4);
+    maxScroll = max(0, contentHeight - bodyHeight);
+    scrollValue = min(max(requestedScroll, 0), maxScroll);
+
+    set(smaux.smgui.scan_body_view_ph, "Position", [m.bodyX bodyBottom m.panelW bodyHeight]);
+    set(get(content, "Parent"), "Position", [0 0 m.panelW bodyHeight]);
+    contentPos(2) = bodyHeight - contentHeight + scrollValue;
+    set(content, "Position", contentPos);
+
+    sliderExists = isfield(smaux.smgui, "scan_body_scroll_slh") && ...
+        ~isempty(smaux.smgui.scan_body_scroll_slh) && isgraphics(smaux.smgui.scan_body_scroll_slh);
+    if maxScroll == 0
+        if sliderExists
+            delete(smaux.smgui.scan_body_scroll_slh);
+        end
+        smaux.smgui.scan_body_scroll_slh = [];
+    else
+        sliderPosition = [m.bodyX + m.panelW + 1 bodyBottom m.scrollW bodyHeight];
+        sliderCallback = {@ScrollContent, content, bodyHeight, contentHeight, "body", 0};
+        if sliderExists
+            targetValue = maxScroll - scrollValue;
+            if targetValue <= get(smaux.smgui.scan_body_scroll_slh, "Max")
+                set(smaux.smgui.scan_body_scroll_slh, "Value", targetValue);
+            end
+            set(smaux.smgui.scan_body_scroll_slh, ...
+                "Min", 0, "Max", maxScroll, "Value", targetValue, ...
+                "SliderStep", [min(1, 24 / maxScroll) min(1, 120 / maxScroll)], ...
+                "Position", sliderPosition, "Callback", sliderCallback);
+        else
+            smaux.smgui.scan_body_scroll_slh = uicontrol("Parent", smaux.smgui.nullpanel, ...
+                "Style", "slider", "Min", 0, "Max", maxScroll, ...
+                "Value", maxScroll - scrollValue, ...
+                "SliderStep", [min(1, 24 / maxScroll) min(1, 120 / maxScroll)], ...
+                "Position", sliderPosition, "Callback", sliderCallback);
+        end
+    end
+    smaux.smgui.scan_body_scroll = scrollValue;
+    smaux.smgui.scan_body_resize_scroll = requestedScroll;
+end
 
 
 function SaveScan(hObject,eventdata)
@@ -1500,6 +1625,7 @@ function makescanbody(varargin)
         [m.bodyX + m.panelW + 1 bodyBottom m.scrollW bodyHeight], ...
         m.panelW, bodyHeight, contentHeight, outerScroll, "body", 0);
     smaux.smgui.scan_body_scroll = outerScroll;
+    smaux.smgui.scan_body_resize_scroll = outerScroll;
 
     y = contentHeight - constHeight;
     makeConstantsPanel(smaux.smgui.scan_body_content_ph, [0 y m.panelW constHeight], constRows, constScroll);
@@ -1816,6 +1942,7 @@ function ScrollContent(slider, ~, content, viewH, contentH, kind, idx)
     set(content, "Position", pos);
     if kind == "body"
         smaux.smgui.scan_body_scroll = scrollValue;
+        smaux.smgui.scan_body_resize_scroll = scrollValue;
     elseif kind == "const"
         smaux.smgui.const_scroll = scrollValue;
     elseif kind == "finish"
