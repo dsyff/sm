@@ -50,6 +50,9 @@ Scan GUI vs Queue GUI
     checked rows set scalar channels and unchecked rows record final values.
   - Numeric range edits refresh affected controls in place so the active edit
     box retains focus; changing a channel selector still rebuilds the section.
+  - The window has a fixed width and an initial-height minimum. Dragging its
+    bottom edge taller expands the plot lists and scan-body viewport without
+    rebuilding edit controls or losing uncommitted text.
   - File > Edit Rack opens `smeditrack` for ramp-rate, ramp-threshold, and
     software-limit changes; editing is disabled while a scan is active.
   - Stores plot selections in smscan.disp (1D/2D entries).
@@ -66,8 +69,9 @@ Current vs planned queue GUI
 ----------------------------
 The current queue GUI remains the GUIDE-based `sm`/`sm_Callback` implementation.
 `docs/QUEUE_GUI_DESIGN.md` records the not-yet-implemented programmatic singleton
-replacement; its proposed controls and close behavior must not be described as
-current behavior.
+replacement and is the binding functional/visual regression contract for that
+work. Its proposed controls and close behavior must not be described as current
+behavior until the replacement lands.
 
 Paths and shared state
 ----------------------
