@@ -41,7 +41,6 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, scanControlToEngine, 
 
     % Set constants.
     stopped = false;
-    rack.flush();
     setCheckTimeout_s = seconds(rack.batchSetTimeout);
     if ~(isfinite(setCheckTimeout_s) && setCheckTimeout_s > 0)
         error("measurementEngine:InvalidSetCheckTimeout", "rack.batchSetTimeout must be a finite, positive duration.");
@@ -60,6 +59,7 @@ function [data, stopped] = runSafeScanCore_(rack, scanObj, scanControlToEngine, 
     firstSafe = false;
 
     try
+        rack.flush();
     for ptIdx = 1:totpoints
         % Stop check
         if experimentContext.isScanStopRequested()

@@ -62,7 +62,6 @@ function [data, stopped] = runTurboScanCore_(rack, scanObj, scanControlToEngine,
     end
 
     stopped = false;
-    rack.flush();
     setCheckTimeout_s = seconds(rack.batchSetTimeout);
     if ~(isfinite(setCheckTimeout_s) && setCheckTimeout_s > 0)
         error("measurementEngine:InvalidSetCheckTimeout", "rack.batchSetTimeout must be a finite, positive duration.");
@@ -76,6 +75,7 @@ function [data, stopped] = runTurboScanCore_(rack, scanObj, scanControlToEngine,
     snapInt_s = seconds(snapshotInterval);
     lastSnapTic = tic;
     updateInFlight = false;
+    abortRequested = false;
     inFlightSeq = 0;
     nextSeq = 0;
 
@@ -104,6 +104,7 @@ function [data, stopped] = runTurboScanCore_(rack, scanObj, scanControlToEngine,
     firstDirty = false;
 
     try
+        rack.flush();
     for ptIdx = 1:totpoints
         pollControls();
         if stopped, break; end
@@ -310,6 +311,9 @@ function [data, stopped] = runTurboScanCore_(rack, scanObj, scanControlToEngine,
                 continue;
             end
             if ctl.type == "stop"
+                if isfield(ctl, "abort") && logical(ctl.abort)
+                    abortRequested = true;
+                end
                 if isfield(ctl, "message") && strlength(string(ctl.message)) > 0
                     experimentContext.requestScanStop(string(ctl.message));
                 end
@@ -324,12 +328,18 @@ function [data, stopped] = runTurboScanCore_(rack, scanObj, scanControlToEngine,
 
     function flushDirty(force)
         pollControls();
+        if abortRequested
+            return;
+        end
         if dirtyN == 0 && plotN == 0 && resetN == 0
             return;
         end
         if force
             while updateInFlight
                 pollControls();
+                if abortRequested
+                    return;
+                end
                 if updateInFlight
                     pause(1E-6);
                 end

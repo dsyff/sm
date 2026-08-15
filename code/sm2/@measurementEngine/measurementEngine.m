@@ -62,6 +62,7 @@ classdef measurementEngine < handle
         workerFprintfListener = []
         workerEventQueue = parallel.pool.DataQueue.empty(0, 1)
         workerEventListener = []
+        scanStopRequested (1, 1) logical = false
         activeRunRequestId (1, 1) string = ""
         secondaryStopForwardedRunId (1, 1) string = ""
     end
@@ -514,6 +515,9 @@ classdef measurementEngine < handle
                 mode (1, 1) string {mustBeMember(mode, ["safe", "turbo"])} = "safe"
             end
 
+            if obj.isScanInProgress
+                error("measurementEngine:ScanActive", "Cannot start a scan while another scan is in progress.");
+            end
             runMetadata = struct("filename", "", "pngFile", "", "pngSaved", false, ...
                 "duration", seconds(NaN), "isComplete", false, "stopRequested", false, "stopMessage", "");
             scanObj = scan;
@@ -525,6 +529,9 @@ classdef measurementEngine < handle
                 error("measurementEngine:InvalidScan", "scan must be a struct or measurementScan.");
             end
 
+            obj.isScanInProgress = true;
+            obj.scanStopRequested = false;
+            try
             scanObj.constsPrepared = false;
             obj.logClient_("run() entered mode=" + mode + " name=" + scanObj.name + " loops=" + numel(scanObj.loops));
             autoRun = false;
@@ -601,6 +608,13 @@ classdef measurementEngine < handle
                 runMetadata.stopRequested = logical(scanForSave.stopRequested);
                 runMetadata.stopMessage = string(scanForSave.stopMessage);
             end
+            catch ME
+                obj.isScanInProgress = false;
+                obj.scanStopRequested = false;
+                rethrow(ME);
+            end
+            obj.isScanInProgress = false;
+            obj.scanStopRequested = false;
         end
 
         function cacheSlackNotificationUserId(obj, accountEmail, userId)
@@ -651,7 +665,7 @@ classdef measurementEngine < handle
                 obj.rackLocal.rackSetWrite(channelNames, values);
                 startTime = datetime("now");
                 while true
-                    if stopOnCancel && ~obj.isScanInProgress
+                    if stopOnCancel && obj.scanStopRequested
                         return;
                     end
                     if obj.rackLocal.rackSetCheck(channelNames)
@@ -679,7 +693,7 @@ classdef measurementEngine < handle
 
             startTime = datetime("now");
             while true
-                if stopOnCancel && ~obj.isScanInProgress
+                if stopOnCancel && obj.scanStopRequested
                     return;
                 end
                 requestId = obj.nextRequestId_();
@@ -707,6 +721,12 @@ classdef measurementEngine < handle
         function assertServiceRpcAvailable_(obj, actionText)
             if obj.isScanInProgress
                 error("measurementEngine:ScanActive", "Cannot %s while a scan is in progress.", actionText);
+            end
+        end
+
+        function onCloseDuringFinalization_(obj, figHandle, ~)
+            if ~obj.isScanInProgress && ishandle(figHandle)
+                delete(figHandle);
             end
         end
 
@@ -1026,9 +1046,10 @@ classdef measurementEngine < handle
                 error("measurementEngine:InvalidTimeout", "waitForEngineReply_ timeout must be a finite, positive duration.");
             end
             startTime = datetime("now");
+            runScopedTypes = ["safePoint", "turboDirty", "scanStopRequested", "runDone"];
             while true
                 if ~isempty(obj.engineToClientBacklog)
-                    for i = 1:numel(obj.engineToClientBacklog)
+                    for i = numel(obj.engineToClientBacklog):-1:1
                         candidate = obj.engineToClientBacklog{i};
                         if ~isstruct(candidate) || ~isfield(candidate, "type") || ~isfield(candidate, "requestId")
                             continue;
@@ -1037,6 +1058,9 @@ classdef measurementEngine < handle
                             reply = candidate;
                             obj.engineToClientBacklog(i) = [];
                             return;
+                        end
+                        if any(string(candidate.type) == runScopedTypes)
+                            obj.engineToClientBacklog(i) = [];
                         end
                     end
                 end
@@ -1052,6 +1076,9 @@ classdef measurementEngine < handle
                         if msgType == expectedType && isfield(msg, "requestId") && msg.requestId == requestId
                             reply = msg;
                             return;
+                        end
+                        if any(string(msgType) == runScopedTypes)
+                            continue;
                         end
                         if isfield(msg, "requestId")
                             obj.engineToClientBacklog{end+1} = msg;
@@ -1134,7 +1161,7 @@ classdef measurementEngine < handle
 
             getMask = ~setMask;
             if any(getMask)
-                if stopOnCancel && ~obj.isScanInProgress
+                if stopOnCancel && obj.scanStopRequested
                     return;
                 end
                 getchans = string({actions(getMask).setchan});
@@ -1190,8 +1217,11 @@ classdef measurementEngine < handle
             runError = MException.empty;
             try
                 [dataOut, scanForSave, figHandle, pendingClose] = obj.runLocalCore_(rack, scanObj, tempFile);
+                if ishandle(figHandle)
+                    set(figHandle, "HandleVisibility", "on", ...
+                        "CloseRequestFcn", @(src, event) obj.onCloseDuringFinalization_(src, event));
+                end
             catch runError
-                obj.isScanInProgress = false;
                 scanForSave = scanObj.toSaveStruct();
                 scanForSave.isComplete = false;
             end
@@ -1215,8 +1245,11 @@ classdef measurementEngine < handle
             runError = MException.empty;
             try
                 [dataOut, scanForSave, figHandle, pendingClose] = obj.runWorkerCore_(scanObj, tempFile);
+                if ishandle(figHandle)
+                    set(figHandle, "HandleVisibility", "on", ...
+                        "CloseRequestFcn", @(src, event) obj.onCloseDuringFinalization_(src, event));
+                end
             catch runError
-                obj.isScanInProgress = false;
                 scanForSave = scanObj.toSaveStruct();
                 scanForSave.isComplete = false;
             end
@@ -1238,7 +1271,6 @@ classdef measurementEngine < handle
 
             pendingClose = false;
             lastCount = ones(1, plotState.nloops);
-            set(figHandle, "CurrentCharacter", char(0));
             set(figHandle, "CloseRequestFcn", @onClose);
 
             function onClose(~, ~)
@@ -1254,7 +1286,7 @@ classdef measurementEngine < handle
                 if selection ~= "Stop"
                     return;
                 end
-                obj.isScanInProgress = false;
+                obj.scanStopRequested = true;
                 pendingClose = true;
             end
 
@@ -1277,7 +1309,7 @@ classdef measurementEngine < handle
             function onScanStopRequested(message)
                 scanForSave.stopRequested = true;
                 scanForSave.stopMessage = string(message);
-                obj.isScanInProgress = false;
+                obj.scanStopRequested = true;
             end
 
             function onTemp(~, data, ~)
@@ -1296,21 +1328,24 @@ classdef measurementEngine < handle
             scanStart = datetime("now");
             scanForSave.startTime = scanStart;
             try
-                obj.isScanInProgress = true;
                 experimentContext.setScanStopHandler(@onScanStopRequested);
                 scanObj = obj.prepareScanConstants_(scanObj);
                 scanForSave.consts = scanObj.consts;
-                [dataOut, stopped] = measurementEngine.runScanCore_(rack, scanObj, @onRead, figHandle, duration.empty, [], @onTemp, [], @() obj.isScanInProgress);
+                [dataOut, stopped] = measurementEngine.runScanCore_(rack, scanObj, @onRead, figHandle, duration.empty, [], @onTemp, [], @() ~obj.scanStopRequested);
                 if stopped && ~scanForSave.stopRequested
                     stopMessage = "Scan stopped with Escape.";
                     if pendingClose
-                        stopMessage = "Scan stopped by closing the figure.";
+                        stopMessage = "Scan stopped after a close request for the scan figure.";
                     end
                     experimentContext.requestScanStop(stopMessage);
                 end
             catch ME
                 experimentContext.setScanStopHandler([]);
-                obj.isScanInProgress = false;
+                try
+                    set(figHandle, "CloseRequestFcn", "closereq");
+                    delete(figHandle);
+                catch
+                end
                 rethrow(ME);
             end
             experimentContext.setScanStopHandler([]);
@@ -1319,7 +1354,6 @@ classdef measurementEngine < handle
             scanForSave.endTime = scanEnd;
             scanForSave.duration = scanEnd - scanStart;
             scanForSave.isComplete = ~stopped;
-            obj.isScanInProgress = false;
         end
 
         [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, scanObj, tempFile)
@@ -1332,18 +1366,31 @@ classdef measurementEngine < handle
                 figNum = double(scanForSave.figure);
             end
 
-            if ishandle(figNum)
-                figHandle = figure(figNum);
+            figHandle = findall(groot, "Type", "figure", "Number", figNum);
+            if ~isempty(figHandle)
+                figHandle = figHandle(1);
+                set(figHandle, "HandleVisibility", "off", "CloseRequestFcn", "");
                 clf(figHandle);
             else
+                defaultCloseRequestFcn = get(groot, "DefaultFigureCloseRequestFcn");
+                defaultHandleVisibility = get(groot, "DefaultFigureHandleVisibility");
+                set(groot, "DefaultFigureCloseRequestFcn", "", ...
+                    "DefaultFigureHandleVisibility", "off");
+                defaultFigureCleanup = onCleanup(@() set(groot, ...
+                    "DefaultFigureCloseRequestFcn", defaultCloseRequestFcn, ...
+                    "DefaultFigureHandleVisibility", defaultHandleVisibility));
                 figHandle = figure(figNum);
+                clear defaultFigureCleanup
                 try
                     figHandle.WindowState = "maximized";
                 catch
                 end
-                drawnow;
             end
+            set(figHandle, "CurrentCharacter", char(0));
+            set(figHandle, "HandleVisibility", "on");
+            figure(figHandle);
 
+            try
             modeLabel = "single threaded";
             if obj.constructionMode == "recipe"
                 if scanObj.mode == "turbo"
@@ -1419,7 +1466,16 @@ classdef measurementEngine < handle
             end
 
             % Ensure the empty plots render before the first data update.
+            set(figHandle, "HandleVisibility", "off", "CloseRequestFcn", "");
             drawnow;
+            catch ME
+                try
+                    set(figHandle, "CloseRequestFcn", "closereq");
+                    delete(figHandle);
+                catch
+                end
+                rethrow(ME);
+            end
         end
 
         function [plotState, lastCount] = applySafePlotUpdate_(~, plotState, lastCount, loopIdx, count, plotValues)
@@ -1503,7 +1559,7 @@ classdef measurementEngine < handle
             end
         end
 
-        saveFinal_(obj, filename, scanForSave, data, figHandle)
+        saveFinal_(~, filename, scanForSave, data, figHandle)
     end
 
     methods (Static, Access = private)

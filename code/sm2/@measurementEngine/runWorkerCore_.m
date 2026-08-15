@@ -6,10 +6,8 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
     scanForSave.stopRequested = false;
     scanForSave.stopMessage = "";
 
-    [figHandle, plotState] = obj.initLiveFigure_(scanObj, scanForSave);
     layout = measurementEngine.computeFlatDataLayout_(scanObj);
     dataFlat = measurementEngine.initializeFlatData_(layout);
-    lastCount = ones(1, plotState.nloops);
 
     saveLI = double(scanObj.saveloop);
     if ~(isfinite(saveLI) && saveLI >= 1 && mod(saveLI, 1) == 0)
@@ -20,11 +18,14 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
         error("measurementEngine:InvalidSaveMinInterval", "saveMinInterval must be a finite, positive duration.");
     end
 
+    [figHandle, plotState] = obj.initLiveFigure_(scanObj, scanForSave);
+    lastCount = ones(1, plotState.nloops);
     stopSent = false;
     userStopMessage = "";
     pendingClose = false;
+    runId = "";
+    runSent = false;
 
-    set(figHandle, "CurrentCharacter", char(0));
     set(figHandle, "CloseRequestFcn", @onClose);
 
     function onClose(~, ~)
@@ -40,9 +41,8 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
         if selection ~= "Stop"
             return;
         end
-        userStopMessage = "Scan stopped by closing the figure.";
-        obj.isScanInProgress = false;
         pendingClose = true;
+        latchClientStop("Scan stopped after a close request for the scan figure.");
     end
 
     function checkEsc()
@@ -56,9 +56,27 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
         end
         if isequal(current_char, char(27))
             set(figHandle, "CurrentCharacter", char(0));
-            userStopMessage = "Scan stopped with Escape.";
-            obj.isScanInProgress = false;
+            latchClientStop("Scan stopped with Escape.");
         end
+    end
+
+    function latchClientStop(message)
+        if ~scanForSave.stopRequested
+            userStopMessage = message;
+            scanForSave.stopRequested = true;
+            scanForSave.stopMessage = userStopMessage;
+        end
+        obj.scanStopRequested = true;
+        sendClientStop();
+    end
+
+    function sendClientStop()
+        if stopSent || strlength(runId) == 0
+            return;
+        end
+        obj.safeSendScanControl_(struct( ...
+            "type", "stop", "requestId", runId, "message", userStopMessage));
+        stopSent = true;
     end
 
     function applyDataDirty(channelIdx, flatIdx, values)
@@ -146,7 +164,6 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
         obj.secondaryStopForwardedRunId = "";
         scanStart = datetime("now");
         scanForSave.startTime = scanStart;
-        obj.isScanInProgress = true;
         scanObj = obj.prepareScanConstants_(scanObj);
         scanForSave.consts = scanObj.consts;
         msg = struct("type", "run", "requestId", runId, "scan", scanObj);
@@ -158,6 +175,7 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
             msg.snapshotInterval = snapshotInterval;
         end
         obj.safeSendToEngine_(msg);
+        runSent = true;
         obj.logClient_("run started " + runId + " mode=" + scanObj.mode + " name=" + scanObj.name);
 
         gotAnyData = false;
@@ -209,10 +227,8 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
                 nextWaitLogTime = datetime("now") + seconds(2);
             end
 
-            if ~obj.isScanInProgress && ~stopSent
-                obj.safeSendScanControl_(struct( ...
-                    "type", "stop", "requestId", runId, "message", userStopMessage));
-                stopSent = true;
+            if obj.scanStopRequested && ~stopSent
+                sendClientStop();
             end
 
             fut = obj.engineWorkerFuture_();
@@ -227,15 +243,27 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
         scanForSave.startTime = scanStart;
         scanForSave.endTime = scanEnd;
         scanForSave.duration = scanEnd - scanStart;
-        scanForSave.isComplete = runComplete;
+        scanForSave.isComplete = runComplete && ~scanForSave.stopRequested;
         dataOut = measurementEngine.reshapeFlatData_(dataFlat, layout);
-        obj.isScanInProgress = false;
         obj.activeRunRequestId = "";
         obj.secondaryStopForwardedRunId = "";
     catch ME
-        obj.isScanInProgress = false;
+        if runSent
+            try
+                obj.safeSendScanControl_(struct( ...
+                    "type", "stop", "requestId", runId, ...
+                    "message", "Scan stopped after a client error: " + string(ME.message), ...
+                    "abort", true));
+            catch
+            end
+        end
         obj.activeRunRequestId = "";
         obj.secondaryStopForwardedRunId = "";
+        try
+            set(figHandle, "CloseRequestFcn", "closereq");
+            delete(figHandle);
+        catch
+        end
         rethrow(ME);
     end
 
@@ -254,6 +282,9 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
             return;
         end
         if msg.requestId ~= runId
+            if any(string(msgType) == ["safePoint", "turboDirty", "scanStopRequested", "runDone"])
+                return;
+            end
             obj.engineToClientBacklog{end+1} = msg;
             return;
         end
@@ -273,11 +304,9 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
             maybeSaveTemp(loopIdx == saveLI);
             drawnow;
             checkEsc();
-            if ~obj.isScanInProgress
+            if obj.scanStopRequested
                 if ~stopSent
-                    obj.safeSendScanControl_(struct( ...
-                        "type", "stop", "requestId", runId, "message", userStopMessage));
-                    stopSent = true;
+                    sendClientStop();
                 else
                     obj.safeSendScanControl_(struct("type", "ack", "requestId", runId));
                 end
@@ -310,10 +339,11 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
         end
 
         if msgType == "scanStopRequested"
-            scanForSave.stopRequested = true;
-            scanForSave.stopMessage = string(msg.message);
+            if ~scanForSave.stopRequested
+                scanForSave.stopRequested = true;
+                scanForSave.stopMessage = string(msg.message);
+            end
             experimentContext.print("Engine worker requested scan stop: %s", scanForSave.stopMessage);
-            obj.isScanInProgress = false;
             return;
         end
 
