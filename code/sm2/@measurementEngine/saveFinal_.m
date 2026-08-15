@@ -1,17 +1,10 @@
-function saveFinal_(obj, filename, scanForSave, data, figHandle)
+function saveFinal_(~, filename, scanForSave, data, figHandle)
     arguments
-        obj
+        ~
         filename (1, 1) string {mustBeNonzeroLengthText}
         scanForSave (1, 1) struct
         data (1, :) cell
         figHandle = []
-    end
-    if isempty(figHandle) || ~ishandle(figHandle)
-        try
-            figHandle = gcf;
-        catch
-            figHandle = [];
-        end
     end
     closeDialogShown = false;
     if ~isempty(figHandle) && ishandle(figHandle)
@@ -21,7 +14,12 @@ function saveFinal_(obj, filename, scanForSave, data, figHandle)
     savePayload = struct();
     savePayload.scan = scanForSave;
     savePayload.data = data;
-    save(filename, "-struct", "savePayload");
+    try
+        save(filename, "-struct", "savePayload");
+    catch ME
+        restoreCloseCallback_(figHandle);
+        rethrow(ME);
+    end
     try
         [scanPath, scanName] = fileparts(filename);
         scanFile = fullfile(scanPath, scanName + "_scan.mat");
@@ -204,12 +202,7 @@ function saveFinal_(obj, filename, scanForSave, data, figHandle)
         delete(exportFig);
     end
 
-    try
-        if ishandle(figHandle)
-            set(figHandle, "CloseRequestFcn", "closereq");
-        end
-    catch
-    end
+    restoreCloseCallback_(figHandle);
 
     function onCloseWhileSaving(~, ~)
         if closeDialogShown
@@ -218,4 +211,14 @@ function saveFinal_(obj, filename, scanForSave, data, figHandle)
         closeDialogShown = true;
         msgbox("Scan finished. Saving data, please wait.", "Saving", "help");
     end
+
+end
+
+function restoreCloseCallback_(figHandle)
+try
+    if ishandle(figHandle)
+        set(figHandle, "CloseRequestFcn", "closereq");
+    end
+catch
+end
 end

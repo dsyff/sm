@@ -8,6 +8,7 @@ function rack = buildRackFromRecipe_(recipe, spawnOnClientFcn)
         rack.tryTimes = inf;
     else
         rack.tryTimes = 2;
+        rack.tryInterval = seconds(0);
     end
     assignin("base", "rack", rack);
     experimentContext.setSpawnOnClient(spawnOnClientFcn);

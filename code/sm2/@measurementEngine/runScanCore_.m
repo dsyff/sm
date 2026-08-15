@@ -23,7 +23,6 @@ function [data, stopped] = runScanCore_(rack, scanObj, onRead, figHandle, snapsh
     % Stop via figure handle ESC key + scan-progress callback.
     stopped = false;
 
-    rack.flush();
     if enableLog
         logFcn("runScanCore_ start name=" + scanObj.name + " loops=" + numel(scanObj.loops));
     end
@@ -104,6 +103,7 @@ function [data, stopped] = runScanCore_(rack, scanObj, onRead, figHandle, snapsh
     totpoints = prod(npoints);
 
     try
+        rack.flush();
     for pointIdx = 1:totpoints
         % Stop check (figure handle)
         if ~stopped, stopped = shouldStop(); end

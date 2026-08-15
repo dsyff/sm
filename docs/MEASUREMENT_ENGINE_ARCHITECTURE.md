@@ -67,9 +67,9 @@ Both functions precompute all per-loop metadata (channels, wait times, data dime
 
 A third function, `runScanCore_`, handles **single-threaded** (rack mode) scans. It uses the live figure handle for stop detection instead of a PDQ.
 
-Recipe-built racks make two attempts for channel get/set operations in worker
-mode. If an acquisition-loop error still escapes that retry boundary, the scan
-core converts it into a run-scoped stop request. Turbo mode flushes its pending
+Recipe-built racks make two immediate attempts for channel get/set operations
+in worker mode. If an acquisition-loop error still escapes that retry boundary,
+the scan core converts it into a run-scoped stop request. Turbo mode flushes its pending
 dirty data before `runDone`; the client then applies finish actions and writes
 the normal partial final save with `stopRequested` and `stopMessage` metadata.
 
@@ -129,7 +129,13 @@ request. The same event invokes the local handler in single-threaded mode.
 
 ### Stop signal (single-threaded)
 
-In rack mode, `runScanCore_` receives the live figure handle. At each check point it reads `get(figHandle, "CurrentCharacter")` for ESC and checks the engine's `isScanInProgress` flag (set false by the close-request callback).
+In rack mode, `runScanCore_` receives the live figure handle. At each check point
+it reads `get(figHandle, "CurrentCharacter")` for ESC and checks the engine's
+run-scoped stop-request flag. The engine remains marked active through finish
+actions and final saving. During acquisition, the live figure is hidden from
+handle searches so `close all` cannot accidentally stop a scan; explicitly
+closing that figure still requests confirmation and follows the graceful-stop
+path.
 
 ### Safe mode protocol
 
@@ -151,6 +157,10 @@ For each data point read:
 4. If the client is behind, the worker keeps acquiring and coalesces more dirty entries into the pending batch instead of enqueueing more GUI data.
 5. Client applies every `turboDirty` batch to its local flat data mirror and live plots, then sends `turboReady`.
 6. Worker flushes any final pending dirty batch before `runDone`; `runDone` is control-only (`ok/completed/error`) and does not carry the full data cell.
+
+If client-side plot or GUI processing fails, the client sends an aborting `stop`
+control. This releases any outstanding final `turboDirty` acknowledgement wait
+before the error is rethrown on the client.
 
 ### Temp saves
 
@@ -186,8 +196,9 @@ scan.finish = [ ...
     struct("setchan", "I_bg", "val", NaN, "set", 0)];
 ```
 
-Startup constants execute while the scan is marked active. Canceling during a
-startup set-check stops further startup actions and proceeds to the scan's
+Startup constants, acquisition, finish actions, and final saving all execute
+while the scan is marked active. Canceling during a startup set-check stops
+further startup actions and proceeds to the scan's
 `finish` actions. Finish actions run after normal completion, cancellation, or
 an acquisition error. Acquisition-loop errors follow the graceful-stop path so
 partial data is saved; setup or finalization errors are rethrown after cleanup.
