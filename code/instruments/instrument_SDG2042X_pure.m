@@ -15,19 +15,20 @@ classdef instrument_SDG2042X_pure < instrumentInterface
     % (spectrally pure) when frequency_ch is an integer multiple of
     % uploadFundamentalFrequencyHz.
     %
-    % Channels (all set-only; read returns cached values):
+    % Channels (setWrite records targets; reads return last applied values):
     % - amplitude_1..2 (Vpp)
     % - phase_1..2 (deg)
     % - frequency_1..2 (Hz)
     % - global_phase_offset (deg)
     %
-    % Upload happens every time any parameter is changed (setWrite).
+    % One setCheck uploads each physical channel whose target changed.
 
     properties (Access = private)
-        cachedAmplitude (2, 1) double = zeros(2, 1);
-        cachedPhaseDeg (2, 1) double = zeros(2, 1);
-        cachedFrequencyHz (2, 1) double = zeros(2, 1);
-        cachedGlobalPhaseOffsetDeg (1, 1) double = 0;
+        targetToneSettings (2, 3) double = zeros(2, 3);
+        currentHardwareToneSettings (2, 3) double = zeros(2, 3);
+        targetGlobalPhaseOffsetDeg (1, 1) double = 0;
+        currentHardwareGlobalPhaseOffsetDeg (1, 1) double = 0;
+        targetStateNeedsHardwareCheck (1, 1) logical = false;
 
         waveformNameCH1 (1, 1) string = "DDS_PURE_CH1";
         waveformNameCH2 (1, 1) string = "DDS_PURE_CH2";
@@ -106,54 +107,74 @@ classdef instrument_SDG2042X_pure < instrumentInterface
             if channelIndex <= 6
                 idx0 = channelIndex - 1;
                 groupIdx = floor(idx0 / 3) + 1; % 1..2
-                typeIdx = mod(idx0, 3);         % 0..2
-                switch typeIdx
-                    case 0
-                        getValues = obj.cachedAmplitude(groupIdx);
-                    case 1
-                        getValues = obj.cachedPhaseDeg(groupIdx);
-                    case 2
-                        getValues = obj.cachedFrequencyHz(groupIdx);
-                end
+                typeIdx = mod(idx0, 3) + 1;     % 1..3
+                getValues = obj.currentHardwareToneSettings(groupIdx, typeIdx);
                 return;
             end
 
-            % global_phase_offset
-            getValues = obj.cachedGlobalPhaseOffsetDeg;
+            getValues = obj.currentHardwareGlobalPhaseOffsetDeg;
         end
 
         function setWriteChannelHelper(obj, channelIndex, setValues)
             if channelIndex <= 6
                 idx0 = channelIndex - 1;
                 groupIdx = floor(idx0 / 3) + 1; % 1..2
-                typeIdx = mod(idx0, 3);         % 0..2
-                switch typeIdx
-                    case 0
-                        obj.cachedAmplitude(groupIdx) = setValues;
-                    case 1
-                        obj.cachedPhaseDeg(groupIdx) = setValues;
-                    case 2
-                        obj.cachedFrequencyHz(groupIdx) = setValues;
-                end
-
-                obj.uploadPureWaveformDDS(groupIdx);
+                typeIdx = mod(idx0, 3) + 1;     % 1..3
+                obj.targetToneSettings(groupIdx, typeIdx) = setValues;
+                obj.targetStateNeedsHardwareCheck = true;
                 return;
             end
 
-            % global_phase_offset affects both channels: do two sequential single-channel uploads.
-            obj.cachedGlobalPhaseOffsetDeg = setValues;
-
-            obj.uploadPureWaveformDDS(1);
-            obj.uploadPureWaveformDDS(2);
+            obj.targetGlobalPhaseOffsetDeg = setValues;
+            obj.targetStateNeedsHardwareCheck = true;
         end
 
-        function TF = setCheckChannelHelper(obj, ~, ~)
-            % Pass setCheck only when both physical outputs are ON.
-            TF = obj.areOutputsOn();
+        function TF = setWriteRequiresCommandInterval(~, ~, ~)
+            TF = false;
+        end
+
+        function TF = setCheckRequiresCommandInterval(obj, ~, ~)
+            TF = obj.targetStateNeedsHardwareCheck;
+        end
+
+        function TF = setCheckChannelHelper(obj, channelIndex, channelLastSetValues)
+            if obj.targetStateNeedsHardwareCheck
+                pendingChannels = obj.pendingHardwareChannels();
+                if any(pendingChannels)
+                    for chIdx = find(pendingChannels).'
+                        obj.uploadPureWaveformDDS(chIdx);
+                    end
+                end
+                if ~obj.areOutputsOn()
+                    TF = false;
+                    return;
+                end
+                if any(pendingChannels)
+                    obj.currentHardwareToneSettings(pendingChannels, :) = obj.targetToneSettings(pendingChannels, :);
+                    obj.currentHardwareGlobalPhaseOffsetDeg = obj.targetGlobalPhaseOffsetDeg;
+                end
+                obj.targetStateNeedsHardwareCheck = false;
+            end
+
+            if channelIndex <= 6
+                idx0 = channelIndex - 1;
+                groupIdx = floor(idx0 / 3) + 1;
+                typeIdx = mod(idx0, 3) + 1;
+                TF = obj.currentHardwareToneSettings(groupIdx, typeIdx) == channelLastSetValues;
+            else
+                TF = obj.currentHardwareGlobalPhaseOffsetDeg == channelLastSetValues;
+            end
         end
     end
 
     methods (Access = private)
+        function pendingChannels = pendingHardwareChannels(obj)
+            pendingChannels = any(obj.targetToneSettings ~= obj.currentHardwareToneSettings, 2);
+            if obj.targetGlobalPhaseOffsetDeg ~= obj.currentHardwareGlobalPhaseOffsetDeg
+                pendingChannels(:) = true;
+            end
+        end
+
         function TF = areOutputsOn(obj)
             handle = obj.communicationHandle;
             if isempty(handle)
@@ -185,7 +206,7 @@ classdef instrument_SDG2042X_pure < instrumentInterface
             obj.configureDDSStatic();
 
             % Use the standard per-channel upload path for the initial upload.
-            % With default cached settings, this naturally uploads all-zeros.
+            % With default target settings, this naturally uploads all-zeros.
             obj.uploadPureWaveformDDS(1);
             obj.uploadPureWaveformDDS(2);
 
@@ -217,11 +238,11 @@ classdef instrument_SDG2042X_pure < instrumentInterface
             fs = numPoints * f0;
             t = (0:numPoints-1) ./ fs; % seconds over one period
 
-            globalOffsetDeg = obj.cachedGlobalPhaseOffsetDeg;
+            globalOffsetDeg = obj.targetGlobalPhaseOffsetDeg;
 
-            ampVpp = obj.cachedAmplitude(chIdx);
-            freqHz = obj.cachedFrequencyHz(chIdx);
-            phaseDeg = obj.cachedPhaseDeg(chIdx);
+            ampVpp = obj.targetToneSettings(chIdx, 1);
+            phaseDeg = obj.targetToneSettings(chIdx, 2);
+            freqHz = obj.targetToneSettings(chIdx, 3);
             phaseRad = (phaseDeg + globalOffsetDeg) * pi / 180;
             waveformData = (ampVpp / 2) * sin(2 * pi * freqHz * t + phaseRad);
 

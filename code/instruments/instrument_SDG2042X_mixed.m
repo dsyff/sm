@@ -6,19 +6,20 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
     % output is configured using :BSWV FRQ,<fundamentalHz> (DDS-mode style),
     % matching the approach in temp/SDG2042X/SDG2042X_test.m.
     %
-    % Channels (all set-only; read returns cached values):
+    % Channels (setWrite records targets; reads return last applied values):
     % - amplitude_1..25 (Vpp)
     % - phase_1..25 (deg)
     % - frequency_1..25 (Hz)
     % - global_phase_offset (deg)
     %
-    % Upload happens every time any parameter is changed (setWrite).
+    % One setCheck uploads all pending target changes together.
 
     properties (Access = private)
-        cachedAmplitude (25, 1) double = zeros(25, 1);
-        cachedPhaseDeg (25, 1) double = zeros(25, 1);
-        cachedFrequencyHz (25, 1) double = zeros(25, 1);
-        cachedGlobalPhaseOffsetDeg (1, 1) double = 0;
+        targetToneSettings (25, 3) double = zeros(25, 3);
+        currentHardwareToneSettings (25, 3) double = zeros(25, 3);
+        targetGlobalPhaseOffsetDeg (1, 1) double = 0;
+        currentHardwareGlobalPhaseOffsetDeg (1, 1) double = 0;
+        targetStateNeedsHardwareCheck (1, 1) logical = false;
 
         waveformName (1, 1) string = "DDS_MIX";
     end
@@ -97,50 +98,68 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             if channelIndex <= 3 * obj.maxTones
                 idx0 = channelIndex - 1;
                 groupIdx = floor(idx0 / 3) + 1; % 1..25
-                typeIdx = mod(idx0, 3);         % 0..2
-                switch typeIdx
-                    case 0
-                        getValues = obj.cachedAmplitude(groupIdx);
-                    case 1
-                        getValues = obj.cachedPhaseDeg(groupIdx);
-                    case 2
-                        getValues = obj.cachedFrequencyHz(groupIdx);
-                end
+                typeIdx = mod(idx0, 3) + 1;     % 1..3
+                getValues = obj.currentHardwareToneSettings(groupIdx, typeIdx);
                 return;
             end
 
-            % global_phase_offset
-            getValues = obj.cachedGlobalPhaseOffsetDeg;
+            getValues = obj.currentHardwareGlobalPhaseOffsetDeg;
         end
 
         function setWriteChannelHelper(obj, channelIndex, setValues)
             if channelIndex <= 3 * obj.maxTones
                 idx0 = channelIndex - 1;
                 groupIdx = floor(idx0 / 3) + 1; % 1..25
-                typeIdx = mod(idx0, 3);         % 0..2
-                switch typeIdx
-                    case 0
-                        obj.cachedAmplitude(groupIdx) = setValues;
-                    case 1
-                        obj.cachedPhaseDeg(groupIdx) = setValues;
-                    case 2
-                        obj.cachedFrequencyHz(groupIdx) = setValues;
-                end
+                typeIdx = mod(idx0, 3) + 1;     % 1..3
+                obj.targetToneSettings(groupIdx, typeIdx) = setValues;
             else
-                % global_phase_offset
-                obj.cachedGlobalPhaseOffsetDeg = setValues;
+                obj.targetGlobalPhaseOffsetDeg = setValues;
             end
-
-            obj.uploadMixedWaveformDDS();
+            obj.targetStateNeedsHardwareCheck = true;
         end
 
-        function TF = setCheckChannelHelper(obj, ~, ~)
-            % Pass setCheck only when both physical outputs are ON.
-            TF = obj.areOutputsOn();
+        function TF = setWriteRequiresCommandInterval(~, ~, ~)
+            TF = false;
+        end
+
+        function TF = setCheckRequiresCommandInterval(obj, ~, ~)
+            TF = obj.targetStateNeedsHardwareCheck;
+        end
+
+        function TF = setCheckChannelHelper(obj, channelIndex, channelLastSetValues)
+            if obj.targetStateNeedsHardwareCheck
+                waveformPending = obj.hasPendingWaveform();
+                if waveformPending
+                    obj.uploadMixedWaveformDDS();
+                end
+                if ~obj.areOutputsOn()
+                    TF = false;
+                    return;
+                end
+                if waveformPending
+                    obj.currentHardwareToneSettings = obj.targetToneSettings;
+                    obj.currentHardwareGlobalPhaseOffsetDeg = obj.targetGlobalPhaseOffsetDeg;
+                end
+                obj.targetStateNeedsHardwareCheck = false;
+            end
+
+            if channelIndex <= 3 * obj.maxTones
+                idx0 = channelIndex - 1;
+                groupIdx = floor(idx0 / 3) + 1;
+                typeIdx = mod(idx0, 3) + 1;
+                TF = obj.currentHardwareToneSettings(groupIdx, typeIdx) == channelLastSetValues;
+            else
+                TF = obj.currentHardwareGlobalPhaseOffsetDeg == channelLastSetValues;
+            end
         end
     end
 
     methods (Access = private)
+        function TF = hasPendingWaveform(obj)
+            TF = ~isequal(obj.targetToneSettings, obj.currentHardwareToneSettings) ...
+                || obj.targetGlobalPhaseOffsetDeg ~= obj.currentHardwareGlobalPhaseOffsetDeg;
+        end
+
         function TF = areOutputsOn(obj)
             handle = obj.communicationHandle;
             if isempty(handle)
@@ -205,11 +224,11 @@ classdef instrument_SDG2042X_mixed < instrumentInterface
             t = (0:numPoints-1) ./ fs; % seconds over one period
 
             mixedData = zeros(1, numPoints);
-            globalOffsetDeg = obj.cachedGlobalPhaseOffsetDeg;
+            globalOffsetDeg = obj.targetGlobalPhaseOffsetDeg;
             for sineIndex = 1:obj.maxTones
-                ampVpp = obj.cachedAmplitude(sineIndex);
-                freqHz = obj.cachedFrequencyHz(sineIndex);
-                phaseDeg = obj.cachedPhaseDeg(sineIndex);
+                ampVpp = obj.targetToneSettings(sineIndex, 1);
+                phaseDeg = obj.targetToneSettings(sineIndex, 2);
+                freqHz = obj.targetToneSettings(sineIndex, 3);
                 phaseRad = (phaseDeg + globalOffsetDeg) * pi / 180;
                 tone = (ampVpp / 2) * sin(2 * pi * freqHz * t + phaseRad);
                 mixedData = mixedData + tone;

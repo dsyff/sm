@@ -93,6 +93,7 @@ Recent rack-side changes that affect scan/runtime behavior:
 - The fixed ramp-loop `pause(0.75)` was removed. Write pacing is now an instrument-level concern via:
   - `instrumentInterface.writeCommandInterval`
   - `instrumentInterface.writeCommandIntervalMinWrites` (interval starts only after this many writes since last successful read)
+  - internal set-write/set-check interval hooks, which state-only helpers can override so they do not consume the physical-I/O pacing budget
   - successful `getRead` resets the write-backlog counter.
 
 ### Stop signal (worker modes)

@@ -73,11 +73,15 @@ The mixed DDS and mixed TARB instruments always register:
 
 The pure DDS instrument registers the same channel types for tones 1 and 2 only, plus `global_phase_offset`.
 
-Channel reads return the value cached by the class; they do not query the generator. Every channel set triggers a waveform upload:
+Each class keeps two separate caches: the requested target settings and the settings last applied successfully to the generator. Channel reads return the latter; they do not query or decode generator waveform memory.
 
-- In a mixed class, changing any tone or the global phase rebuilds and uploads the complete mixed waveform.
-- In the pure class, changing a tone parameter uploads only that tone's physical channel.
-- Changing the pure class's `global_phase_offset` uploads C1 and C2 sequentially because it affects both tones.
+`setWrite` only changes the target cache. The first subsequent `setCheck` reconciles all pending changes:
+
+- In a mixed class, one complete mixed waveform is rebuilt and uploaded, regardless of how many tone fields changed.
+- In the pure class, each physical channel with a changed tone is uploaded once. Changing `global_phase_offset` uploads C1 and C2 because it affects both waveforms.
+- After the upload, both outputs must report `ON` before the applied-settings cache is advanced. Later checks in the same multi-channel rack batch compare caches and perform no I/O.
+
+Keep `requireSetCheck = true` for these classes. If it is `false`, the framework intentionally skips `setCheck`; `setWrite` then records pending targets but does not apply them to the generator.
 
 ## DDS and TARB configuration
 
@@ -109,15 +113,15 @@ In this mode the explicit sample rate controls playback. Hardware testing for th
 
 For both mixed classes:
 
-1. C1 and C2 are turned off for the update.
-2. One mixed waveform is synthesized and uploaded under a single waveform name.
-3. The waveform is selected on both physical outputs.
-4. The output amplitude is updated on both channels.
-5. C1 and C2 are turned on together.
+1. All rack `setWrite` calls record targets without touching the outputs.
+2. On the first `setCheck`, C1 and C2 are turned off for the update.
+3. One mixed waveform is synthesized and uploaded under a single waveform name.
+4. The waveform is selected on both physical outputs and their amplitudes are updated.
+5. C1 and C2 are turned on together and checked before the applied-settings cache is advanced.
 
 C2 is configured with inverted polarity after reset, while C1 retains normal polarity.
 
-The pure class maintains a separate waveform name for each physical output and only turns off the channel being updated. Both physical outputs must report `ON` for any of these instruments' set checks to pass. This check confirms output state only; it is not a waveform or amplitude readback.
+The pure class maintains a separate waveform name for each physical output and only turns off a channel whose target changed. Both physical outputs must report `ON` after an upload before the set check passes. This confirms output state only; the applied tone settings remain a record of successful commands, not waveform or amplitude readback.
 
 ## DDS timebase and CASCADE setup
 
@@ -147,9 +151,9 @@ The demo throws an error unless `n_tones` is an integer from 1 through 25. The T
 
 ## Operational notes
 
-- A set is a waveform upload, not a lightweight parameter-only command. Both mixed outputs are briefly disabled during every update.
-- The instrument classes set `writeCommandInterval = seconds(5)` as a conservative communication-stability guard. It paces framework channel transactions, not every internal SCPI line in one waveform upload; the shared timing-gate behavior is covered in [Measurement engine architecture](MEASUREMENT_ENGINE_ARCHITECTURE.md).
-- Cached channel reads are useful for confirming requested values but do not prove the hardware output waveform.
+- A set-write is a lightweight target-cache update. The set-check phase performs the required waveform upload; both mixed outputs are briefly disabled once for the complete pending batch.
+- The instrument classes set `writeCommandInterval = seconds(5)` as a conservative communication-stability guard. SDG cache-only set-writes and already-reconciled set-checks opt out of that gate, so a large tone batch is not serialized by 5-second waits. The gate still applies to set-checks that perform an upload, and it paces the framework transaction rather than every internal SCPI line; see [Measurement engine architecture](MEASUREMENT_ENGINE_ARCHITECTURE.md).
+- Cached channel reads report the last successfully applied settings but do not prove the present hardware waveform if the generator was changed outside this class.
 - Use integer multiples of the upload fundamental to avoid a discontinuity at the waveform boundary.
 - Keep `waveformArraySize * uploadFundamentalFrequencyHz < 1.2e9` when using TARB.
 - If DDS initialization fails specifically on `SRATE MODE,DDS`, check the connected unit's firmware support for that command.
