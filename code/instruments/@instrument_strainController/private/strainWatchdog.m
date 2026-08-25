@@ -10,6 +10,7 @@ arguments
     options.strainCellNumber (1, 1) uint8 {mustBeInteger, mustBePositive};
     options.outerCurrentLimit (1, 1) double {mustBePositive} = 1.6e-7;
     options.innerCurrentLimit (1, 1) double {mustBePositive} = 1e-7;
+    options.useConservativeVoltageBounds (1, 1) logical = true;
 end
 %% settings
 % If last sampling is older than staleTime ago, and if activeControl is on,
@@ -18,7 +19,11 @@ staleTime = seconds(10);
 %dataChunkLength = 2^20; %-
 dataChunkLength = 2^16;
 temperatureSafeMargin = 3; %K for determining max strain voltage
-voltageBoundFraction = 0.9; %- multiplied on computed min/max strain voltage
+if options.useConservativeVoltageBounds
+    voltageBoundFraction = 0.9; %- multiplied on computed min/max strain voltage
+else
+    voltageBoundFraction = 1;
+end
 targetStepVoltage = 0.5; %V step when nudging voltage targets. the upper limit to voltage difference
 del_d_to_V_gain = 1E6; %V per meter difference for soft ramp. smaller means softer ramp when close (only matters when < 0.5V)
 overloadCurrent = 1E-7; %A threshold for considering if ramping or overloading is happening
