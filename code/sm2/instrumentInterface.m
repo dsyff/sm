@@ -76,6 +76,16 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
             getValues = obj.getChannelByIndex(channelIndex);
             TF = all(abs(getValues - channelLastSetValues) <= obj.setTolerances{channelIndex});
         end
+
+        function TF = setWriteRequiresCommandInterval(~, ~, ~)
+            % Override when setWriteChannelHelper only records target state.
+            TF = true;
+        end
+
+        function TF = setCheckRequiresCommandInterval(~, ~, ~)
+            % Override when setCheckChannelHelper can complete without I/O.
+            TF = true;
+        end
     end
 
     methods
@@ -178,7 +188,9 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
             if ~isscalar(setValues) && isrow(setValues)
                 setValues = setValues.';
             end
-            obj.enforceWriteCommandInterval();
+            if obj.setWriteRequiresCommandInterval(channelIndex, setValues)
+                obj.enforceWriteCommandInterval();
+            end
             obj.setWriteChannelHelper(channelIndex, setValues);
             obj.lastSetValues{channelIndex} = setValues;
 
@@ -196,10 +208,12 @@ classdef (Abstract) instrumentInterface < handle & matlab.mixin.Heterogeneous
                 TF = true;
                 return;
             end
-            obj.enforceWriteCommandInterval();
             channel = obj.channelTable.channels(channelIndex);
             channelLastSetValues = obj.lastSetValues{channelIndex};
             assert(~isempty(channelLastSetValues), "setWriteChannel for channel %s has not been called succesfully yet.", channel);
+            if obj.setCheckRequiresCommandInterval(channelIndex, channelLastSetValues)
+                obj.enforceWriteCommandInterval();
+            end
             TF = obj.setCheckChannelHelper(channelIndex, channelLastSetValues);
         end
 

@@ -115,6 +115,9 @@ reads responses. This minimizes wait time since instruments settle in parallel.
 Also, both get-write and set-write calls pass through a shared write pacing
 gate in `instrumentInterface` (`writeCommandInterval`), so bus pacing can be
 configured per instrument without adding ad-hoc pauses in helpers.
+Helpers that deliberately perform no physical I/O may override the internal
+`setWriteRequiresCommandInterval` / `setCheckRequiresCommandInterval` hooks so
+state-only operations do not consume that pacing budget. The default is `true`.
 For Keithley setups, note that consecutive get/set commands can be fast while
 the read phase after a get query is often much slower (around 0.5 s depending
 on NPLC/averaging/auto-zero/readback settings).
@@ -277,6 +280,8 @@ Example:
 Notes on write pacing:
   - `writeCommandInterval` is enforced before each instrument write command
     issued by framework paths (`getWriteChannel...` / `setWriteChannel...`).
+  - The internal set-write/set-check interval hooks default to `true`; override
+    one only when that helper call is guaranteed to perform no physical I/O.
   - Default is `seconds(0)`.
   - For instruments that lose/ignore commands when written too quickly,
     set this in the constructor.
