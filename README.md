@@ -61,6 +61,7 @@ recipe.slack_notification_account_email = "you@example.com";
 - `docs/INSTRUMENT_SETUP_GUIDE.txt` (setup workflow, rack usage)
 - `docs/INSTRUMENT_CREATION_GUIDE.txt` (instrument authoring best practices)
 - `docs/SDG2042X_WAVEFORM_GENERATORS.md` (DDS, TrueARB, multi-tone, pure-tone, and CASCADE behavior)
+- `docs/ANC300_CAPACITANCE_DIAGNOSTICS.md` (stick-slip capacitance diagnostics, safety, commands, and current API gap)
 - `docs/VIRTUAL_INSTRUMENT_CREATION_GUIDE.txt` (virtual instrument authoring)
 - `docs/MEASUREMENT_ENGINE_ARCHITECTURE.md` (engine/recipe/safe/turbo architecture + worker protocol)
 - `docs/general_coding_guidelines.md` (repo-wide coding guidelines; includes git guidelines)
