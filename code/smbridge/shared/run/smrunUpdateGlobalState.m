@@ -1,8 +1,10 @@
-function smrunUpdateGlobalState(source, runValue)
+function applied = smrunUpdateGlobalState(source, runValue, expectedRevision)
 %SMRUNUPDATEGLOBALSTATE Persist run-number changes and notify GUIs.
 %
 %   SOURCE identifies which component initiated the change (e.g. 'small',
-%   'main'). RUNVALUE may be empty/NaN to disable run numbering.
+%   'main'). RUNVALUE may be empty/NaN to disable run numbering. When
+%   EXPECTEDREVISION is supplied, the update is applied only if no newer
+%   shared-state edit has occurred.
 
     global smrunConfig
 
@@ -11,6 +13,18 @@ function smrunUpdateGlobalState(source, runValue)
     end
 
     smrunEnsureGlobals();
+    applied = false;
+
+    if nargin >= 3
+        if ~isnumeric(expectedRevision) || ~isscalar(expectedRevision) || ...
+                ~isfinite(expectedRevision) || expectedRevision < 0 || ...
+                expectedRevision ~= floor(expectedRevision)
+            error("smrun:InvalidRevision", "Expected run-state revision must be a nonnegative integer scalar.");
+        end
+        if double(expectedRevision) ~= smrunConfig.revision
+            return;
+        end
+    end
 
     if nargin < 2
         runValue = smrunConfig.run;
@@ -22,17 +36,15 @@ function smrunUpdateGlobalState(source, runValue)
         newRun = normalizeRunValue(runValue);
     end
 
-    if runsAreEqual(smrunConfig.run, newRun)
-        smrunConfig.lastUpdatedBy = source;
-        smrunApplyStateToRegisteredGuis(source);
-        return;
+    if ~runsAreEqual(smrunConfig.run, newRun)
+        smrunConfig.run = newRun;
+        smrunSyncSmauxFromGlobal();
     end
 
-    smrunConfig.run = newRun;
     smrunConfig.lastUpdatedBy = source;
-
-    smrunSyncSmauxFromGlobal();
+    smrunConfig.revision = smrunConfig.revision + 1;
     smrunApplyStateToRegisteredGuis(source);
+    applied = true;
 end
 
 
@@ -47,5 +59,4 @@ function value = normalizeRunValue(value)
     value = mod(value, 1000);
     value(value < 0) = value(value < 0) + 1000;
 end
-
 

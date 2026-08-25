@@ -49,6 +49,11 @@ classdef measurementEngine < handle
         isScanInProgress (1, 1) logical = false
     end
 
+    properties (SetAccess = private, SetObservable)
+        activeRunMode (1, 1) string {mustBeMember(activeRunMode, ["", "safe", "turbo"])} = ""
+        activeRunPhase (1, 1) string {mustBeMember(activeRunPhase, ["idle", "startup", "acquiring", "finalizing"])} = "idle"
+    end
+
     properties (Dependent, SetAccess = private)
         % Array of structs with fields:
         % - future: parallel.FevalFuture
@@ -63,6 +68,7 @@ classdef measurementEngine < handle
         workerEventQueue = parallel.pool.DataQueue.empty(0, 1)
         workerEventListener = []
         scanStopRequested (1, 1) logical = false
+        scanStopMessage (1, 1) string = ""
         activeRunRequestId (1, 1) string = ""
         secondaryStopForwardedRunId (1, 1) string = ""
     end
@@ -531,11 +537,15 @@ classdef measurementEngine < handle
 
             obj.isScanInProgress = true;
             obj.scanStopRequested = false;
+            obj.scanStopMessage = "";
             try
+            obj.activeRunMode = mode;
+            obj.activeRunPhase = "startup";
             scanObj.constsPrepared = false;
             obj.logClient_("run() entered mode=" + mode + " name=" + scanObj.name + " loops=" + numel(scanObj.loops));
             autoRun = false;
             runToUse = NaN;
+            runRevision = NaN;
             if strlength(filename) == 0
                 dataDir = "";
                 try
@@ -561,7 +571,7 @@ classdef measurementEngine < handle
 
                 runCandidate = NaN;
                 try
-                    runCandidate = smrunGetState();
+                    [runCandidate, runRevision] = smrunGetState();
                 catch
                 end
                 if ~(isfinite(runCandidate) && ~isnan(runCandidate))
@@ -583,7 +593,7 @@ classdef measurementEngine < handle
 
             if autoRun
                 try
-                    smrunUpdateGlobalState("engine", smrunIncrement(runToUse));
+                    smrunUpdateGlobalState("engine", smrunIncrement(runToUse), runRevision);
                 catch
                 end
             end
@@ -611,10 +621,35 @@ classdef measurementEngine < handle
             catch ME
                 obj.isScanInProgress = false;
                 obj.scanStopRequested = false;
+                obj.scanStopMessage = "";
+                obj.activeRunPhase = "idle";
+                obj.activeRunMode = "";
                 rethrow(ME);
             end
             obj.isScanInProgress = false;
             obj.scanStopRequested = false;
+            obj.scanStopMessage = "";
+            obj.activeRunPhase = "idle";
+            obj.activeRunMode = "";
+        end
+
+        function accepted = requestScanStop(obj, message)
+            arguments
+                obj
+                message (1, 1) string {mustBeNonzeroLengthText} = "Scan stopped by request."
+            end
+
+            accepted = obj.isScanInProgress && any(obj.activeRunPhase == ["startup", "acquiring"]);
+            if ~accepted
+                return;
+            end
+            if strlength(obj.scanStopMessage) == 0
+                obj.scanStopMessage = message;
+            end
+            obj.scanStopRequested = true;
+            if obj.constructionMode == "rack"
+                experimentContext.requestScanStop(obj.scanStopMessage);
+            end
         end
 
         function cacheSlackNotificationUserId(obj, accountEmail, userId)
@@ -1217,16 +1252,18 @@ classdef measurementEngine < handle
             runError = MException.empty;
             try
                 [dataOut, scanForSave, figHandle, pendingClose] = obj.runLocalCore_(rack, scanObj, tempFile);
-                if ishandle(figHandle)
-                    set(figHandle, "HandleVisibility", "on", ...
-                        "CloseRequestFcn", @(src, event) obj.onCloseDuringFinalization_(src, event));
-                end
             catch runError
                 scanForSave = scanObj.toSaveStruct();
                 scanForSave.isComplete = false;
             end
+            [pptEnabled, pptFile] = smpptGetState();
+            obj.activeRunPhase = "finalizing";
+            if isempty(runError) && ishandle(figHandle)
+                set(figHandle, "HandleVisibility", "on", ...
+                    "CloseRequestFcn", @(src, event) obj.onCloseDuringFinalization_(src, event));
+            end
             scanForSave = obj.applyFinishActionsAfterRun_(scanForSave, runError);
-            obj.saveFinal_(filename, scanForSave, dataOut, figHandle);
+            obj.saveFinal_(filename, scanForSave, dataOut, figHandle, pptEnabled, string(pptFile));
             if pendingClose && ~isempty(figHandle) && ishandle(figHandle)
                 delete(figHandle);
             end
@@ -1245,16 +1282,18 @@ classdef measurementEngine < handle
             runError = MException.empty;
             try
                 [dataOut, scanForSave, figHandle, pendingClose] = obj.runWorkerCore_(scanObj, tempFile);
-                if ishandle(figHandle)
-                    set(figHandle, "HandleVisibility", "on", ...
-                        "CloseRequestFcn", @(src, event) obj.onCloseDuringFinalization_(src, event));
-                end
             catch runError
                 scanForSave = scanObj.toSaveStruct();
                 scanForSave.isComplete = false;
             end
+            [pptEnabled, pptFile] = smpptGetState();
+            obj.activeRunPhase = "finalizing";
+            if isempty(runError) && ishandle(figHandle)
+                set(figHandle, "HandleVisibility", "on", ...
+                    "CloseRequestFcn", @(src, event) obj.onCloseDuringFinalization_(src, event));
+            end
             scanForSave = obj.applyFinishActionsAfterRun_(scanForSave, runError);
-            obj.saveFinal_(filename, scanForSave, dataOut, figHandle);
+            obj.saveFinal_(filename, scanForSave, dataOut, figHandle, pptEnabled, string(pptFile));
             if pendingClose && ~isempty(figHandle) && ishandle(figHandle)
                 delete(figHandle);
             end
@@ -1331,11 +1370,15 @@ classdef measurementEngine < handle
                 experimentContext.setScanStopHandler(@onScanStopRequested);
                 scanObj = obj.prepareScanConstants_(scanObj);
                 scanForSave.consts = scanObj.consts;
+                obj.activeRunPhase = "acquiring";
                 [dataOut, stopped] = measurementEngine.runScanCore_(rack, scanObj, @onRead, figHandle, duration.empty, [], @onTemp, [], @() ~obj.scanStopRequested);
                 if stopped && ~scanForSave.stopRequested
-                    stopMessage = "Scan stopped with Escape.";
-                    if pendingClose
-                        stopMessage = "Scan stopped after a close request for the scan figure.";
+                    stopMessage = obj.scanStopMessage;
+                    if strlength(stopMessage) == 0
+                        stopMessage = "Scan stopped with Escape.";
+                        if pendingClose
+                            stopMessage = "Scan stopped after a close request for the scan figure.";
+                        end
                     end
                     experimentContext.requestScanStop(stopMessage);
                 end
@@ -1559,7 +1602,7 @@ classdef measurementEngine < handle
             end
         end
 
-        saveFinal_(~, filename, scanForSave, data, figHandle)
+        saveFinal_(~, filename, scanForSave, data, figHandle, pptEnabled, pptFile)
     end
 
     methods (Static, Access = private)

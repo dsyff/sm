@@ -1,928 +1,807 @@
-function sm_Callback(what, varargin)
+function varargout = sm_Callback(what, varargin)
+%SM_CALLBACK Queue GUI controller and compatibility dispatcher.
 %#ok<*GVMIS>
-%#ok<*NUSED>
-% Copyright 2011 Hendrik Bluhm, Vivek Venkatachalam
-% Updated 2025 for SM 1.5 Bridge System
-% This file is part of Special Measure.
-% 
-%     Special Measure is free software: you can redistribute it and/or modify
-%     it under the terms of the GNU General Public License as published by
-%     the Free Software Foundation, either version 3 of the License, or
-%     (at your option) any later version.
-% 
-%     Special Measure is distributed in the hope that it will be useful,
-%     but WITHOUT ANY WARRANTY; without even the implied warranty of
-%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-%     GNU General Public License for more details.
-% 
-%     You should have received a copy of the GNU General Public License
-%     along with Special Measure.  If not, see
-%     <http://www.gnu.org/licenses/>.
-    if nargin < 2
-        feval(what);
-    else
-        feval(what, varargin{1});
-    end
+
+name = string(what);
+if ~isscalar(name) || strlength(name) == 0
+    error("sm_Callback:InvalidAction", "A scalar callback action is required.");
+end
+if nargout > 0
+    [varargout{1:nargout}] = feval(char(name), varargin{:});
+else
+    feval(char(name), varargin{:});
+end
 end
 
-function Open(h)
-    global smaux bridge
-    try
-        smbridgeAddSharedPaths();
-        if exist("bridge", "var") && ~isempty(bridge) && isobject(bridge) && isprop(bridge, "experimentRootPath")
-            if strlength(string(bridge.experimentRootPath)) == 0
-                bridge.experimentRootPath = pwd;
-            end
-        end
-        smpptEnsureGlobals();
-        smdatapathEnsureGlobals();
-        smrunEnsureGlobals();
-
-        smaux.sm=h;
-        if isfield(smaux.sm, "run_pbh") && ishandle(smaux.sm.run_pbh)
-            set(smaux.sm.run_pbh, "Interruptible", "on", "BusyAction", "cancel");
-        end
-        if isfield(smaux.sm, "editrack") && ishandle(smaux.sm.editrack)
-            setappdata(smaux.sm.editrack, "smEditRackBaseLabel", erase(string(get(smaux.sm.editrack, "Label")), " (scan active)"));
-        end
-        
-        % Initialize required fields if they don't exist
-        if ~isfield(smaux, 'scans')
-            smaux.scans = {};
-        end
-        if ~isfield(smaux, 'smq')
-            smaux.smq = {};
-        end
-        if ~isfield(smaux, 'datadir') || isempty(smaux.datadir)
-            smaux.datadir = smdatapathDefaultPath();
-        end
-        if ~isfield(smaux, 'run')
-            smaux.run = [];
-        end
-        if ~isfield(smaux, 'comments')
-            smaux.comments = '';
-        end
-        
-        UpdateToGUI;
-        smpptAttachMainGui();
-        smdatapathAttachMainGui();
-        smrunAttachMainGui();
-        smbridgeUpdateEditRackMenuState();
-    catch ME
-        % Create detailed error message
-        errorMsg = sprintf('Error in Open function:\n\n%s\n\nFile: %s\nLine: %d\n\nStack trace:\n', ...
-            ME.message, ME.stack(1).file, ME.stack(1).line);
-        
-        % Add stack trace details
-        for i = 1:min(3, length(ME.stack))
-            errorMsg = sprintf('%s%d. %s (line %d)\n', errorMsg, i, ME.stack(i).name, ME.stack(i).line);
-        end
-        
-        % Show error dialog
-        errordlg(errorMsg, 'SM GUI Initialization Error', 'modal');
-    end
+function Open(~)
+global bridge
+if ~isempty(bridge) && isobject(bridge) && isprop(bridge, "experimentRootPath") ...
+        && strlength(string(bridge.experimentRootPath)) == 0
+    bridge.experimentRootPath = pwd;
+end
+smQueueRefresh();
 end
 
-function Scans
+function Close(fig)
+global smaux
+state = queueState();
+if nargin < 1 || isempty(fig)
+    fig = state.view();
 end
-
-function ScansCreate
+if isempty(fig) || ~isgraphics(fig, "figure")
+    return;
 end
-
-function Queue
-    global smaux
-
-    UpdateToGUI;
+h = guidata(fig);
+if isstruct(h) && isfield(h, "qtxt_eth") && isgraphics(h.qtxt_eth)
+    state.setDraft(readDraft(h.qtxt_eth));
 end
-
-function QueueCreate
+state.detachView(fig);
+if isstruct(smaux) && isfield(smaux, "sm") && isstruct(smaux.sm) ...
+        && isfield(smaux.sm, "figure1") && isequal(smaux.sm.figure1, fig)
+    smaux.sm = struct();
 end
-
-function OpenScans
-    global smaux bridge
-    choice = questdlg("Load scans from folder or files?", "Open Scans", ...
-        "Folder", "Files", "Cancel", "Files");
-    if choice == "Folder"
-        folderPath = uigetdir;
-        if isequal(folderPath, 0)
-            return;
-        end
-        listing = dir(fullfile(folderPath, "*.mat"));
-        if isempty(listing)
-            return;
-        end
-        fileList = fullfile(folderPath, {listing.name});
-    elseif choice == "Files"
-        [files, path] = uigetfile('*.mat', 'Select Scan File(s)', 'MultiSelect', 'on');
-        if isequal(files, 0)
-            return;
-        end
-        if iscell(files)
-            fileList = fullfile(path, files);
-        else
-            fileList = fullfile(path, {files});
-        end
-    else
-        return;
-    end
-
-    if ~isfield(smaux, "scans") || ~iscell(smaux.scans)
-        smaux.scans = {};
-    end
-
-    for fileIdx = 1:numel(fileList)
-        filePath = fileList{fileIdx};
-        try
-            payload = load(filePath);
-        catch
-            continue;
-        end
-
-        scansToAdd = {};
-        if isfield(payload, "smscan") && isstruct(payload.smscan)
-            scansToAdd = {payload.smscan};
-        elseif isfield(payload, "scan") && isstruct(payload.scan)
-            scansToAdd = {payload.scan};
-        elseif isfield(payload, "scans")
-            if iscell(payload.scans)
-                scansToAdd = payload.scans;
-            elseif isstruct(payload.scans)
-                scansToAdd = num2cell(payload.scans);
-            end
-        end
-
-        for scanIdx = 1:numel(scansToAdd)
-            scanCandidate = scansToAdd{scanIdx};
-            if ~isstruct(scanCandidate) || ~isfield(scanCandidate, "loops")
-                continue;
-            end
-            scanCandidate = smscanSanitizeForBridge(scanCandidate);
-            if isempty(scanCandidate)
-                continue;
-            end
-
-            smaux.scans{end+1} = scanCandidate;
-        end
-    end
-    UpdateToGUI;
-end
-
-function SaveScans
-    global smaux bridge
-    if ~isfield(smaux, "scans") || isempty(smaux.scans)
-        return;
-    end
-    rootPath = string(pwd);
-    if exist("bridge", "var") && ~isempty(bridge) && isobject(bridge) && isprop(bridge, "experimentRootPath")
-        if strlength(string(bridge.experimentRootPath)) == 0
-            bridge.experimentRootPath = pwd;
-        end
-        rootPath = string(bridge.experimentRootPath);
-    end
-    timestamp = char(datetime("now", "Format", "yyyyMMdd_HHmmss"));
-    targetFolder = fullfile(rootPath, "scans_" + string(timestamp));
-    if ~exist(targetFolder, "dir")
-        mkdir(targetFolder);
-    end
-
-    for scanIdx = 1:numel(smaux.scans)
-        scanCandidate = smaux.scans{scanIdx};
-        if ~isstruct(scanCandidate)
-            continue;
-        end
-        baseName = "scan";
-        if isfield(scanCandidate, "name") && ~isempty(scanCandidate.name)
-            baseName = string(scanCandidate.name);
-        end
-        baseName = regexprep(baseName, '[\\/:*?"<>|.]', "_");
-        filename = baseName;
-        suffix = 0;
-        while exist(fullfile(targetFolder, filename + ".mat"), "file")
-            suffix = suffix + 1;
-            filename = baseName + " (" + suffix + ")";
-        end
-        smscan = scanCandidate;
-        if isfield(smscan, "consts")
-            smscan.consts = measurementScan.normalizeConsts(smscan.consts);
-        end
-        if ~isfield(smscan, "finish")
-            smscan.finish = [];
-        end
-        smscan.finish = measurementScan.normalizeConsts(smscan.finish, "scan.finish");
-        save(fullfile(targetFolder, filename + ".mat"), "smscan");
-    end
-end
-
-function EditRack
-    smeditrack();
-end
-
-
-function SMusers
-    global smaux
-    user_index=get(smaux.sm.smusers_lbh,'Value');
-    if isempty(user_index)
-        return;
-    end
-    for user_ind = user_index
-        smaux.users(user_ind).notifyon = ~smaux.users(user_ind).notifyon;
-    end
-    UpdateToGUI;
-end
-
-function SMusersCreate
-end
-
-function Enqueue
-    global smaux smscan;
-    if ~isfield(smaux,'scans') || isempty(smaux.scans)
-        return;
-    end
-    scan_index=get(smaux.sm.scans_lbh,'Value');
-    if isempty(scan_index)
-        scan_index = 1;
-    end
-    scan_index = min(max(1, scan_index(1)), length(smaux.scans));
-    scan = smaux.scans{scan_index};
-    if ~isfield(smaux,'smq') || isempty(smaux.smq)
-        smaux.smq{1}=scan;
-    else
-        queue_index=get(smaux.sm.queue_lbh,'Value');
-        if isempty(queue_index)
-            queue_index = 1;
-        end
-        queue_index = min(max(1, queue_index(1)), length(smaux.smq));
-        smaux.smq=[smaux.smq(1:queue_index) scan smaux.smq(queue_index+1:end)];
-    end
-    UpdateToGUI;
-end
-
-function EditScan
-    global smaux smscan;
-    try
-        if ~isfield(smaux,'smq') || isempty(smaux.smq)
-            return;
-        end
-        queue_index=get(smaux.sm.queue_lbh,'Value');
-        if isempty(queue_index)
-            queue_index = 1;
-        end
-        queue_index = min(max(1, queue_index(1)), length(smaux.smq));
-        if ~isfield(smaux.smq{queue_index},'loops') && isfield(smaux.smq{queue_index},'eval')
-            set(smaux.sm.qtxt_eth,'String',smaux.smq{queue_index}.eval);
-            smaux.smq(queue_index)=[];
-        else
-            smscan = smaux.smq{queue_index};
-            smgui_small;
-        end
-        UpdateToGUI;
-    catch ME
-        % Create detailed error message
-        errorMsg = sprintf('Error in EditScan:\n\n%s\n\nFile: %s\nLine: %d\n\nStack trace:\n', ...
-            ME.message, ME.stack(1).file, ME.stack(1).line);
-        
-        % Add stack trace details
-        for i = 1:min(3, length(ME.stack))
-            errorMsg = sprintf('%s%d. %s (line %d)\n', errorMsg, i, ME.stack(i).name, ME.stack(i).line);
-        end
-        
-        % Show error dialog
-        errordlg(errorMsg, 'EditScan Error', 'modal');
-    end
-end
-
-function EditScan2
-    global smaux smscan;
-    try
-        if ~isfield(smaux,'scans') || isempty(smaux.scans)
-            return;
-        end
-        scan_index=get(smaux.sm.scans_lbh,'Value');
-        if isempty(scan_index)
-            scan_index = 1;
-        end
-        scan_index = min(max(1, scan_index(1)), length(smaux.scans));
-        smscan = smaux.scans{scan_index};
-        smgui_small;
-    catch ME
-        % Create detailed error message
-        errorMsg = sprintf('Error in EditScan2:\n\n%s\n\nFile: %s\nLine: %d\n\nStack trace:\n', ...
-            ME.message, ME.stack(1).file, ME.stack(1).line);
-        
-        % Add stack trace details
-        for i = 1:min(3, length(ME.stack))
-            errorMsg = sprintf('%s%d. %s (line %d)\n', errorMsg, i, ME.stack(i).name, ME.stack(i).line);
-        end
-        
-        % Show error dialog
-        errordlg(errorMsg, 'EditScan2 Error', 'modal');
-    end
-end
-
-function RemoveScan
-    global smaux
-
-    UpdateToGUI;
-end
-
-function Qtxt
-end
-
-function TXTenqueue
-    global smaux
-    clear scan;
-    scan.eval = get(smaux.sm.qtxt_eth,'String');
-    set(smaux.sm.qtxt_eth,'String','');
-    scan.name = ['EVAL(' scan.eval(1,:) '...)'];
-    if ~isfield(smaux,'smq') || isempty(smaux.smq)
-        smaux.smq{1}=scan;
-    else
-        queue_index=get(smaux.sm.queue_lbh,'Value');
-        if isempty(queue_index)
-            queue_index = 1;
-        end
-        queue_index = min(max(1, queue_index(1)), length(smaux.smq));
-        smaux.smq=[smaux.smq(1:queue_index) scan smaux.smq(queue_index+1:end)];
-    end
-    UpdateToGUI;
-end
-
-function PPTauto
-    global smaux
-    smpptEnsureGlobals();
-    enabled = false;
-    if isstruct(smaux) && isfield(smaux, 'sm') && isstruct(smaux.sm) ...
-            && isfield(smaux.sm, 'pptauto_cbh') && ishandle(smaux.sm.pptauto_cbh)
-        enabled = logical(get(smaux.sm.pptauto_cbh, 'Value'));
-    end
-    [~, currentFile] = smpptGetState();
-    smpptUpdateGlobalState('main', enabled, currentFile);
-end
-
-function PPTFile
-    global smaux bridge
-    [pptFile, ~] = uiputfile('*.ppt', 'Append to Presentation');
-    if isequal(pptFile, 0)
-        return;
-    end
-    rootPath = string(pwd);
-    if exist("bridge", "var") && ~isempty(bridge) && isobject(bridge) && isprop(bridge, "experimentRootPath")
-        if strlength(string(bridge.experimentRootPath)) == 0
-            bridge.experimentRootPath = pwd;
-        end
-        rootPath = string(bridge.experimentRootPath);
-    end
-    [~, pptName, pptExt] = fileparts(pptFile);
-    if strlength(string(pptExt)) == 0
-        pptExt = ".ppt";
-    end
-    selectedFile = fullfile(rootPath, string(pptName) + string(pptExt));
-    enabled = false;
-    if isstruct(smaux) && isfield(smaux, 'sm') && isstruct(smaux.sm) ...
-            && isfield(smaux.sm, 'pptauto_cbh') && ishandle(smaux.sm.pptauto_cbh)
-        enabled = logical(get(smaux.sm.pptauto_cbh, 'Value'));
-    end
-    smpptUpdateGlobalState('main', enabled, selectedFile);
-end    
-
-function PPTFile2
-    global smaux
-    [pptFile,pptPath] = uiputfile('*.ppt','Append to Presentation');
-    if pptFile
-        smaux.pptsavefile2=fullfile(pptPath,pptFile);   
-        set(smaux.sm.pptfile2_sth,'String',pptFile);
-        set(smaux.sm.pptfile2_sth,'TooltipString',smaux.pptsavefile);
-    end    
-end 
-
-function PPTSaveFig
-    global smaux
-    if ~ishandle(str2double(get(smaux.sm.pptsave_eth,'String')))
-        errordlg('Invalid Figure Handle');
-        set(smaux.sm.pptsave_eth,'String',1000);
-    end
-end
-
-function PPTSaveNow
-    global smaux
-    % PowerPoint save functionality is handled by measurementEngine
-end 
-
-function PPTPriority
-    global smaux
-
-    UpdateToGUI;
-end
-
-function Comments
-    global smaux
-    smaux.comments=get(smaux.sm.comments_eth,'String');
-end
-
-function SavePath
-    global smaux bridge
-    x = uigetdir;
-    if x
-        rootPath = string(pwd);
-        if exist("bridge", "var") && ~isempty(bridge) && isobject(bridge) && isprop(bridge, "experimentRootPath")
-            if strlength(string(bridge.experimentRootPath)) == 0
-                bridge.experimentRootPath = pwd;
-            end
-            rootPath = string(bridge.experimentRootPath);
-        end
-        pickedPath = string(x);
-        targetPath = pickedPath;
-        if strlength(rootPath) > 0
-            if startsWith(pickedPath, rootPath, "IgnoreCase", true)
-                relPath = extractAfter(pickedPath, strlength(rootPath));
-                if startsWith(relPath, filesep)
-                    relPath = extractAfter(relPath, 1);
-                end
-                if strlength(relPath) == 0
-                    relPath = "data";
-                end
-            else
-                [~, relPath] = fileparts(char(pickedPath));
-                relPath = string(relPath);
-                if strlength(relPath) == 0
-                    relPath = "data";
-                end
-            end
-            targetPath = fullfile(rootPath, relPath);
-        end
-        smaux.datadir = targetPath;
-        smdatapathUpdateGlobalState("main", smaux.datadir);
-    end
-    UpdateToGUI;
-end
-
-function RunNum
-    global smaux
-    s=get(smaux.sm.run_eth,'String');
-    if isempty(s)
-        set(smaux.sm.runincrement_cbh,'Value',0);
-        smrunUpdateGlobalState('main', []);
-    else
-        val = str2double(s);
-        if ~isnan(val) && isfinite(val) && val>=0 && val<=999
-            smrunUpdateGlobalState('main', val);
-        else
-            errordlg('Please enter an integer in [000 999]','Bad Run Number');
-            smrunUpdateGlobalState('main', []);
-        end
-    end
-    smrunApplyStateToGui('main');
-end
-
-function RunCreate
-end
-
-function RunIncrement
-end
-
-function Run
-    global smaux engine
-    if ~isempty(engine) && isa(engine, "measurementEngine") && engine.isScanInProgress
-        return;
-    end
-
-    smbridgeAddSharedPaths();
-    smbridgeUpdateEditRackMenuState(true);
-    cleanupEditRackMenu = onCleanup(@() smbridgeUpdateEditRackMenuState(false));
-    drawnow;
-    try
-        while ~isempty(smaux.smq)
-            %grab the next scan in the queue
-            scan = smaux.smq{1};
-            smaux.smq(1)=[];
-            UpdateToGUI;
-            smbridgeUpdateEditRackMenuState(true);
-            drawnow;
-            
-            if ~isfield(scan,'loops') && isfield(scan,'eval') %to evaluate commands
-                evalLines = scan.eval;
-                for i = 1:size(evalLines, 1)
-                    evalin("base", evalLines(i, :));
-                end
-            else
-                %filename for this run - final safety net: sanitize for Windows invalid chars
-                scan_name_for_notification = string(scan.name);
-                if strlength(scan_name_for_notification) == 0
-                    scan_name_for_notification = "scan";
-                end
-                scan_file_name = regexprep(scan_name_for_notification, "[\\/:*?""<>|.]", "_");
-                if ~isfield(smaux,'datadir') || isempty(smaux.datadir)
-                    smaux.datadir = smdatapathDefaultPath();
-                end
-                if ~exist(smaux.datadir, 'dir')
-                    mkdir(smaux.datadir);
-                end
-                smdatapathUpdateGlobalState('main', smaux.datadir);
-                
-                scan = ensureScanPpt(scan);
-                scan.name = char(string(scan_file_name));
-                if ~exist("engine", "var") || isempty(engine) || ~isa(engine, "measurementEngine")
-                    error("sm:MissingEngine", "measurementEngine not found. Please run smready(...) first.");
-                end
-                [~, runMetadata] = engine.run(scan, "", "turbo");
-                stopRequested = isfield(runMetadata, "stopRequested") && runMetadata.stopRequested;
-                isComplete = isfield(runMetadata, "isComplete") && runMetadata.isComplete;
-                if isComplete || stopRequested
-                    notificationSettings = engine.slack_notification_settings;
-                    if isfield(scan, "slack_notification_account_email") && strlength(string(scan.slack_notification_account_email)) > 0
-                        overrideEmail = strip(string(scan.slack_notification_account_email));
-                        if isfield(notificationSettings, "account_email") && isfield(notificationSettings, "user_id")
-                            baseEmail = strip(string(notificationSettings.account_email));
-                            if ~strcmpi(char(baseEmail), char(overrideEmail))
-                                notificationSettings.user_id = "";
-                            end
-                        end
-                        notificationSettings.account_email = overrideEmail;
-                    end
-                    try
-                        resolvedUserId = smnotifySlackScanComplete(scan_name_for_notification, runMetadata.pngFile, ...
-                            runMetadata.filename, runMetadata.duration, notificationSettings, ...
-                            stopRequested, string(runMetadata.stopMessage));
-                        if strlength(string(resolvedUserId)) > 0 && isfield(notificationSettings, "account_email")
-                            engine.cacheSlackNotificationUserId(string(notificationSettings.account_email), string(resolvedUserId));
-                        end
-                    catch ME
-                        experimentContext.print("Slack notification warning: notification for scan %s failed (%s).", ...
-                            scan_name_for_notification, ME.message);
-                    end
-                end
-                if stopRequested
-                    UpdateToGUI;
-                    drawnow;
-                    break;
-                end
-                UpdateToGUI;
-                drawnow;
-                pause(3);
-            end
-        end
-    catch ME
-        % Create detailed error message
-        errorMsg = sprintf('Error in Run function:\n\n%s\n\nFile: %s\nLine: %d\n\nStack trace:\n', ...
-            ME.message, ME.stack(1).file, ME.stack(1).line);
-        
-        % Add stack trace details
-        for i = 1:min(3, length(ME.stack))
-            errorMsg = sprintf('%s%d. %s (line %d)\n', errorMsg, i, ME.stack(i).name, ME.stack(i).line);
-        end
-        
-        % Show error dialog
-        errordlg(errorMsg, 'Run Function Error', 'modal');
-    end
-end
-
-function Pause
-    pause
-end
-
-function QueueKey(eventdata)
-    global smaux
-    if strcmp(eventdata.Key,'delete') && isfield(smaux,'smq') && ~isempty(smaux.smq)
-        queue_index=get(smaux.sm.queue_lbh,'Value');
-        if isempty(queue_index)
-            queue_index = 1;
-        end
-        queue_index = min(max(1, queue_index(1)), length(smaux.smq));
-        smaux.smq(queue_index) = [];
-        if queue_index > length(smaux.smq) && ~isempty(smaux.smq)
-            queue_index = length(smaux.smq);
-            set(smaux.sm.queue_lbh,'Value',queue_index);
-        end
-        UpdateToGUI;
-    end
-end
-
-function ScansKey(eventdata)
-    global smaux
-    if strcmp(eventdata.Key,'delete') && isfield(smaux,'scans') && ~isempty(smaux.scans)
-        scan_index=get(smaux.sm.scans_lbh,'Value');
-        if isempty(scan_index)
-            scan_index = 1;
-        end
-        scan_index = min(max(1, scan_index(1)), length(smaux.scans));
-        smaux.scans(scan_index) = [];
-        if scan_index > length(smaux.scans) && ~isempty(smaux.scans)
-            scan_index = length(smaux.scans);
-            set(smaux.sm.scans_lbh,'Value',scan_index);
-        end
-        UpdateToGUI;
-    end
-end
-
-function Console
-end
-
-function Eval
-    global smaux
-    cmdLines = get(smaux.sm.console_eth, 'String');
-    set(smaux.sm.console_eth, 'String', '');
-    for i = 1:size(cmdLines, 1)
-        evalin("base", cmdLines(i, :));
-    end
-end
-
-function scan = UpdateConstants(scan)
-    global smaux smscan engine;
-    
-    try
-        if nargin==0
-            scan = smscan;
-        end
-
-        if ~exist("engine", "var") || isempty(engine) || ~isa(engine, "measurementEngine")
-            error("sm:MissingEngine", "measurementEngine not found. Please run smready(...) first.");
-        end
-
-        if ~isfield(scan, "consts") || isempty(scan.consts)
-            return;
-        end
-
-        consts = measurementScan.normalizeConsts(scan.consts);
-        scan.consts = consts;
-
-        setMask = [consts.set] == 1;
-        if any(setMask)
-            setchans = string({consts(setMask).setchan});
-            setvals = double([consts(setMask).val]).';
-            engine.rackSet(setchans(:), setvals);
-        end
-
-        getMask = ~setMask;
-        if ~any(getMask)
-            return;
-        end
-
-        getchans = string({consts(getMask).setchan});
-        newvals = engine.rackGet(getchans(:));
-        getIdx = find(getMask);
-        for k = 1:numel(getIdx)
-            scan.consts(getIdx(k)).val = newvals(k);
-        end
-    catch ME
-        % Create detailed error message
-        errorMsg = sprintf('Error in UpdateConstants:\n\n%s\n\nFile: %s\nLine: %d\n\nStack trace:\n', ...
-            ME.message, ME.stack(1).file, ME.stack(1).line);
-        
-        % Add stack trace details
-        for i = 1:min(3, length(ME.stack))
-            errorMsg = sprintf('%s%d. %s (line %d)\n', errorMsg, i, ME.stack(i).name, ME.stack(i).line);
-        end
-        
-        % Show error dialog
-        errordlg(errorMsg, 'UpdateConstants Error', 'modal');
-        % Return the scan unchanged if there's an error
-        if nargin==0
-            scan = smscan;
-        end
-    end
+delete(fig);
 end
 
 function UpdateToGUI
-    global smaux bridge
+smQueueRefresh();
+end
+
+function ViewMouseDown
+if blockedBySafeMode()
+    return;
+end
+state = queueState();
+fig = state.view();
+if isempty(fig) || ~isgraphics(fig, "figure")
+    return;
+end
+h = guidata(fig);
+target = hittest(fig);
+if isempty(target) || ~isgraphics(target)
+    return;
+end
+panel = ancestor(target, "uipanel");
+if target == h.qtxt_eth || target == h.commands_panel || panel == h.commands_panel
+    state.setSource("raw");
+    smQueueRefresh();
+    if isgraphics(h.qtxt_eth) && isequal(getappdata(h.qtxt_eth, "smQueuePromptVisible"), true)
+        set(h.qtxt_eth, "String", "", "ForegroundColor", [0 0 0]);
+        setappdata(h.qtxt_eth, "smQueuePromptVisible", false);
+    end
+elseif target == h.scans_lbh || target == h.scans_panel || panel == h.scans_panel
+    state.setSource("scans");
+    smQueueRefresh();
+end
+end
+
+function SelectSource(source)
+if blockedBySafeMode()
+    return;
+end
+queueState().setSource(source);
+smQueueRefresh();
+end
+
+function Scans
+if blockedBySafeMode()
+    return;
+end
+[h, state] = viewHandles();
+if isempty(h)
+    return;
+end
+snapshot = state.snapshot();
+if isempty(snapshot.scans)
+    return;
+end
+value = get(h.scans_lbh, "Value");
+if isempty(value)
+    state.select("scans", []);
+else
+    state.select("scans", value(end));
+end
+if strcmp(get(h.figure1, "SelectionType"), "open")
+    EditScan2();
+else
+    smQueueRefresh();
+end
+end
+
+function Queue
+if blockedBySafeMode()
+    return;
+end
+[h, state] = viewHandles();
+if isempty(h)
+    return;
+end
+snapshot = state.snapshot();
+if isempty(snapshot.queue)
+    return;
+end
+value = get(h.queue_lbh, "Value");
+if isempty(value)
+    state.select("queue", []);
+else
+    state.select("queue", value(end));
+end
+if strcmp(get(h.figure1, "SelectionType"), "open")
+    EditScan();
+else
+    smQueueRefresh();
+end
+end
+
+function Qtxt
+if blockedBySafeMode()
+    return;
+end
+[h, state] = viewHandles();
+if isempty(h)
+    return;
+end
+state.setSource("raw");
+state.setDraft(readDraft(h.qtxt_eth));
+smQueueRefresh();
+end
+
+function RawKeyPress
+if blockedBySafeMode()
+    return;
+end
+[h, state] = viewHandles();
+if isempty(h)
+    return;
+end
+state.setSource("raw");
+if isequal(getappdata(h.qtxt_eth, "smQueuePromptVisible"), true)
+    set(h.qtxt_eth, "String", "", "ForegroundColor", [0 0 0]);
+    setappdata(h.qtxt_eth, "smQueuePromptVisible", false);
+end
+end
+
+function InsertTop
+insertAt("top");
+end
+
+function InsertAfter
+insertAt("after");
+end
+
+function InsertEnd
+insertAt("end");
+end
+
+function insertAt(where)
+if blockedBySafeMode()
+    return;
+end
+[h, state] = viewHandles();
+if ~isempty(h) && state.snapshot().source == "raw"
+    state.setDraft(readDraft(h.qtxt_eth));
+end
+state.insert(where);
+smQueueRefresh();
+end
+
+function Enqueue
+InsertAfter();
+end
+
+function TXTenqueue
+if blockedBySafeMode()
+    return;
+end
+[h, state] = viewHandles();
+if isempty(h)
+    return;
+end
+state.setSource("raw");
+state.setDraft(readDraft(h.qtxt_eth));
+state.insert("after");
+smQueueRefresh();
+end
+
+function MoveUp
+movePending("up");
+end
+
+function MoveDown
+movePending("down");
+end
+
+function movePending(direction)
+if blockedBySafeMode()
+    return;
+end
+queueState().move(direction);
+smQueueRefresh();
+end
+
+function RemoveQueue
+if blockedBySafeMode()
+    return;
+end
+queueState().remove("queue");
+smQueueRefresh();
+end
+
+function RemoveScan
+if blockedBySafeMode()
+    return;
+end
+queueState().remove("scans");
+smQueueRefresh();
+end
+
+function EditScan
+global smscan
+if blockedBySafeMode()
+    return;
+end
+state = queueState();
+[edited, entry] = state.editQueued();
+if ~edited
+    return;
+end
+if entry.kind == "raw"
+    smQueueRefresh();
+    return;
+end
+smscan = entry.payload;
+smgui_small();
+smQueueRefresh();
+end
+
+function EditScan2
+global smscan
+if blockedBySafeMode()
+    return;
+end
+state = queueState();
+[found, entry] = state.selected("scans");
+if ~found
+    return;
+end
+smscan = entry.payload;
+smgui_small();
+smQueueRefresh();
+end
+
+function QueueKey(event)
+if blockedBySafeMode()
+    return;
+end
+key = string(event.Key);
+if key == "delete"
+    RemoveQueue();
+elseif ismember(key, ["return", "enter"])
+    EditScan();
+elseif hasControl(event) && key == "uparrow"
+    MoveUp();
+elseif hasControl(event) && key == "downarrow"
+    MoveDown();
+end
+end
+
+function ScansKey(event)
+if blockedBySafeMode()
+    return;
+end
+key = string(event.Key);
+if key == "delete"
+    RemoveScan();
+elseif ismember(key, ["return", "enter"])
+    EditScan2();
+end
+end
+
+function OpenScans
+if blockedBySafeMode()
+    return;
+end
+choice = questdlg("Load scans from folder or files?", "Open Scans", ...
+    "Folder", "Files", "Cancel", "Files");
+if strcmp(choice, "Folder")
+    folder = uigetdir;
+    if isequal(folder, 0)
+        return;
+    end
+    listing = dir(fullfile(folder, "*.mat"));
+    listing = listing(~[listing.isdir]);
+    fileList = string(fullfile(folder, {listing.name}));
+elseif strcmp(choice, "Files")
+    [files, folder] = uigetfile("*.mat", "Select Scan File(s)", "MultiSelect", "on");
+    if isequal(files, 0)
+        return;
+    end
+    fileList = string(fullfile(folder, cellstr(string(files))));
+else
+    return;
+end
+fileList = sortPaths(fileList);
+
+accepted = cell(1, 0);
+rejected = 0;
+for file = fileList
     try
-        %populates available scans
-        scannames = {};
-        if isfield(smaux,'scans') && iscell(smaux.scans)
-            scannames = cell(1, length(smaux.scans));
-            for i=1:length(smaux.scans)
-                if ~isfield(smaux.scans{i},'name')
-                    smaux.scans{i}.name=['Scan ' num2str(i)];
-                end
-                scannames{i}=smaux.scans{i}.name;
+        payload = load(file);
+    catch
+        rejected = rejected + 1;
+        continue;
+    end
+    [candidates, supported] = payloadScans(payload);
+    if ~supported
+        rejected = rejected + 1;
+        continue;
+    end
+    for index = 1:numel(candidates)
+        try
+            candidate = candidates{index};
+            valid = isstruct(candidate) && isscalar(candidate) && isfield(candidate, "loops");
+            if valid
+                candidate = smscanSanitizeForBridge(candidate);
+                valid = ~isempty(candidate);
             end
-        else
-            smaux.scans = {};
+        catch
+            valid = false;
         end
-        refreshSingleSelectListbox(smaux.sm.scans_lbh, scannames);
-        
-        %populates queue list box
-        qnames = {};
-        if isfield(smaux,'smq') && iscell(smaux.smq)
-            qnames = cell(1, length(smaux.smq));
-            for i=1:length(smaux.smq)
-                if isfield(smaux.smq{i},'name')
-                    qnames{i}=smaux.smq{i}.name;
-                else
-                    qnames{i}='Unnamed Scan';
-                end
-            end
-        else
-            smaux.smq={};
+        if ~valid
+            rejected = rejected + 1;
+            continue;
         end
-        refreshSingleSelectListbox(smaux.sm.queue_lbh, qnames);
-        
-        %populate data path sth
-        rootPath = string(pwd);
-        if exist("bridge", "var") && ~isempty(bridge) && isobject(bridge) && isprop(bridge, "experimentRootPath")
-            if strlength(string(bridge.experimentRootPath)) == 0
-                bridge.experimentRootPath = pwd;
-            end
-            rootPath = string(bridge.experimentRootPath);
-        end
-        if isfield(smaux, 'datadir') && ~isempty(smaux.datadir)
-            candidatePath = string(smaux.datadir);
-            if ~startsWith(candidatePath, rootPath, "IgnoreCase", true)
-                [~, relPath] = fileparts(char(candidatePath));
-                relPath = string(relPath);
-                if strlength(relPath) == 0
-                    relPath = "data";
-                end
-                smaux.datadir = fullfile(rootPath, relPath);
-            end
-        else
-            smaux.datadir = smdatapathDefaultPath();
-        end
-        if ~exist(smaux.datadir, 'dir')
-            mkdir(smaux.datadir);
-        end
-        currentPath = smdatapathGetState();
-        if ~strcmp(char(currentPath), char(smaux.datadir))
-            smdatapathUpdateGlobalState("main", smaux.datadir);
-        else
-            smdatapathApplyStateToGui("main");
-        end
-        
-        %populate run number eth
-        smrunApplyStateToGui('main');
-        
-        %populate powerpoint main file sth
-        [pptEnabledMain, pptFileMain] = smpptGetState();
-        if isfield(smaux.sm, 'pptauto_cbh') && ishandle(smaux.sm.pptauto_cbh)
-            set(smaux.sm.pptauto_cbh, 'Value', double(pptEnabledMain));
-        end
-        if isfield(smaux.sm, 'pptfile_sth') && ishandle(smaux.sm.pptfile_sth)
-            if isempty(pptFileMain)
-                displayName = '';
-            else
-                [~, name, ext] = fileparts(pptFileMain);
-                displayName = [name ext];
-            end
-            set(smaux.sm.pptfile_sth, 'String', displayName);
-            set(smaux.sm.pptfile_sth, 'TooltipString', pptFileMain);
-        end
-        
-        %populate powerpoint priority file sth
-        if isfield(smaux,'pptsavefile2') && exist(smaux.pptsavefile2,'file')
-            [~, name, ext] = fileparts(smaux.pptsavefile2);
-            set(smaux.sm.pptfile2_sth,'String',[name ext]);
-            set(smaux.sm.pptfile2_sth,'TooltipString',smaux.pptsavefile2);
-        end
-        
-        %populate comment text
-        if ~isfield(smaux,'comments')
-            smaux.comments='';
-        end
-        set(smaux.sm.comments_eth,'String',smaux.comments);
-        
-        %populate smusers listbox
-        if isfield(smaux,'users')
-            set(smaux.sm.smusers_lbh,'String',{smaux.users.name});
-            set(smaux.sm.smusers_lbh,'Value',find(cell2mat({smaux.users.notifyon})));
-        end
-        
-        % Force pending GUI updates to render before returning.
-        smbridgeUpdateEditRackMenuState();
-        drawnow;
-    catch ME
-        % Create detailed error message
-        errorMsg = sprintf('Error in UpdateToGUI:\n\n%s\n\nFile: %s\nLine: %d\n\nStack trace:\n', ...
-            ME.message, ME.stack(1).file, ME.stack(1).line);
-        
-        % Add stack trace details
-        for i = 1:min(3, length(ME.stack))
-            errorMsg = sprintf('%s%d. %s (line %d)\n', errorMsg, i, ME.stack(i).name, ME.stack(i).line);
-        end
-        
-        % Show error dialog
-        errordlg(errorMsg, 'UpdateToGUI Error', 'modal');
+        accepted{end + 1} = candidate; %#ok<AGROW>
     end
 end
 
-function refreshSingleSelectListbox(handle, items)
-    currentStrings = get(handle, 'String');
-    currentValue = get(handle, 'Value');
-    currentTop = get(handle, 'ListboxTop');
-    if isempty(currentValue)
-        currentValue = 1;
+experimentContext.print("Loaded %d scans; rejected %d inputs.", numel(accepted), rejected);
+if isempty(accepted)
+    errordlg("No valid scans were found.", "No Valid Scans", "modal");
+    return;
+end
+queueState().appendScans(accepted, true);
+smQueueRefresh();
+end
+
+function SaveScans
+if blockedBySafeMode()
+    return;
+end
+snapshot = queueState().snapshot();
+scans = snapshot.scans;
+if isempty(scans)
+    return;
+end
+baseFolder = fullfile(experimentRoot(), ...
+    "scans_" + string(datetime("now", "Format", "yyyyMMdd_HHmmss")));
+targetFolder = uniqueFolder(baseFolder);
+written = 0;
+try
+    [created, message] = mkdir(targetFolder);
+    if ~created
+        error("sm:CreateExportFolderFailed", "Could not create %s (%s).", targetFolder, message);
     end
-    if isempty(currentTop)
-        currentTop = 1;
+    for index = 1:numel(scans)
+        smscan = normalizedScanForSave(scans{index});
+        baseName = exportName(smscan, index);
+        output = uniqueMatFile(targetFolder, baseName);
+        save(output, "smscan");
+        written = written + 1;
     end
-    if isempty(items)
-        items = {''};
-        targetValue = 1;
-        targetTop = 1;
+catch ME
+    report = getReport(ME, "extended", "hyperlinks", "off");
+    experimentContext.print("Saved %d of %d scans to %s before failure.%s%s", ...
+        written, numel(scans), targetFolder, newline, report);
+    errordlg(sprintf("Saved %d of %d scans before failure.\n\n%s", ...
+        written, numel(scans), ME.message), "Save Scans Failed", "modal");
+    return;
+end
+experimentContext.print("Saved %d scans to %s.", written, targetFolder);
+end
+
+function SavePath
+if blockedBySafeMode()
+    return;
+end
+picked = uigetdir;
+if isequal(picked, 0)
+    return;
+end
+root = experimentRoot();
+picked = string(picked);
+if startsWith(picked, root, "IgnoreCase", true)
+    relative = extractAfter(picked, strlength(root));
+    if startsWith(relative, filesep)
+        relative = extractAfter(relative, 1);
+    end
+    if strlength(relative) == 0
+        relative = "data";
+    end
+else
+    [~, relative] = fileparts(picked);
+    relative = string(relative);
+    if strlength(relative) == 0
+        relative = "data";
+    end
+end
+target = fullfile(root, relative);
+smdatapathUpdateGlobalState("main", target);
+smdatapathApplyStateToGui("main");
+end
+
+function RunNum
+if blockedBySafeMode()
+    return;
+end
+[h, ~] = viewHandles();
+if isempty(h)
+    return;
+end
+text = string(get(h.run_eth, "String"));
+if strlength(strip(text)) == 0
+    value = [];
+else
+    value = str2double(text);
+    if ~isscalar(value) || ~isfinite(value) || value < 0 || value > 999
+        errordlg("Please enter a number in [0, 999].", "Bad Run Number", "modal");
+        value = [];
+    end
+end
+smrunUpdateGlobalState("main", value);
+smrunApplyStateToGui("main");
+end
+
+function PPTauto
+if blockedBySafeMode()
+    return;
+end
+[h, ~] = viewHandles();
+if isempty(h)
+    return;
+end
+[~, file] = smpptGetState();
+smpptUpdateGlobalState("main", logical(get(h.pptauto_cbh, "Value")), file);
+smpptApplyStateToGui("main");
+end
+
+function PPTFile
+if blockedBySafeMode()
+    return;
+end
+[enabled, current] = smpptGetState();
+if isempty(current)
+    current = fullfile(experimentRoot(), "log.ppt");
+end
+[file, folder] = uiputfile("*.ppt", "Append to Presentation", current);
+if isequal(file, 0)
+    return;
+end
+[~, name, extension] = fileparts(file);
+if strlength(string(extension)) == 0
+    extension = ".ppt";
+end
+smpptUpdateGlobalState("main", enabled, fullfile(folder, string(name) + string(extension)));
+smpptApplyStateToGui("main");
+end
+
+function EditRack
+global engine
+if blockedBySafeMode() || smbridgeQueueRunnerActive() ...
+        || (validEngine(engine) && engine.isScanInProgress)
+    return;
+end
+smeditrack();
+end
+
+function Start
+global engine
+if blockedBySafeMode() || ~validEngine(engine)
+    return;
+end
+state = queueState();
+snapshot = state.snapshot();
+if snapshot.queuePhase ~= "idle" || isempty(snapshot.queue) || engine.isScanInProgress
+    return;
+end
+if ~state.beginRun()
+    return;
+end
+
+cleanup = onCleanup(@() finishRunner(state));
+smbridgeUpdateEditRackMenuState(true);
+smQueueRefresh();
+drawnow;
+
+while true
+    [started, item] = state.startNext();
+    if ~started
+        break;
+    end
+    smQueueRefresh();
+    drawnow limitrate nocallbacks;
+    outcome = "complete";
+    itemError = MException.empty;
+    try
+        if item.kind == "raw"
+            executeRaw(item.payload);
+        else
+            metadata = executeScan(item.payload);
+            if isfield(metadata, "stopRequested") && logical(metadata.stopRequested)
+                outcome = "stopped";
+            end
+        end
+    catch itemError
+        outcome = "error";
+    end
+    shouldContinue = state.finishCurrent(outcome);
+    smQueueRefresh();
+    if ~isempty(itemError)
+        reportQueueItemError(itemError, item.label);
+    end
+    drawnow;
+    if ~shouldContinue
+        break;
+    end
+end
+end
+
+function Run
+Start();
+end
+
+function StopQueue
+if blockedBySafeMode()
+    return;
+end
+queueState().requestStopAfter();
+smQueueRefresh();
+end
+
+function StopNow
+global engine
+if blockedBySafeMode()
+    return;
+end
+state = queueState();
+snapshot = state.snapshot();
+if ismember(snapshot.queuePhase, ["finalizing", "betweenItems"])
+    state.requestStopNow();
+    smQueueRefresh();
+    return;
+end
+if ~ismember(snapshot.queuePhase, ["runningScan", "stoppingAfterCurrent"]) ...
+        || isempty(snapshot.runningItem) || snapshot.runningItem.kind ~= "scan"
+    return;
+end
+if validEngine(engine) && engine.activeRunPhase == "finalizing"
+    state.requestStopAfter();
+    state.setFinalizing();
+    smQueueRefresh();
+    return;
+end
+choice = questdlg( ...
+    "Stop the current scan now? Finish actions will run, partial data will be saved, and the queue will stop.", ...
+    "Stop Current Scan?", "Stop Now", "Cancel", "Cancel");
+if ~strcmp(choice, "Stop Now")
+    return;
+end
+action = state.requestStopNow();
+if action == "stopNow" && validEngine(engine)
+    accepted = engine.requestScanStop("Queue Stop Now requested by user.");
+    if ~accepted && engine.activeRunPhase == "finalizing"
+        state.setFinalizing();
+        state.requestStopAfter();
+    end
+end
+smQueueRefresh();
+end
+
+function finishRunner(state)
+state.endRun();
+smbridgeUpdateEditRackMenuState(false);
+smQueueRefresh();
+end
+
+function metadata = executeScan(scan)
+global engine
+scanName = itemLabel(scan);
+if startsWith(scanName, "[CMD]")
+    scanName = "scan";
+end
+if isstruct(scan) && isfield(scan, "ppt")
+    scan = rmfield(scan, "ppt");
+end
+[~, metadata] = engine.run(scan, "", "turbo");
+stopped = isfield(metadata, "stopRequested") && logical(metadata.stopRequested);
+complete = isfield(metadata, "isComplete") && logical(metadata.isComplete);
+if complete || stopped
+    sendNotification(scanName, metadata, stopped);
+end
+end
+
+function sendNotification(scanName, metadata, stopped)
+global engine
+settings = engine.slack_notification_settings;
+try
+    userId = smnotifySlackScanComplete(scanName, metadata.pngFile, metadata.filename, ...
+        metadata.duration, settings, stopped, string(metadata.stopMessage));
+    if strlength(string(userId)) > 0 && isfield(settings, "account_email")
+        engine.cacheSlackNotificationUserId(string(settings.account_email), string(userId));
+    end
+catch ME
+    experimentContext.print("Slack notification warning: notification for scan %s failed (%s).", ...
+        scanName, ME.message);
+end
+end
+
+function executeRaw(payload)
+text = rawText(payload.eval);
+lines = splitlines(text);
+for index = 1:numel(lines)
+    evalin("base", char(lines(index)));
+end
+end
+
+function reportQueueItemError(ME, label)
+report = getReport(ME, "extended", "hyperlinks", "off");
+experimentContext.print("%s", report);
+errordlg(sprintf("%s\n\n%s", label, ME.message), "Queue Item Error", "modal");
+end
+
+function [h, state] = viewHandles()
+state = queueState();
+fig = state.view();
+if isempty(fig) || ~isgraphics(fig, "figure")
+    h = [];
+else
+    h = guidata(fig);
+end
+end
+
+function state = queueState()
+state = smQueueState.get();
+end
+
+function blocked = blockedBySafeMode()
+global engine
+blocked = validEngine(engine) && engine.activeRunMode == "safe";
+end
+
+function valid = validEngine(engine)
+valid = ~isempty(engine) && isa(engine, "measurementEngine") && isvalid(engine);
+end
+
+function draft = readDraft(handle)
+if isequal(getappdata(handle, "smQueuePromptVisible"), true)
+    draft = "";
+else
+    draft = rawText(get(handle, "String"));
+end
+end
+
+function text = rawText(value)
+if ischar(value)
+    if isempty(value)
+        text = "";
+    elseif isrow(value)
+        text = string(value);
     else
-        targetValue = min(max(1, currentValue(1)), length(items));
-        targetTop = min(max(1, currentTop(1)), length(items));
+        text = join(string(cellstr(value)), newline);
     end
-    if ~isempty(currentStrings)
-        % GUIDE listboxes are single-select, so selection/top must be valid
-        % before shrinking the String list.
-        set(handle, 'Value', 1);
-        set(handle, 'ListboxTop', 1);
-    end
-    set(handle, 'String', items);
-    set(handle, 'Value', targetValue);
-    set(handle, 'ListboxTop', targetTop);
+elseif isstring(value) || iscellstr(value)
+    text = join(string(value(:)), newline);
+else
+    error("sm:InvalidRawCommand", "Raw command text must be char, string, or cellstr.");
+end
 end
 
-
-function scan = ensureScanPpt(scan)
-    smpptEnsureGlobals();
-    if ~isstruct(scan)
-        return;
-    end
-    if isfield(scan, 'ppt')
-        scan = rmfield(scan, 'ppt');
-    end
+function tf = hasControl(event)
+if isstruct(event)
+    tf = isfield(event, "Modifier") && any(string(event.Modifier) == "control");
+else
+    tf = isprop(event, "Modifier") && any(string(event.Modifier) == "control");
+end
 end
 
-
-function smpptAttachMainGui()
-    global smaux bridge
-    smpptEnsureGlobals();
-    if ~isstruct(smaux) || ~isfield(smaux, 'sm') || ~isstruct(smaux.sm)
-        return;
-    end
-    handles.figure = [];
-    if isfield(smaux.sm, 'figure1')
-        handles.figure = smaux.sm.figure1;
-    end
-    handles.checkbox = [];
-    if isfield(smaux.sm, 'pptauto_cbh')
-        handles.checkbox = smaux.sm.pptauto_cbh;
-    end
-    handles.fileLabel = [];
-    if isfield(smaux.sm, 'pptfile_sth')
-        handles.fileLabel = smaux.sm.pptfile_sth;
-    end
-    [currentEnabled, currentFile] = smpptGetState();
-    targetEnabled = currentEnabled;
-    if ishandle(handles.checkbox)
-        targetEnabled = logical(get(handles.checkbox, 'Value'));
-    end
-    targetFile = currentFile;
-    rootPath = string(pwd);
-    if exist("bridge", "var") && ~isempty(bridge) && isobject(bridge) && isprop(bridge, "experimentRootPath")
-        if strlength(string(bridge.experimentRootPath)) == 0
-            bridge.experimentRootPath = pwd;
-        end
-        rootPath = string(bridge.experimentRootPath);
-    end
-    if isempty(targetFile)
-        if isfield(smaux, 'pptsavefile') && ~isempty(smaux.pptsavefile)
-            targetFile = smaux.pptsavefile;
-        else
-            % Set default short name
-            targetFile = "log.ppt";
-        end
-    end
-    if strlength(rootPath) > 0
-        [~, pptName, pptExt] = fileparts(targetFile);
-        if strlength(string(pptExt)) == 0
-            pptExt = ".ppt";
-        end
-        targetFile = fullfile(rootPath, string(pptName) + string(pptExt));
-    end
-    if targetEnabled ~= currentEnabled || ~strcmp(char(targetFile), char(currentFile))
-        smpptUpdateGlobalState('main', targetEnabled, targetFile);
-    end
+function paths = sortPaths(paths)
+paths = paths(:);
+if isempty(paths)
+    return;
+end
+[~, order] = sortrows([lower(paths) paths], [1 2]);
+paths = paths(order).';
 end
 
-
-function smdatapathAttachMainGui()
-    global smaux
-    smdatapathEnsureGlobals();
-    if ~isstruct(smaux) || ~isfield(smaux, 'sm') || ~isstruct(smaux.sm)
-        return;
-    end
-    handles = struct();
-    if isfield(smaux.sm, 'datapath_sth')
-        handles.label = smaux.sm.datapath_sth;
-        handles.tooltipHandle = smaux.sm.datapath_sth;
-        handles.displayLimit = 40;
-    end
-    smdatapathRegisterGui('main', handles);
+function [scans, supported] = payloadScans(payload)
+scans = cell(1, 0);
+supported = true;
+if isfield(payload, "smscan") && isstruct(payload.smscan)
+    scans = reshape(num2cell(payload.smscan), 1, []);
+elseif isfield(payload, "scan") && isstruct(payload.scan)
+    scans = reshape(num2cell(payload.scan), 1, []);
+elseif isfield(payload, "scans") && iscell(payload.scans)
+    scans = reshape(payload.scans, 1, []);
+elseif isfield(payload, "scans") && isstruct(payload.scans)
+    scans = reshape(num2cell(payload.scans), 1, []);
+else
+    supported = false;
+end
 end
 
-
-function smrunAttachMainGui()
-    global smaux
-    smrunEnsureGlobals();
-    if ~isstruct(smaux) || ~isfield(smaux, 'sm') || ~isstruct(smaux.sm)
-        return;
-    end
-    handles = struct();
-    if isfield(smaux.sm, 'run_eth')
-        handles.edit = smaux.sm.run_eth;
-        handles.tooltipHandle = smaux.sm.run_eth;
-    end
-    smrunRegisterGui('main', handles);
+function scan = normalizedScanForSave(scan)
+if ~isstruct(scan) || ~isscalar(scan)
+    error("sm:InvalidLibraryScan", "Every library entry must be a scalar scan struct.");
+end
+if isfield(scan, "consts")
+    scan.consts = measurementScan.normalizeConsts(scan.consts);
+end
+if ~isfield(scan, "finish")
+    scan.finish = [];
+end
+scan.finish = measurementScan.normalizeConsts(scan.finish, "scan.finish");
 end
 
+function name = exportName(scan, index)
+name = "scan_" + index;
+if isfield(scan, "name") && strlength(string(scan.name)) > 0
+    name = string(scan.name);
+end
+if ~isscalar(name)
+    name = join(name(:), " ");
+end
+name = regexprep(name, '[\\/:*?"<>|.]', "_");
+if strlength(name) == 0
+    name = "scan_" + index;
+end
+end
+
+function output = uniqueMatFile(folder, baseName)
+output = fullfile(folder, baseName + ".mat");
+suffix = 0;
+while isfile(output)
+    suffix = suffix + 1;
+    output = fullfile(folder, baseName + " (" + suffix + ").mat");
+end
+end
+
+function folder = uniqueFolder(baseFolder)
+folder = string(baseFolder);
+suffix = 0;
+while isfolder(folder) || isfile(folder)
+    suffix = suffix + 1;
+    folder = string(baseFolder) + " (" + suffix + ")";
+end
+end
+
+function root = experimentRoot()
+global bridge
+root = string(pwd);
+if ~isempty(bridge) && isobject(bridge) && isprop(bridge, "experimentRootPath")
+    if strlength(string(bridge.experimentRootPath)) == 0
+        bridge.experimentRootPath = pwd;
+    end
+    root = string(bridge.experimentRootPath);
+end
+end
+
+function label = itemLabel(item)
+if isstruct(item) && isscalar(item) && isfield(item, "eval") && ~isfield(item, "loops")
+    lines = splitlines(rawText(item.eval));
+    lines = lines(strlength(strip(lines)) > 0);
+    if isempty(lines)
+        label = "[CMD]";
+    else
+        label = "[CMD] " + lines(1);
+    end
+elseif isstruct(item) && isfield(item, "name") && strlength(string(item.name)) > 0
+    label = string(item.name);
+elseif isobject(item) && isprop(item, "name") && strlength(string(item.name)) > 0
+    label = string(item.name);
+else
+    label = "Scan";
+end
+if ~isscalar(label)
+    label = join(label(:), " ");
+end
+end

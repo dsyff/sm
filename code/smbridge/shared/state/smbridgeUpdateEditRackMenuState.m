@@ -6,6 +6,7 @@ function smbridgeUpdateEditRackMenuState(isRunningOverride)
         if exist("engine", "var") && ~isempty(engine) && isa(engine, "measurementEngine")
             isRunning = logical(engine.isScanInProgress);
         end
+        isRunning = isRunning || smbridgeQueueRunnerActive();
     else
         isRunning = logical(isRunningOverride);
     end

@@ -18,8 +18,8 @@ function smeditrack(varargin)
         notifyInfo("measurementEngine not found. Please run smready(...) first.", "Edit Rack", existing);
         return;
     end
-    if engine.isScanInProgress
-        notifyInfo("Edit Rack is unavailable while a scan is running.", "Edit Rack", existing);
+    if engine.isScanInProgress || smbridgeQueueRunnerActive()
+        notifyInfo("Edit Rack is unavailable while a scan or queue is running.", "Edit Rack", existing);
         return;
     end
 
@@ -73,8 +73,8 @@ function smeditrack(varargin)
     loadFromEngine();
 
     function onReload(~, ~)
-        if engine.isScanInProgress
-            notifyInfo("Reload is unavailable while a scan is running.", "Edit Rack", fig);
+        if engine.isScanInProgress || smbridgeQueueRunnerActive()
+            notifyInfo("Reload is unavailable while a scan or queue is running.", "Edit Rack", fig);
             return;
         end
         try
@@ -133,8 +133,8 @@ function smeditrack(varargin)
 
     function onApply(~, ~)
         smbridgeUpdateEditRackMenuState();
-        if engine.isScanInProgress
-            notifyInfo("Cannot apply rack edits while a scan is in progress.", "Edit Rack", fig);
+        if engine.isScanInProgress || smbridgeQueueRunnerActive()
+            notifyInfo("Cannot apply rack edits while a scan or queue is in progress.", "Edit Rack", fig);
             return;
         end
 

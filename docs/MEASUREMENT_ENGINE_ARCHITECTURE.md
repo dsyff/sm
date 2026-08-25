@@ -98,6 +98,16 @@ Recent rack-side changes that affect scan/runtime behavior:
 
 ### Stop signal (worker modes)
 
+The public read-only observable properties `activeRunMode` (`""`, `"safe"`, or
+`"turbo"`) and `activeRunPhase` (`"idle"`, `"startup"`, `"acquiring"`, or
+`"finalizing"`) expose the complete run lifecycle to GUI clients. Every success
+and error cleanup path returns them to empty mode and idle phase.
+
+GUI clients request a run-scoped graceful stop through
+`engine.requestScanStop(message)`. The method accepts only startup/acquisition,
+latches the first reason, routes through the same local or run-ID-scoped worker
+stop path described below, and is a no-op while idle or finalizing.
+
 The client sends a stop signal by placing `struct("type", "stop", "requestId", runId)` on the dedicated `scanControlToEngine` PDQ. The worker scan functions check for it at multiple points in the measurement loop:
 
 1. Check `scanControlToEngine.QueueLength > 0` (cheap, no blocking).
