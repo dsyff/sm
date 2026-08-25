@@ -1,460 +1,316 @@
 function varargout = sm(varargin)
-% SM M-file for sm.fig
-%      SM, by itself, creates a new SM or raises the existing
-%      singleton*.
-%
-%      H = SM returns the handle to a new SM or the handle to
-%      the existing singleton*.
-%
-%      SM('CALLBACK',hObject,eventData,handles,...) calls the local
-%      function named CALLBACK in SM.M with the given input arguments.
-%
-%      SM('Property','Value',...) creates a new SM or raises the
-%      existing singleton*.  Starting from the left, property value pairs are
-%      applied to the GUI before sm_OpeningFcn gets called.  An
-%      unrecognized property name or invalid value makes property application
-%      stop.  All inputs are passed to sm_OpeningFcn via varargin.
-%
-%      *See GUI Options on GUIDE's Tools menu.  Choose "GUI allows only one
-%      instance to run (singleton)".
-%
+%SM Create or raise the programmatic queue GUI singleton.
+%#ok<*GVMIS>
 
-% Copyright 2011 Hendrik Bluhm, Vivek Venkatachalam
-% Updated 2025 for SM 1.5 Bridge System
-% This file is part of Special Measure.
-% 
-%     Special Measure is free software: you can redistribute it and/or modify
-%     it under the terms of the GNU General Public License as published by
-%     the Free Software Foundation, either version 3 of the License, or
-%     (at your option) any later version.
-% 
-%     Special Measure is distributed in the hope that it will be useful,
-%     but WITHOUT ANY WARRANTY; without even the implied warranty of
-%     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-%     GNU General Public License for more details.
-% 
-%     You should have received a copy of the GNU General Public License
-%     along with Special Measure.  If not, see
-%     <http://www.gnu.org/licenses/>.
-% See also: GUIDE, GUIDATA, GUIHANDLES
+global engine smaux
 
-% Edit the above text to modify the response to help sm
-
-% Last Modified by GUIDE v2.5 04-Mar-2011 10:05:43
-% Updated for SM 1.5 Bridge System
-
-% Begin initialization code - DO NOT EDIT
-gui_Singleton = 1;
-gui_State = struct('gui_Name',       mfilename, ...
-                   'gui_Singleton',  gui_Singleton, ...
-                   'gui_OpeningFcn', @sm_OpeningFcn, ...
-                   'gui_OutputFcn',  @sm_OutputFcn, ...
-                   'gui_LayoutFcn',  [] , ...
-                   'gui_Callback',   []);
-if nargin && ischar(varargin{1})
-    gui_State.gui_Callback = str2func(varargin{1});
+if nargin ~= 0
+    error("sm:InvalidArguments", "sm does not accept input arguments.");
+end
+if isempty(engine) || ~isa(engine, "measurementEngine") || ~isvalid(engine)
+    error("sm:MissingEngine", "measurementEngine not found. Please run smready(...) first.");
 end
 
-if nargout
-    [varargout{1:nargout}] = gui_mainfcn(gui_State, varargin{:});
+smbridgeAddSharedPaths();
+smdatapathEnsureGlobals();
+smrunEnsureGlobals();
+smpptEnsureGlobals();
+
+state = smQueueState.get();
+fig = attachedFigure();
+if isgraphics(fig, "figure")
+    smQueueBindEngine(engine);
+    smQueueRefresh();
+    figure(fig);
+    if nargout > 0
+        varargout{1} = fig;
+    end
+    return;
+end
+
+handles = createView();
+fig = handles.figure1;
+smaux.sm = handles;
+guidata(fig, handles);
+state.attachView(fig);
+
+smdatapathRegisterGui("main", struct( ...
+    "label", handles.datapath_sth, ...
+    "tooltipHandle", handles.datapath_sth, ...
+    "displayLimit", 40));
+smrunRegisterGui("main", struct( ...
+    "edit", handles.run_eth, ...
+    "tooltipHandle", handles.run_eth));
+smpptRegisterGui("main", struct( ...
+    "figure", fig, ...
+    "checkbox", handles.pptauto_cbh, ...
+    "fileLabel", handles.pptfile_sth));
+
+smQueueBindEngine(engine);
+sm_Callback("Open", handles);
+set(fig, "Visible", "on");
+
+if nargout > 0
+    varargout{1} = fig;
+end
+end
+
+function fig = attachedFigure()
+global smaux
+fig = gobjects(0);
+if isstruct(smaux) && isfield(smaux, "sm") && isstruct(smaux.sm) ...
+        && isfield(smaux.sm, "figure1") && isgraphics(smaux.sm.figure1, "figure")
+    fig = smaux.sm.figure1;
+end
+end
+
+function h = createView()
+screen = get(groot, "ScreenSize");
+width = 924;
+height = 800;
+x = max(screen(1), screen(1) + floor((screen(3) - width) / 2));
+y = max(screen(2), screen(2) + floor((screen(4) - height) / 2));
+
+h.figure1 = figure( ...
+    "Name", "Special Measure Queue", ...
+    "NumberTitle", "off", ...
+    "Tag", "sm_queue", ...
+    "MenuBar", "none", ...
+    "ToolBar", "none", ...
+    "Units", "pixels", ...
+    "Position", [x y width height], ...
+    "Color", [0.94 0.94 0.94], ...
+    "Resize", "on", ...
+    "Visible", "off", ...
+    "HandleVisibility", "callback", ...
+    "Interruptible", "on", ...
+    "BusyAction", "cancel", ...
+    "CloseRequestFcn", @(src, ~) sm_Callback("Close", src), ...
+    "SizeChangedFcn", @resizeView, ...
+    "WindowButtonDownFcn", @(~, ~) sm_Callback("ViewMouseDown"));
+
+h.file_menu = uimenu(h.figure1, "Label", "File");
+h.openscans = uimenu(h.file_menu, "Label", "Open Scans...", ...
+    "Callback", @(~, ~) sm_Callback("OpenScans"));
+h.savescans = uimenu(h.file_menu, "Label", "Save Scans", ...
+    "Callback", @(~, ~) sm_Callback("SaveScans"));
+h.editrack = uimenu(h.file_menu, "Label", "Edit Rack...", ...
+    "Separator", "on", "Callback", @(~, ~) sm_Callback("EditRack"));
+setappdata(h.editrack, "smEditRackBaseLabel", "Edit Rack...");
+
+h.save_panel = uipanel(h.figure1, "Title", "Save", "FontWeight", "bold", "Units", "pixels");
+h.savepath_pbh = button(h.save_panel, "Path...", @(~, ~) sm_Callback("SavePath"));
+h.datapath_sth = uicontrol(h.save_panel, "Style", "text", ...
+    "HorizontalAlignment", "left", "BackgroundColor", get(h.save_panel, "BackgroundColor"));
+h.run_label = uicontrol(h.save_panel, "Style", "text", "String", "Run #", ...
+    "HorizontalAlignment", "right", "BackgroundColor", get(h.save_panel, "BackgroundColor"));
+h.run_eth = uicontrol(h.save_panel, "Style", "edit", "BackgroundColor", "white", ...
+    "HorizontalAlignment", "center", "Callback", @(~, ~) sm_Callback("RunNum"));
+
+h.ppt_panel = uipanel(h.figure1, "Title", "PowerPoint", "FontWeight", "bold", "Units", "pixels");
+h.pptauto_cbh = uicontrol(h.ppt_panel, "Style", "checkbox", ...
+    "String", "Log to PowerPoint", ...
+    "BackgroundColor", get(h.ppt_panel, "BackgroundColor"), ...
+    "Callback", @(~, ~) sm_Callback("PPTauto"));
+h.pptfile_pbh = button(h.ppt_panel, "File...", @(~, ~) sm_Callback("PPTFile"));
+h.pptfile_sth = uicontrol(h.ppt_panel, "Style", "text", ...
+    "HorizontalAlignment", "left", "BackgroundColor", get(h.ppt_panel, "BackgroundColor"));
+
+h.notify_panel = uipanel(h.figure1, "Title", "Notifications", "FontWeight", "bold", "Units", "pixels");
+h.notify_label = uicontrol(h.notify_panel, "Style", "text", "String", "Slack:", ...
+    "HorizontalAlignment", "left", "BackgroundColor", get(h.notify_panel, "BackgroundColor"));
+h.notify_account = uicontrol(h.notify_panel, "Style", "text", ...
+    "HorizontalAlignment", "left", "BackgroundColor", get(h.notify_panel, "BackgroundColor"));
+
+h.schedule_panel = uipanel(h.figure1, "Title", "Schedule", "FontWeight", "bold", "Units", "pixels");
+h.scans_panel = uipanel(h.schedule_panel, "Title", "Available Scans", ...
+    "FontWeight", "bold", "Units", "pixels", ...
+    "ButtonDownFcn", @(~, ~) sm_Callback("SelectSource", "scans"));
+h.scans_lbh = uicontrol(h.scans_panel, "Style", "listbox", ...
+    "BackgroundColor", "white", "Max", 1, "Min", 0, ...
+    "Callback", @(~, ~) sm_Callback("Scans"), ...
+    "KeyPressFcn", @(~, event) sm_Callback("ScansKey", event));
+
+h.commands_panel = uipanel(h.schedule_panel, "Title", "Raw Commands", ...
+    "FontWeight", "bold", "Units", "pixels", ...
+    "ButtonDownFcn", @(~, ~) sm_Callback("SelectSource", "raw"));
+h.qtxt_eth = uicontrol(h.commands_panel, "Style", "edit", ...
+    "BackgroundColor", "white", "HorizontalAlignment", "left", ...
+    "Max", 20, "Min", 0, ...
+    "Callback", @(~, ~) sm_Callback("Qtxt"), ...
+    "KeyPressFcn", @(~, ~) sm_Callback("RawKeyPress"), ...
+    "KeyReleaseFcn", @(~, ~) sm_Callback("Qtxt"));
+
+h.insert_source_sth = uicontrol(h.schedule_panel, "Style", "text", ...
+    "String", "Source: Scans", "FontWeight", "bold", ...
+    "HorizontalAlignment", "center", "BackgroundColor", get(h.schedule_panel, "BackgroundColor"));
+h.insert_top_pbh = button(h.schedule_panel, "Top >>", @(~, ~) sm_Callback("InsertTop"));
+h.insert_after_pbh = button(h.schedule_panel, "After >>", @(~, ~) sm_Callback("InsertAfter"));
+h.insert_end_pbh = button(h.schedule_panel, "End >>", @(~, ~) sm_Callback("InsertEnd"));
+
+h.queue_panel = uipanel(h.schedule_panel, "Title", "Queue", "FontWeight", "bold", "Units", "pixels");
+h.status_sth = uicontrol(h.queue_panel, "Style", "text", "String", "Idle", ...
+    "FontWeight", "bold", "HorizontalAlignment", "left", ...
+    "BackgroundColor", get(h.queue_panel, "BackgroundColor"));
+h.run_pbh = button(h.queue_panel, "Start", @(~, ~) sm_Callback("Start"));
+set(h.run_pbh, "BackgroundColor", [0.60 0.82 0.60], ...
+    "FontWeight", "bold", "Interruptible", "on", "BusyAction", "cancel");
+h.stopqueue_pbh = button(h.queue_panel, "Stop Queue", @(~, ~) sm_Callback("StopQueue"));
+set(h.stopqueue_pbh, "BackgroundColor", [0.95 0.77 0.38], "FontWeight", "bold");
+h.stopnow_pbh = button(h.queue_panel, "Stop Now", @(~, ~) sm_Callback("StopNow"));
+set(h.stopnow_pbh, "BackgroundColor", [0.88 0.47 0.47], "FontWeight", "bold");
+h.queue_lbh = uicontrol(h.queue_panel, "Style", "listbox", ...
+    "BackgroundColor", "white", "Max", 1, "Min", 0, ...
+    "Callback", @(~, ~) sm_Callback("Queue"), ...
+    "KeyPressFcn", @(~, event) sm_Callback("QueueKey", event));
+h.moveup_pbh = button(h.queue_panel, "Move Up", @(~, ~) sm_Callback("MoveUp"));
+h.movedown_pbh = button(h.queue_panel, "Move Down", @(~, ~) sm_Callback("MoveDown"));
+h.removequeue_pbh = button(h.queue_panel, "Remove", @(~, ~) sm_Callback("RemoveQueue"));
+
+h.safe_overlay = uicontrol(h.schedule_panel, "Style", "text", ...
+    "String", "Safe-mode scan active — queue controls disabled", ...
+    "FontWeight", "bold", "FontSize", 11, ...
+    "ForegroundColor", [0.45 0.20 0.05], "BackgroundColor", [1.0 0.91 0.72], ...
+    "Visible", "off");
+
+h.interactive = [h.savepath_pbh; h.run_eth; h.pptauto_cbh; h.pptfile_pbh; ...
+    h.scans_lbh; h.qtxt_eth; h.insert_top_pbh; h.insert_after_pbh; h.insert_end_pbh; ...
+    h.run_pbh; h.stopqueue_pbh; h.stopnow_pbh; h.queue_lbh; ...
+    h.moveup_pbh; h.movedown_pbh; h.removequeue_pbh];
+h.content_panels = [h.save_panel; h.ppt_panel; h.notify_panel; h.schedule_panel; ...
+    h.scans_panel; h.commands_panel; h.queue_panel];
+h.controls = findall(h.figure1, "Type", "uicontrol");
+
+guidata(h.figure1, h);
+resizeView(h.figure1, []);
+end
+
+function h = button(parent, label, callback)
+h = uicontrol(parent, "Style", "pushbutton", "String", label, ...
+    "Callback", callback, "Interruptible", "on", "BusyAction", "cancel");
+end
+
+function resizeView(fig, ~)
+if ~isgraphics(fig, "figure") || isequal(getappdata(fig, "smQueueResizing"), true)
+    return;
+end
+setappdata(fig, "smQueueResizing", true);
+cleanup = onCleanup(@() setappdataIfValid(fig, "smQueueResizing", false));
+
+pos = get(fig, "Position");
+target = pos;
+target(3) = max(724, pos(3));
+target(4) = max(600, pos(4));
+if ~isequal(target, pos)
+    set(fig, "Position", target);
+end
+
+h = guidata(fig);
+if ~isstruct(h) || ~isfield(h, "schedule_panel")
+    return;
+end
+w = target(3);
+height = target(4);
+margin = 10;
+gap = 8;
+topHeight = 72;
+usableTopWidth = w - 2 * margin - 2 * gap;
+saveWidth = round(0.40 * usableTopWidth);
+pptWidth = round(0.35 * usableTopWidth);
+notifyWidth = usableTopWidth - saveWidth - pptWidth;
+topY = height - margin - topHeight;
+
+set(h.save_panel, "Position", [margin topY saveWidth topHeight]);
+set(h.ppt_panel, "Position", [margin + saveWidth + gap topY pptWidth topHeight]);
+set(h.notify_panel, "Position", [margin + saveWidth + pptWidth + 2 * gap topY notifyWidth topHeight]);
+
+runWidth = 50;
+runLabelWidth = 42;
+pathButtonWidth = 58;
+set(h.savepath_pbh, "Position", [8 12 pathButtonWidth 25]);
+set(h.run_eth, "Position", [saveWidth - runWidth - 8 12 runWidth 25]);
+set(h.run_label, "Position", [saveWidth - runWidth - runLabelWidth - 11 13 runLabelWidth 20]);
+pathX = 8 + pathButtonWidth + 7;
+pathWidth = max(20, saveWidth - pathX - runWidth - runLabelWidth - 18);
+set(h.datapath_sth, "Position", [pathX 14 pathWidth 19]);
+
+set(h.pptauto_cbh, "Position", [8 12 126 24]);
+set(h.pptfile_pbh, "Position", [137 12 54 25]);
+set(h.pptfile_sth, "Position", [197 14 max(20, pptWidth - 205) 19]);
+set(h.notify_label, "Position", [8 14 39 19]);
+set(h.notify_account, "Position", [48 14 max(20, notifyWidth - 56) 19]);
+
+scheduleY = margin;
+scheduleHeight = max(100, topY - gap - scheduleY);
+set(h.schedule_panel, "Position", [margin scheduleY w - 2 * margin scheduleHeight]);
+
+scheduleWidth = w - 2 * margin;
+innerMargin = 10;
+columnGap = 8;
+minimumCenterWidth = 120;
+sideWidth = floor((scheduleWidth - 2 * innerMargin - minimumCenterWidth ...
+    - 2 * columnGap) / 2);
+centerWidth = scheduleWidth - 2 * innerMargin - 2 * columnGap - 2 * sideWidth;
+contentY = 10;
+safeHeight = 27;
+safeY = scheduleHeight - 55;
+if strcmp(get(h.safe_overlay, "Visible"), "on")
+    contentHeight = safeY - 8 - contentY;
 else
-    gui_mainfcn(gui_State, varargin{:});
+    contentHeight = scheduleHeight - 38;
 end
-% End initialization code - DO NOT EDIT
+leftX = innerMargin;
+centerX = leftX + sideWidth + columnGap;
+queueX = centerX + centerWidth + columnGap;
 
+sourceGap = 8;
+rawHeight = round(0.20 * (contentHeight - sourceGap));
+scanHeight = contentHeight - sourceGap - rawHeight;
+set(h.commands_panel, "Position", [leftX contentY sideWidth rawHeight]);
+set(h.scans_panel, "Position", [leftX contentY + rawHeight + sourceGap sideWidth scanHeight]);
+set(h.scans_lbh, "Position", [8 8 sideWidth - 16 scanHeight - 34]);
+set(h.qtxt_eth, "Position", [8 8 sideWidth - 16 rawHeight - 34]);
 
-% --- Executes just before sm is made visible.
-function sm_OpeningFcn(hObject, eventdata, handles, varargin)
-% This function has no output args, see OutputFcn.
-% hObject    handle to figure
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-% varargin   command line arguments to sm (see VARARGIN)
+buttonWidth = 96;
+buttonHeight = 56;
+buttonGap = 16;
+buttonStackHeight = 3 * buttonHeight + 2 * buttonGap;
+sourceLabelHeight = 24;
+sourceLabelGap = 10;
+buttonsBottom = min(contentY + round(0.58 * contentHeight), ...
+    contentY + contentHeight - buttonStackHeight - sourceLabelGap - sourceLabelHeight);
+buttonX = centerX + floor((centerWidth - buttonWidth) / 2);
+set(h.insert_source_sth, "Position", ...
+    [centerX buttonsBottom + buttonStackHeight + sourceLabelGap centerWidth sourceLabelHeight]);
+set(h.insert_top_pbh, "Position", ...
+    [buttonX buttonsBottom + 2 * (buttonHeight + buttonGap) buttonWidth buttonHeight]);
+set(h.insert_after_pbh, "Position", ...
+    [buttonX buttonsBottom + buttonHeight + buttonGap buttonWidth buttonHeight]);
+set(h.insert_end_pbh, "Position", [buttonX buttonsBottom buttonWidth buttonHeight]);
 
-% Choose default command line output for sm
-handles.output = hObject;
-
-% Update handles structure
-guidata(hObject, handles);
-sm_Callback('Open',handles);
-% UIWAIT makes sm wait for user response (see UIRESUME)
-% uiwait(handles.figure1);
-
-
-% --- Outputs from this function are returned to the command line.
-function varargout = sm_OutputFcn(hObject, eventdata, handles) 
-% varargout  cell array for returning output args (see VARARGOUT);
-% hObject    handle to figure
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-
-% Get default command line output from handles structure
-varargout{1} = handles.output;
-
-
-% --- Executes on selection change in scans_lbh.
-function scans_lbh_Callback(hObject, eventdata, handles)
-% hObject    handle to scans_lbh (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('Scans');
-
-
-% --- Executes during object creation, after setting all properties.
-function scans_lbh_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to scans_lbh (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
-sm_Callback('ScansCreate');
-% Hint: listbox controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
-if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
-    set(hObject,'BackgroundColor','white');
+set(h.queue_panel, "Position", [queueX contentY sideWidth contentHeight]);
+statusY = contentHeight - 45;
+controlHeight = 32;
+controlY = statusY - controlHeight - 8;
+set(h.status_sth, "Position", [8 statusY sideWidth - 16 20]);
+minimumQueueControlGap = 15;
+queueControlWidth = min(88, floor((sideWidth - 16 ...
+    - 2 * minimumQueueControlGap) / 3));
+set(h.run_pbh, "Position", [8 controlY queueControlWidth controlHeight]);
+set(h.stopqueue_pbh, "Position", ...
+    [floor((sideWidth - queueControlWidth) / 2) controlY queueControlWidth controlHeight]);
+set(h.stopnow_pbh, "Position", ...
+    [sideWidth - 8 - queueControlWidth controlY queueControlWidth controlHeight]);
+set(h.moveup_pbh, "Position", [8 8 76 28]);
+set(h.movedown_pbh, "Position", [92 8 82 28]);
+set(h.removequeue_pbh, "Position", [182 8 76 28]);
+set(h.queue_lbh, "Position", [8 44 sideWidth - 16 max(30, controlY - 52)]);
+set(h.safe_overlay, "Position", [innerMargin safeY scheduleWidth - 2 * innerMargin safeHeight]);
+uistack(h.safe_overlay, "top");
 end
 
-
-% --- Executes on selection change in queue_lbh.
-function queue_lbh_Callback(hObject, eventdata, handles)
-% hObject    handle to queue_lbh (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('Queue');
-% Hints: contents = cellstr(get(hObject,'String')) returns queue_lbh contents as cell array
-%        contents{get(hObject,'Value')} returns selected item from queue_lbh
-
-
-% --- Executes during object creation, after setting all properties.
-function queue_lbh_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to queue_lbh (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
-sm_Callback('QueueCreate');
-% Hint: listbox controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
-if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
-    set(hObject,'BackgroundColor','white');
+function setappdataIfValid(fig, name, value)
+if isgraphics(fig)
+    setappdata(fig, name, value);
 end
-
-
-% --------------------------------------------------------------------
-function file_Callback(hObject, eventdata, handles)
-% hObject    handle to file (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-
-
-% --------------------------------------------------------------------
-function openscans_Callback(hObject, eventdata, handles)
-% hObject    handle to openscans (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('OpenScans');
-
-
-% --------------------------------------------------------------------
-function savescans_Callback(hObject, eventdata, handles)
-% hObject    handle to savescans (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('SaveScans');
-
-
-% --------------------------------------------------------------------
-function openrack_Callback(hObject, eventdata, handles)
-% hObject    handle to openrack (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('OpenRack');
-
-
-% --------------------------------------------------------------------
-function saverack_Callback(hObject, eventdata, handles)
-% hObject    handle to saverack (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('SaveRack');
-
-
-% --------------------------------------------------------------------
-function editrack_Callback(hObject, eventdata, handles)
-% hObject    handle to editrack (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('EditRack');
-
-
-% --- Executes on selection change in smusers_lbh.
-function smusers_lbh_Callback(hObject, eventdata, handles)
-% hObject    handle to smusers_lbh (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('SMusers');
-
-% Hints: contents = cellstr(get(hObject,'String')) returns smusers_lbh contents as cell array
-%        contents{get(hObject,'Value')} returns selected item from smusers_lbh
-
-
-% --- Executes during object creation, after setting all properties.
-function smusers_lbh_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to smusers_lbh (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
-sm_Callback('SMusersCreate');
-% Hint: listbox controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
-if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
-    set(hObject,'BackgroundColor','white');
 end
-
-
-% --- Executes on button press in enqueue.
-function enqueue_Callback(hObject, eventdata, handles)
-% hObject    handle to enqueue (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('Enqueue');
-
-
-% --- Executes on button press in editscan_pbh.
-function editscan_pbh_Callback(hObject, eventdata, handles)
-% hObject    handle to editscan_pbh (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('EditScan');
-
-
-% --- Executes on button press in removescan_pbh.
-function removescan_pbh_Callback(hObject, eventdata, handles)
-% hObject    handle to removescan_pbh (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('RemoveScan');
-
-
-
-function qtxt_eth_Callback(hObject, eventdata, handles)
-% hObject    handle to qtxt_eth (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('Qtxt');
-% Hints: get(hObject,'String') returns contents of qtxt_eth as text
-%        str2double(get(hObject,'String')) returns contents of qtxt_eth as a double
-
-
-% --- Executes during object creation, after setting all properties.
-function qtxt_eth_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to qtxt_eth (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
-% Hint: edit controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
-if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
-    set(hObject,'BackgroundColor','white');
-end
-
-
-% --- Executes on button press in txtenqueue.
-function txtenqueue_Callback(hObject, eventdata, handles)
-% hObject    handle to txtenqueue (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('TXTenqueue');
-
-% --- Executes on button press in pptauto_cbh.
-function pptauto_cbh_Callback(hObject, eventdata, handles)
-% hObject    handle to pptauto_cbh (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('PPTauto');
-% Hint: get(hObject,'Value') returns toggle state of pptauto_cbh
-
-
-% --- Executes on button press in pptfile_pbh.
-function pptfile_pbh_Callback(hObject, eventdata, handles)
-% hObject    handle to pptfile_pbh (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('PPTFile');
-
-
-
-function comments_eth_Callback(hObject, eventdata, handles)
-% hObject    handle to comments_eth (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('Comments');
-% Hints: get(hObject,'String') returns contents of comments_eth as text
-%        str2double(get(hObject,'String')) returns contents of comments_eth as a double
-
-
-% --- Executes during object creation, after setting all properties.
-function comments_eth_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to comments_eth (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
-% Hint: edit controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
-if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
-    set(hObject,'BackgroundColor','white');
-end
-
-
-
-function pptsave_eth_Callback(hObject, eventdata, handles)
-% hObject    handle to pptsave_eth (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('PPTSaveFig');
-% Hints: get(hObject,'String') returns contents of pptsave_eth as text
-%        str2double(get(hObject,'String')) returns contents of pptsave_eth as a double
-
-
-% --- Executes during object creation, after setting all properties.
-function pptsave_eth_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to pptsave_eth (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
-% Hint: edit controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
-if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
-    set(hObject,'BackgroundColor','white');
-end
-
-
-% --- Executes on button press in pptsave_pbh.
-function pptsave_pbh_Callback(hObject, eventdata, handles)
-% hObject    handle to pptsave_pbh (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('PPTSaveNow');
-
-
-% --- Executes on button press in savepath_pbh.
-function savepath_pbh_Callback(hObject, eventdata, handles)
-% hObject    handle to savepath_pbh (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('SavePath');
-
-
-
-function run_eth_Callback(hObject, eventdata, handles)
-% hObject    handle to run_eth (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('RunNum');
-% Hints: get(hObject,'String') returns contents of run_eth as text
-%        str2double(get(hObject,'String')) returns contents of run_eth as a double
-
-
-% --- Executes during object creation, after setting all properties.
-function run_eth_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to run_eth (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
-sm_Callback('RunCreate');
-% Hint: edit controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
-if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
-    set(hObject,'BackgroundColor','white');
-end
-
-
-% --- Executes on button press in runincrement_cbh.
-function runincrement_cbh_Callback(hObject, eventdata, handles)
-% hObject    handle to runincrement_cbh (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('RunIncrement');
-% Hint: get(hObject,'Value') returns toggle state of runincrement_cbh
-
-
-% --- Executes on button press in run_pbh.
-function run_pbh_Callback(hObject, eventdata, handles)
-% hObject    handle to run_pbh (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('Run');
-
-% --- Executes on button press in pause_pbh.
-function pause_pbh_Callback(hObject, eventdata, handles)
-% hObject    handle to pause_pbh (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('Pause');
-
-% --- Executes on button press in pptfile2_pbh.
-function pptfile2_pbh_Callback(hObject, eventdata, handles)
-% hObject    handle to pptfile2_pbh (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('PPTFile2');
-
-% --- Executes on button press in pptsavepriority_cbh.
-function pptsavepriority_cbh_Callback(hObject, eventdata, handles)
-% hObject    handle to pptsavepriority_cbh (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('PPTPriority');
-% Hint: get(hObject,'Value') returns toggle state of pptsavepriority_cbh
-
-
-
-function console_eth_Callback(hObject, eventdata, handles)
-% hObject    handle to console_eth (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('Console');
-% Hints: get(hObject,'String') returns contents of console_eth as text
-%        str2double(get(hObject,'String')) returns contents of console_eth as a double
-
-
-% --- Executes during object creation, after setting all properties.
-function console_eth_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to console_eth (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
-% Hint: edit controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
-if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
-    set(hObject,'BackgroundColor','white');
-end
-
-
-% --- Executes on button press in evaluate_pbh.
-function evaluate_pbh_Callback(hObject, eventdata, handles)
-% hObject    handle to evaluate_pbh (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('Eval');
-
-
-% --- Executes on key press with focus on queue_lbh and none of its controls.
-function queue_lbh_KeyPressFcn(hObject, eventdata, handles)
-% hObject    handle to queue_lbh (see GCBO)
-% eventdata  structure with the following fields (see UICONTROL)
-%	Key: name of the key that was pressed, in lower case
-%	Character: character interpretation of the key(s) that was pressed
-%	Modifier: name(s) of the modifier key(s) (i.e., control, shift) pressed
-% handles    structure with handles and user data (see GUIDATA)
-%sm_Callback('QueueKeyPress',eventdata);
-sm_Callback('QueueKey',eventdata);
-
-
-% --- Executes on key press with focus on scans_lbh and none of its controls.
-function scans_lbh_KeyPressFcn(hObject, eventdata, handles)
-% hObject    handle to scans_lbh (see GCBO)
-% eventdata  structure with the following fields (see UICONTROL)
-%	Key: name of the key that was pressed, in lower case
-%	Character: character interpretation of the key(s) that was pressed
-%	Modifier: name(s) of the modifier key(s) (i.e., control, shift) pressed
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('ScansKey',eventdata);
-
-
-% --- Executes on button press in editscan2_pbh.
-function editscan2_pbh_Callback(hObject, eventdata, handles)
-% hObject    handle to editscan2_pbh (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-sm_Callback('EditScan2');

@@ -8,7 +8,7 @@ function smrunEnsureGlobals()
 
     if isempty(smrunConfig) || ~isstruct(smrunConfig)
         initialRun = extractInitialRun();
-        smrunConfig = struct('run', initialRun, 'lastUpdatedBy', '');
+        smrunConfig = struct('run', initialRun, 'lastUpdatedBy', '', 'revision', 0);
     else
         if ~isfield(smrunConfig, 'run')
             smrunConfig.run = extractInitialRun();
@@ -16,6 +16,14 @@ function smrunEnsureGlobals()
         if ~isfield(smrunConfig, 'lastUpdatedBy')
             smrunConfig.lastUpdatedBy = '';
         end
+        if ~isfield(smrunConfig, 'revision')
+            smrunConfig.revision = 0;
+        elseif ~isnumeric(smrunConfig.revision) || ~isscalar(smrunConfig.revision) || ...
+                ~isfinite(smrunConfig.revision) || smrunConfig.revision < 0 || ...
+                smrunConfig.revision ~= floor(smrunConfig.revision)
+            error("smrun:InvalidRevision", "Shared run-state revision must be a nonnegative integer scalar.");
+        end
+        smrunConfig.revision = double(smrunConfig.revision);
         smrunConfig.run = normalizeRunValue(smrunConfig.run);
     end
 
@@ -58,5 +66,4 @@ function value = normalizeRunValue(value)
     value = mod(value, 1000);
     value(value < 0) = value(value < 0) + 1000;
 end
-
 

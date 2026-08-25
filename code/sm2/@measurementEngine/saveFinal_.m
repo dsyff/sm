@@ -1,10 +1,12 @@
-function saveFinal_(~, filename, scanForSave, data, figHandle)
+function saveFinal_(~, filename, scanForSave, data, figHandle, pptEnabled, pptFile)
     arguments
         ~
         filename (1, 1) string {mustBeNonzeroLengthText}
         scanForSave (1, 1) struct
         data (1, :) cell
-        figHandle = []
+        figHandle
+        pptEnabled (1, 1) logical
+        pptFile (1, 1) string
     end
     closeDialogShown = false;
     if ~isempty(figHandle) && ishandle(figHandle)
@@ -87,12 +89,6 @@ function saveFinal_(~, filename, scanForSave, data, figHandle)
     pngFile = sprintf("%s.png", figstring);
     png_saved = true;
     forcePptSlideWidth = false;
-    pptEnabled = false;
-    pptFile = "";
-    try
-        [pptEnabled, pptFile] = smpptGetState();
-    catch
-    end
     try
         if ~isMATLABReleaseOlderThan("R2025a") && pptEnabled
             % Export at a fixed pixel size for PPT. Width is fixed; height is

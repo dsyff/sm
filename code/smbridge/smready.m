@@ -15,6 +15,16 @@ end
 
 global engine smscan smaux smdata bridge %#ok<GVMIS,NUSED>
 
+if ~isempty(engine) && isa(engine, "measurementEngine") && isvalid(engine) ...
+        && (engine.isScanInProgress || engine.activeRunPhase ~= "idle")
+    error("smready:ScanActive", "Cannot replace the measurement engine while a scan is active.");
+end
+if isstruct(smaux) && isfield(smaux, "queueState") ...
+        && isa(smaux.queueState, "smQueueState") && isvalid(smaux.queueState) ...
+        && smaux.queueState.snapshot().queuePhase ~= "idle"
+    error("smready:ScanActive", "Cannot replace the measurement engine while the queue runner is active.");
+end
+
 slackSettings = struct("webhook", "", "api_token", "", "channel_id", "", "account_email", "");
 inputSettings = options.slack_notification_settings;
 if isfield(inputSettings, "webhook"), slackSettings.webhook = inputSettings.webhook; end

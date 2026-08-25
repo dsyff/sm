@@ -68,18 +68,10 @@ if ~exist('bridge', 'var') || isempty(bridge)
     end
 end
 
-% Ensure experimentRootPath is set early for path defaults.
+% Ensure experimentRootPath is set early for shared-state defaults.
 if exist("bridge", "var") && ~isempty(bridge) && isobject(bridge) && isprop(bridge, "experimentRootPath")
     if strlength(string(bridge.experimentRootPath)) == 0
         bridge.experimentRootPath = pwd;
-    end
-    rootPath = string(bridge.experimentRootPath);
-    if strlength(rootPath) > 0
-        currentPath = smdatapathGetState();
-        if ~startsWith(string(currentPath), rootPath, "IgnoreCase", true)
-            smaux.datadir = fullfile(rootPath, "data");
-            smdatapathUpdateGlobalState("small", smaux.datadir);
-        end
     end
 end
 
@@ -554,6 +546,9 @@ function ClearScan(hObject,eventdata)
 end
 
 function EditRack(hObject,eventdata)
+    if smbridgeQueueRunnerActive()
+        return;
+    end
     smeditrack();
 end
 
@@ -1038,29 +1033,24 @@ end
 
 % Callback for ppt file location pushbutton
 function SavePPT(varargin)
-global smaux bridge;
-    [pptFile, ~] = uiputfile('*.ppt','Append to Presentation');
+    [enabled, current] = smpptGetState();
+    if isempty(current)
+        rootPath = experimentContext.getExperimentRootPath();
+        if strlength(rootPath) == 0
+            rootPath = string(pwd);
+        end
+        current = fullfile(rootPath, "log.ppt");
+    end
+    [pptFile, pptPath] = uiputfile('*.ppt','Append to Presentation', current);
     if isequal(pptFile, 0)
         return;
-    end
-    rootPath = string(pwd);
-    if exist("bridge", "var") && ~isempty(bridge) && isobject(bridge) && isprop(bridge, "experimentRootPath")
-        if strlength(string(bridge.experimentRootPath)) == 0
-            bridge.experimentRootPath = pwd;
-        end
-        rootPath = string(bridge.experimentRootPath);
     end
     [~, pptName, pptExt] = fileparts(pptFile);
     if strlength(string(pptExt)) == 0
         pptExt = ".ppt";
     end
-    selectedFile = fullfile(rootPath, string(pptName) + string(pptExt));
-    checkboxValue = false;
-    if isstruct(smaux) && isfield(smaux, 'smgui') && isstruct(smaux.smgui) ...
-            && isfield(smaux.smgui, 'appendppt_cbh') && ishandle(smaux.smgui.appendppt_cbh)
-        checkboxValue = logical(get(smaux.smgui.appendppt_cbh, 'Value'));
-    end
-    smpptUpdateGlobalState('small', checkboxValue, selectedFile);
+    selectedFile = fullfile(pptPath, string(pptName) + string(pptExt));
+    smpptUpdateGlobalState('small', enabled, selectedFile);
     smpptApplyStateToGui('small');
 end
 
@@ -1345,7 +1335,7 @@ end
 function Run(varargin)
     global smaux smscan engine;
 
-    if ~isempty(engine) && isa(engine, "measurementEngine") && engine.isScanInProgress
+    if smbridgeUpdateScanRunState()
         return;
     end
 
@@ -1387,70 +1377,35 @@ end
 
 % Callback to send smscan to smaux.scans
 function ToScans(varargin)
-    global smaux smscan
+    global smscan
     try
         syncScanPptFromGUI();
-        % Safety net: ensure scan name is sanitized before sending to queue GUI
         if isfield(smscan, 'name')
             smscan.name = sanitizeFilename(smscan.name);
         end
-        if isfield(smscan, "consts")
-            smscan.consts = measurementScan.normalizeConsts(smscan.consts);
-        end
-        if ~isfield(smscan, "finish")
-            smscan.finish = [];
-        end
-        smscan.finish = measurementScan.normalizeConsts(smscan.finish, "scan.finish");
-        smaux.scans{end+1}=smscan;
-        sm
-        sm_Callback('UpdateToGUI');
+        smQueueTransferScan(smscan, "scans");
     catch ME
-        % Create detailed error message
-        errorMsg = sprintf('Error in ToScans:\n\n%s\n\nFile: %s\nLine: %d\n\nStack trace:\n', ...
-            ME.message, ME.stack(1).file, ME.stack(1).line);
-        
-        % Add stack trace details
-        for i = 1:min(3, length(ME.stack))
-            errorMsg = sprintf('%s%d. %s (line %d)\n', errorMsg, i, ME.stack(i).name, ME.stack(i).line);
-        end
-        
-        % Show error dialog
-        errordlg(errorMsg, 'ToScans Error', 'modal');
+        reportTransferError(ME, "To Scans Error");
     end
 end
 
 % Callback to send smscan to smaux.queue
 function ToQueue(varargin)
-    global smaux smscan
+    global smscan
     try
         syncScanPptFromGUI();
-        % Safety net: ensure scan name is sanitized before sending to queue
         if isfield(smscan, 'name')
             smscan.name = sanitizeFilename(smscan.name);
         end
-        if isfield(smscan, "consts")
-            smscan.consts = measurementScan.normalizeConsts(smscan.consts);
-        end
-        if ~isfield(smscan, "finish")
-            smscan.finish = [];
-        end
-        smscan.finish = measurementScan.normalizeConsts(smscan.finish, "scan.finish");
-        smaux.smq{end+1}=smscan;
-        sm
-        sm_Callback('UpdateToGUI');
+        smQueueTransferScan(smscan, "queue");
     catch ME
-        % Create detailed error message
-        errorMsg = sprintf('Error in ToQueue:\n\n%s\n\nFile: %s\nLine: %d\n\nStack trace:\n', ...
-            ME.message, ME.stack(1).file, ME.stack(1).line);
-        
-        % Add stack trace details
-        for i = 1:min(3, length(ME.stack))
-            errorMsg = sprintf('%s%d. %s (line %d)\n', errorMsg, i, ME.stack(i).name, ME.stack(i).line);
-        end
-        
-        % Show error dialog
-        errordlg(errorMsg, 'ToQueue Error', 'modal');
+        reportTransferError(ME, "To Queue Error");
     end
+end
+
+function reportTransferError(ME, title)
+    experimentContext.print("%s", getReport(ME, "extended", "hyperlinks", "off"));
+    errordlg(ME.message, title, "modal");
 end
 
 % updates the GUI components
@@ -1510,6 +1465,7 @@ function Update(varargin)
     smdatapathApplyStateToGui('small');
     registerSmallGuiWithRunState();
     smrunApplyStateToGui('small');
+    smbridgeUpdateScanRunState();
     smbridgeUpdateEditRackMenuState();
 end
 
@@ -2379,7 +2335,7 @@ end
 
 
 function registerSmallGuiWithPptState()
-    global smaux bridge
+    global smaux
     smpptEnsureGlobals();
     if ~isstruct(smaux) || ~isfield(smaux, 'smgui') || ~isstruct(smaux.smgui)
         return;
@@ -2397,44 +2353,12 @@ function registerSmallGuiWithPptState()
         handles.fileLabel = smaux.smgui.pptfile_sth;
     end
     smpptRegisterGui('small', handles);
-    [currentEnabled, currentFile] = smpptGetState();
-    checkboxValue = currentEnabled;
-    if ishandle(handles.checkbox)
-        checkboxValue = logical(get(handles.checkbox, 'Value'));
-    end
-    targetEnabled = checkboxValue;
-    targetFile = currentFile;
-    rootPath = string(pwd);
-    if exist("bridge", "var") && ~isempty(bridge) && isobject(bridge) && isprop(bridge, "experimentRootPath")
-        if strlength(string(bridge.experimentRootPath)) == 0
-            bridge.experimentRootPath = pwd;
-        end
-        rootPath = string(bridge.experimentRootPath);
-    end
-    if isempty(targetFile)
-        if isfield(smaux, 'pptsavefile') && ~isempty(smaux.pptsavefile)
-            targetFile = smaux.pptsavefile;
-        else
-            % Set default short name
-            targetFile = "log.ppt";
-        end
-    end
-    if strlength(rootPath) > 0
-        [~, pptName, pptExt] = fileparts(targetFile);
-        if strlength(string(pptExt)) == 0
-            pptExt = ".ppt";
-        end
-        targetFile = fullfile(rootPath, string(pptName) + string(pptExt));
-    end
-    if targetEnabled ~= currentEnabled || ~strcmp(char(targetFile), char(currentFile))
-        smpptUpdateGlobalState('small', targetEnabled, targetFile);
-    end
     smpptApplyStateToGui('small');
 end
 
 
 function registerSmallGuiWithDataState()
-    global smaux bridge
+    global smaux
     smdatapathEnsureGlobals();
     if ~isstruct(smaux) || ~isfield(smaux, 'smgui') || ~isstruct(smaux.smgui)
         return;
@@ -2447,50 +2371,7 @@ function registerSmallGuiWithDataState()
         handles.displayLimit = 100;
     end
     smdatapathRegisterGui('small', handles);
-
-    currentPath = smdatapathGetState();
-    targetPath = currentPath;
-    rootPath = string(pwd);
-    if exist("bridge", "var") && ~isempty(bridge) && isobject(bridge) && isprop(bridge, "experimentRootPath")
-        if strlength(string(bridge.experimentRootPath)) == 0
-            bridge.experimentRootPath = pwd;
-        end
-        rootPath = string(bridge.experimentRootPath);
-    end
-    if isempty(targetPath)
-        if isfield(smaux, 'datadir') && ~isempty(smaux.datadir)
-            targetPath = smaux.datadir;
-        else
-            targetPath = smdatapathDefaultPath();
-        end
-    else
-        smaux.datadir = targetPath;
-    end
-
-    if strlength(rootPath) > 0
-        if ~startsWith(string(targetPath), rootPath, "IgnoreCase", true)
-            [~, relPath] = fileparts(char(targetPath));
-            relPath = string(relPath);
-            if strlength(relPath) == 0
-                relPath = "data";
-            end
-            targetPath = fullfile(rootPath, relPath);
-        end
-    end
-
-    if isempty(smaux.datadir) || ~strcmp(char(smaux.datadir), char(targetPath))
-        smaux.datadir = targetPath;
-    end
-
-    if ~exist(targetPath, 'dir')
-        mkdir(targetPath);
-    end
-
-    if ~strcmp(char(targetPath), char(currentPath))
-        smdatapathUpdateGlobalState('small', targetPath);
-    else
-        smdatapathApplyStateToGui('small');
-    end
+    smdatapathApplyStateToGui('small');
 end
 
 

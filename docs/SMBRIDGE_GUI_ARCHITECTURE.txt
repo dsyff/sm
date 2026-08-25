@@ -23,9 +23,10 @@ Key files
   plot selection. Uses vector channel names for acquisition, and expands to
   scalar names for plotting.
 
-- code/smbridge/sm_Callback.m + code/smbridge/sm.m
-  Queue GUI and available scans library. Manages smaux.scans (library) and
-  smaux.smq (queue), launches smgui_small for editing, and runs scans via
+- code/smbridge/sm.m + sm_Callback.m + smQueueState.m
+  Programmatic queue GUI, controller, and GUI-independent state. The model
+  mirrors smaux.scans (library) and smaux.smq (pending queue), survives view
+  closure, launches smgui_small for editing, and runs scans via
   measurementEngine.
 
 - code/smbridge/smchanlookup.m
@@ -58,20 +59,24 @@ Scan GUI vs Queue GUI
   - Stores plot selections in smscan.disp (1D/2D entries).
   - Uses shared state helpers for data path, PPT, and run number.
 - Queue/Main GUI (sm + sm_Callback)
-  - Manages smaux.scans (available scans) and smaux.smq (queue).
+  - Creates one resizable programmatic singleton; its state survives closing.
+  - Manages smaux.scans (available scans) and smaux.smq (pending queue).
   - Launches smgui_small for editing, and measurementEngine.run for execution.
+  - Uses Start, Stop Queue, and confirmed Stop Now controls; there is no Pause.
   - Leaves pending queue entries in place after Escape, a confirmed scan-figure
     close, or an instrument-requested stop.
+  - Remains interactive during turbo scans, but fully locks during an external
+    safe-mode scan.
 
-Both Run callbacks ignore repeated clicks while a scan is already active.
+Both scan-GUI Run and queue-GUI Start ignore repeated clicks while a scan is
+already active.
 
-Current vs planned queue GUI
-----------------------------
-The current queue GUI remains the GUIDE-based `sm`/`sm_Callback` implementation.
-`docs/QUEUE_GUI_DESIGN.md` records the not-yet-implemented programmatic singleton
-replacement and is the binding functional/visual regression contract for that
-work. Its proposed controls and close behavior must not be described as current
-behavior until the replacement lands.
+Programmatic queue GUI
+----------------------
+`sm` constructs the queue GUI entirely in code and never loads the legacy binary
+figure. `smQueueState` owns queue/library/runtime state independently of the
+disposable view. `docs/QUEUE_GUI_DESIGN.md` is the binding functional and visual
+regression contract.
 
 Paths and shared state
 ----------------------
@@ -106,8 +111,8 @@ PPT constants formatting
 
 Queued statements (Queue GUI)
 -----------------------------
-- Queue items created via "TXT enqueue" are evaluated on the client (base workspace)
-  via evalin("base", ...).
+- Raw Commands queue items are evaluated line-by-line on the client base
+  workspace via evalin("base", ...).
 - To run code on the engine worker (recipe mode):
   - smeval(codeString) (eval, no outputs)
   - smeval(codeString) can return a single output when called with an output argument

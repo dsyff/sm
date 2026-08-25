@@ -6,14 +6,20 @@ function smpptEnsureGlobals()
 
     global smpptConfig smpptGui smaux
 
+    defaultRoot = experimentContext.getExperimentRootPath();
+    if strlength(defaultRoot) == 0
+        defaultRoot = string(pwd);
+    end
+    defaultFile = char(fullfile(defaultRoot, "log.ppt"));
+
     if isempty(smpptConfig) || ~isstruct(smpptConfig)
-        smpptConfig = struct('enabled', true, 'file', '', 'lastUpdatedBy', '');
+        smpptConfig = struct('enabled', true, 'file', defaultFile, 'lastUpdatedBy', '');
     else
         if ~isfield(smpptConfig, 'enabled')
             smpptConfig.enabled = true;
         end
         if ~isfield(smpptConfig, 'file')
-            smpptConfig.file = '';
+            smpptConfig.file = defaultFile;
         end
         if ~isfield(smpptConfig, 'lastUpdatedBy')
             smpptConfig.lastUpdatedBy = '';
@@ -37,5 +43,3 @@ function smpptEnsureGlobals()
 
     smpptSyncSmauxFromGlobal();
 end
-
-

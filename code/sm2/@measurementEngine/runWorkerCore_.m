@@ -21,7 +21,6 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
     [figHandle, plotState] = obj.initLiveFigure_(scanObj, scanForSave);
     lastCount = ones(1, plotState.nloops);
     stopSent = false;
-    userStopMessage = "";
     pendingClose = false;
     runId = "";
     runSent = false;
@@ -61,10 +60,12 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
     end
 
     function latchClientStop(message)
+        if strlength(obj.scanStopMessage) == 0
+            obj.scanStopMessage = message;
+        end
         if ~scanForSave.stopRequested
-            userStopMessage = message;
             scanForSave.stopRequested = true;
-            scanForSave.stopMessage = userStopMessage;
+            scanForSave.stopMessage = obj.scanStopMessage;
         end
         obj.scanStopRequested = true;
         sendClientStop();
@@ -75,7 +76,7 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
             return;
         end
         obj.safeSendScanControl_(struct( ...
-            "type", "stop", "requestId", runId, "message", userStopMessage));
+            "type", "stop", "requestId", runId, "message", obj.scanStopMessage));
         stopSent = true;
     end
 
@@ -174,6 +175,7 @@ function [dataOut, scanForSave, figHandle, pendingClose] = runWorkerCore_(obj, s
             end
             msg.snapshotInterval = snapshotInterval;
         end
+        obj.activeRunPhase = "acquiring";
         obj.safeSendToEngine_(msg);
         runSent = true;
         obj.logClient_("run started " + runId + " mode=" + scanObj.mode + " name=" + scanObj.name);
