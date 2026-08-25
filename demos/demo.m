@@ -108,6 +108,7 @@ strain_cryostat = "Montana2"; %OptiCool, Montana2
 strain_outerCurrentLimit = 3.2e-7; % A, K2450_A :SOURce:VOLTage:ILIMit
 %strain_innerCurrentLimit = 1e-7; % A, K2450_B :SOURce:VOLTage:ILIMit
 strain_innerCurrentLimit = 2e-7; % A, K2450_B :SOURce:VOLTage:ILIMit
+strain_useConservativeVoltageBounds = true; % true: existing 90% bounds; false: full 100% bounds
 
 Montana1_Use = 0;
 Montana2_Use = 0;
@@ -274,6 +275,7 @@ if strainController_Use
         strainCellNumber = strainCellNumber_default, ...
         outerCurrentLimit = strain_outerCurrentLimit, ...
         innerCurrentLimit = strain_innerCurrentLimit, ...
+        useConservativeVoltageBounds = strain_useConservativeVoltageBounds, ...
         numWorkersRequested = 1);
     recipe.addStatement("strain", "handle_strainController.requireSetCheck = true;");
 
