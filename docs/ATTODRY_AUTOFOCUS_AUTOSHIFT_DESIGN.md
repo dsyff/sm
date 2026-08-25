@@ -27,6 +27,10 @@ is intentionally not being updated during the current Z-voltage test pass.
 
 ## Hardware Behavior
 
+For the ANC300's separate electrical capacitance diagnostic, including its
+active-measurement side effects and current software exposure, see
+[`ANC300_CAPACITANCE_DIAGNOSTICS.md`](ANC300_CAPACITANCE_DIAGNOSTICS.md).
+
 - The ANC300 stick-slip axes have a two-segment voltage response. Below a
   turn-on voltage, commanded steps produce little or no average motion, but
   the stage can still shake stochastically and occasionally produce a finite
