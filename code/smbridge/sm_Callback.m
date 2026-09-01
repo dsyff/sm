@@ -66,7 +66,8 @@ if target == h.qtxt_eth || target == h.commands_panel || panel == h.commands_pan
     state.setSource("raw");
     smQueueRefresh();
     if isgraphics(h.qtxt_eth) && isequal(getappdata(h.qtxt_eth, "smQueuePromptVisible"), true)
-        set(h.qtxt_eth, "String", "", "ForegroundColor", [0 0 0]);
+        set(h.qtxt_eth, "String", "", ...
+            "ForegroundColor", get(h.figure1, "DefaultUicontrolForegroundColor"));
         setappdata(h.qtxt_eth, "smQueuePromptVisible", false);
     end
 elseif target == h.scans_lbh || target == h.scans_panel || panel == h.scans_panel
@@ -156,7 +157,8 @@ if isempty(h)
 end
 state.setSource("raw");
 if isequal(getappdata(h.qtxt_eth, "smQueuePromptVisible"), true)
-    set(h.qtxt_eth, "String", "", "ForegroundColor", [0 0 0]);
+    set(h.qtxt_eth, "String", "", ...
+        "ForegroundColor", get(h.figure1, "DefaultUicontrolForegroundColor"));
     setappdata(h.qtxt_eth, "smQueuePromptVisible", false);
 end
 end
