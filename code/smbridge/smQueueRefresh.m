@@ -31,6 +31,7 @@ h = guidata(fig);
 if ~isstruct(h) || ~isfield(h, "queue_lbh")
     return;
 end
+palette = getappdata(fig, "smQueueTheme");
 
 safeLocked = engineIsSafeLocked(engine);
 engineActive = validEngine(engine) && engine.isScanInProgress;
@@ -49,9 +50,10 @@ if wasSafeLocked ~= safeLocked
     resizeCallback(fig, []);
 end
 set(h.content_panels(isgraphics(h.content_panels)), "ForegroundColor", ...
-    ternaryColor(safeLocked));
+    panelColor(palette, safeLocked));
 smbridgeUpdateEditRackMenuState(engineActive || state.queuePhase ~= "idle");
 if safeLocked
+    renderActionButtons(h, palette);
     account = notificationAccount(engine);
     set(h.notify_account, "String", account, "TooltipString", account);
     return;
@@ -69,7 +71,7 @@ renderList(h.scans_lbh, scanRows, state.selectedScanIndex, "No scans loaded");
 renderList(h.queue_lbh, queueRows, state.selectedQueueIndex, "Queue is empty");
 
 renderDraft(h.qtxt_eth, state.draft);
-renderSource(h, state.source);
+renderSource(h, state.source, palette);
 
 [status, statusTooltip] = queueStatus(state);
 set(h.status_sth, "String", status, "TooltipString", statusTooltip);
@@ -78,8 +80,8 @@ set(h.notify_account, "String", account, "TooltipString", account);
 
 set(h.openscans, "Enable", "on");
 set(h.savescans, "Enable", onOff(~isempty(state.scans)));
-set(h.scans_lbh, "Enable", onOff(~isempty(state.scans)));
-set(h.queue_lbh, "Enable", onOff(~isempty(state.queue)));
+set(h.scans_lbh, "Enable", interactiveState(~isempty(state.scans)));
+set(h.queue_lbh, "Enable", interactiveState(~isempty(state.queue)));
 
 sourceReady = (state.source == "scans" && ~isempty(state.selectedScanIndex)) ...
     || (state.source == "raw" && strlength(strip(state.draft)) > 0);
@@ -106,6 +108,7 @@ stopNowEnabled = (state.queuePhase == "runningScan" ...
     && ~isempty(state.runningItem) && state.runningItem.kind == "scan" ...
     && (~validEngine(engine) || engine.activeRunPhase ~= "finalizing");
 set(h.stopnow_pbh, "Enable", onOff(stopNowEnabled));
+renderActionButtons(h, palette);
 
 end
 
@@ -119,14 +122,17 @@ end
 end
 
 function renderList(handle, rows, selectedIndex, placeholder)
+fig = ancestor(handle, "figure");
+foreground = get(fig, "DefaultUicontrolForegroundColor");
 if isempty(rows)
-    set(handle, "Max", 1, "Min", 0, "Value", 1, "ListboxTop", 1, ...
+    muted = 0.55 * foreground + 0.45 * get(handle, "BackgroundColor");
+    set(handle, "Max", 2, "Min", 0, "Value", [], "ListboxTop", 1, ...
         "String", {char(placeholder)}, ...
-        "TooltipString", "");
+        "TooltipString", "", "ForegroundColor", muted);
     return;
 end
 set(handle, "Max", 2, "Min", 0, "Value", 1, "ListboxTop", 1);
-set(handle, "String", cellstr(rows(:)));
+set(handle, "String", cellstr(rows(:)), "ForegroundColor", foreground);
 if isempty(selectedIndex)
     set(handle, "Value", []);
     tooltip = "";
@@ -138,16 +144,14 @@ end
 set(handle, "TooltipString", tooltip);
 end
 
-function renderSource(h, source)
-activeColor = [0.18 0.48 0.78];
-inactiveColor = [0.55 0.55 0.55];
+function renderSource(h, source, palette)
 if source == "raw"
-    set(h.commands_panel, "BorderWidth", 2, "HighlightColor", activeColor);
-    set(h.scans_panel, "BorderWidth", 1, "HighlightColor", inactiveColor);
+    set(h.commands_panel, "BorderWidth", 2, "HighlightColor", palette.activeBorder);
+    set(h.scans_panel, "BorderWidth", 1, "HighlightColor", palette.inactiveBorder);
     set(h.insert_source_sth, "String", "Source: Raw");
 else
-    set(h.scans_panel, "BorderWidth", 2, "HighlightColor", activeColor);
-    set(h.commands_panel, "BorderWidth", 1, "HighlightColor", inactiveColor);
+    set(h.scans_panel, "BorderWidth", 2, "HighlightColor", palette.activeBorder);
+    set(h.commands_panel, "BorderWidth", 1, "HighlightColor", palette.inactiveBorder);
     set(h.insert_source_sth, "String", "Source: Scans");
 end
 end
@@ -158,12 +162,15 @@ promptVisible = isequal(getappdata(handle, "smQueuePromptVisible"), true);
 fig = ancestor(handle, "figure");
 focused = isgraphics(fig, "figure") && isequal(get(fig, "CurrentObject"), handle);
 if focused && ~promptVisible
+    set(handle, "ForegroundColor", get(fig, "DefaultUicontrolForegroundColor"));
     return;
 end
 if strlength(draft) == 0
     if ~promptVisible || rawText(get(handle, "String")) ~= prompt
-        set(handle, "String", prompt, "ForegroundColor", [0.50 0.50 0.50]);
+        set(handle, "String", prompt);
     end
+    foreground = get(fig, "DefaultUicontrolForegroundColor");
+    set(handle, "ForegroundColor", 0.55 * foreground + 0.45 * get(handle, "BackgroundColor"));
     setappdata(handle, "smQueuePromptVisible", true);
     return;
 end
@@ -171,7 +178,7 @@ current = rawText(get(handle, "String"));
 if promptVisible || current ~= draft
     set(handle, "String", char(draft));
 end
-set(handle, "ForegroundColor", [0 0 0]);
+set(handle, "ForegroundColor", get(fig, "DefaultUicontrolForegroundColor"));
 setappdata(handle, "smQueuePromptVisible", false);
 end
 
@@ -267,6 +274,14 @@ else
 end
 end
 
+function value = interactiveState(condition)
+if condition
+    value = "on";
+else
+    value = "inactive";
+end
+end
+
 function value = stopQueueLabel(stopping)
 if stopping
     value = "Stopping After Current...";
@@ -275,10 +290,25 @@ else
 end
 end
 
-function color = ternaryColor(dimmed)
+function color = panelColor(palette, dimmed)
 if dimmed
-    color = [0.55 0.55 0.55];
+    color = palette.dimmedPanelText;
 else
-    color = [0 0 0];
+    color = palette.panelText;
+end
+end
+
+function renderActionButtons(h, palette)
+renderActionButton(h.run_pbh, palette.start, palette);
+renderActionButton(h.stopqueue_pbh, palette.stopQueue, palette);
+renderActionButton(h.stopnow_pbh, palette.stopNow, palette);
+end
+
+function renderActionButton(handle, enabledColor, palette)
+if strcmp(get(handle, "Enable"), "on")
+    set(handle, "BackgroundColor", enabledColor, "ForegroundColor", palette.actionText);
+else
+    set(handle, "BackgroundColor", palette.disabledAction, ...
+        "ForegroundColor", palette.disabledActionText);
 end
 end
