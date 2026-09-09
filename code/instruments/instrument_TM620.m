@@ -40,7 +40,7 @@ classdef instrument_TM620 < instrumentInterface
         function getValues = getReadChannelHelper(obj, channelIndex)
             response = strip(readline(obj.communicationHandle));
             subchannel = obj.subchannels(channelIndex);
-            tokens = regexp(response, "^\s*" + subchannel + ":\s*([+-]?\d+(?:\.\d*)?(?:[Ee][+-]?\d+)?)\s*K\s*$", "tokens", "once");
+            tokens = regexp(response, "^\s*" + subchannel + "\s*:\s*([+-]?\d+(?:\.\d*)?(?:[Ee][+-]?\d+)?)\s*K\s*$", "tokens", "once");
             if isempty(tokens)
                 error("instrument_TM620:UnexpectedResponse", ...
                     "Expected TM620 %s temperature response, got '%s'.", subchannel, response);
