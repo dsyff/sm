@@ -62,7 +62,7 @@ if isempty(target) || ~isgraphics(target)
     return;
 end
 panel = ancestor(target, "uipanel");
-if target == h.qtxt_eth || target == h.commands_panel || panel == h.commands_panel
+if target == h.qtxt_eth || target == h.commands_panel || isequal(panel, h.commands_panel)
     state.setSource("raw");
     smQueueRefresh();
     if isgraphics(h.qtxt_eth) && isequal(getappdata(h.qtxt_eth, "smQueuePromptVisible"), true)
@@ -70,7 +70,7 @@ if target == h.qtxt_eth || target == h.commands_panel || panel == h.commands_pan
             "ForegroundColor", get(h.figure1, "DefaultUicontrolForegroundColor"));
         setappdata(h.qtxt_eth, "smQueuePromptVisible", false);
     end
-elseif target == h.scans_lbh || target == h.scans_panel || panel == h.scans_panel
+elseif target == h.scans_lbh || target == h.scans_panel || isequal(panel, h.scans_panel)
     state.setSource("scans");
     smQueueRefresh();
 end
