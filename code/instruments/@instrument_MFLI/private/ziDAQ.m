@@ -24,7 +24,7 @@
 %                  'poll', 'pollEvent', 'programRT', 'progress',
 %                  'read', 'record', 'revision', 'setByte', 'setComplex', 'setDouble',
 %                  'syncSetDouble', 'setInt', 'syncSetInt', 'setString',
-%                  'syncSetString', 'subscribe', 'sweep', 'unsubscribe',
+%                  'syncSetString', 'DataStreamingModule', 'subscribe', 'sweep', 'unsubscribe',
 %                  'update', 'version', 'zoomFFT'
 %
 % Preconditions: ZI Server must be running (check task manager)
@@ -539,7 +539,7 @@
 %
 %   handle = ziDAQ('scopeModule');
 %                  handle = Matlab handle (reference) specifying an instance of
-%                           the DataAcquisitionModule class.
+%                           the ScopeModule class.
 %                  Create an instance of the Scope Module class
 %                  and return a Matlab handle with which to access it.
 %
@@ -548,7 +548,7 @@
 %
 %   handle = ziDAQ('multiDeviceSyncModule');
 %                  handle = Matlab handle (reference) specifying an instance of
-%                           the DataAcquisitionModule class.
+%                           the MultiDeviceSyncModule class.
 %                  Create an instance of the Multi-Device Sync Module class
 %                  and return a Matlab handle with which to access it.
 %
@@ -576,8 +576,26 @@
 %
 %   handle = ziDAQ('precompensationAdvisor');
 %                  handle = Matlab handle (reference) specifying an instance of
-%                           the DataAcquisitionModule class.
+%                           the PrecompensationAdvisor class.
 %                  Create an instance of the Precompensation Advisor Module class
+%                  and return a Matlab handle with which to access it.
+%
+%
+%% Data Streaming Module
+%
+%   handle = ziDAQ('dataStreamingModule');
+%                  handle = Matlab handle (reference) specifying an instance of
+%                           the DataStreamingModule class.
+%                  Create an instance of the Data Streaming Module class
+%                  and return a Matlab handle with which to access it.
+%
+%
+%% Timeline Module
+%
+%   handle = ziDAQ('timelineModule');
+%                  handle = Matlab handle (reference) specifying an instance of
+%                           the timelineModule class.
+%                  Create an instance of the Timeline Module class
 %                  and return a Matlab handle with which to access it.
 %
 %
