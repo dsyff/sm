@@ -569,6 +569,7 @@ check until a deterministic harness exists.
 | Q-SAFE-03 | Complete or fail a safe-mode scan | Mode/phase clear on every cleanup path; existing view restores current enabled states without focus theft; pending work does not auto-start | Automated success/fault injection plus focus probe |
 | Q-VIEW-01 | Refresh existing view from external model change | No focus theft; controls reflect model; no stale-handle error | Automated focus/handle probe |
 | Q-VIEW-02 | Close and reopen after changing shared path/run/PPT state | Recreated view reflects unchanged shared state | Automated |
+| Q-VIEW-04 | Click the figure background, a control without a panel ancestor, or either source pane | Background/unrelated clicks preserve the active source without errors; source-pane clicks select the matching source | Automated callback target probe |
 | Q-STATE-01 | Render every queue phase | Start/stop enabled states and `Stopping After Current...` label match the state matrix | Automated |
 | Q-VIS-01 | Render minimum/default/tall/wide sizes | Geometry satisfies the visual contract below | Geometry assertions plus manual review |
 
