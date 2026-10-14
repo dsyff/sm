@@ -1,4 +1,4 @@
-function payload = smload(folderOrSource, fileNum, nThMatch, varargin)
+function payload = smload(folderOrSource, varargin)
 % SMLOAD Loads saved scan data and returns a struct of named variables.
 %
 % Usage patterns:
@@ -7,6 +7,8 @@ function payload = smload(folderOrSource, fileNum, nThMatch, varargin)
 %   payload = smload(folder, fileNum);
 %   payload = smload(folder, fileNum, nThMatch);
 %   payload = smload(___, 'includeRaw', true);
+% Numbered lookup skips definition-only files by checking their MAT variables.
+% Set axes follow acquisition ranges, including index axes when no range is set.
 %
 % The returned struct contains:
 %   .scan        - Original scan struct (scalar)
@@ -20,35 +22,21 @@ if nargin == 0
     error('smload requires at least one input argument.');
 end
 
-optionArgs = varargin;
-if nargin >= 3 && ~isempty(nThMatch) && ~isnumeric(nThMatch)
-    optionArgs = [{nThMatch}, optionArgs];
-    nThMatch = [];
-end
-if nargin >= 2 && ~isempty(fileNum) && ~isnumeric(fileNum)
-    optionArgs = [{fileNum}, optionArgs];
-    fileNum = [];
-end
-
-opts = parseOptions(optionArgs{:});
-
-usingLegacy = (nargin == 1) || (isempty(fileNum) && (nargin < 3 || isempty(nThMatch)));
-
-if usingLegacy
-    [scan, data, label, rawStruct] = loadSavePayload(folderOrSource, opts.includeRaw);
-else
-    if nargin < 2 || isempty(fileNum)
-        error('smload requires fileNum when specifying a folder.');
+fileNum = [];
+nThMatch = [];
+if ~isempty(varargin) && isnumeric(varargin{1})
+    fileNum = varargin{1};
+    varargin(1) = [];
+    if ~isempty(varargin) && isnumeric(varargin{1})
+        nThMatch = varargin{1};
+        varargin(1) = [];
     end
-    if nargin < 3 || isempty(nThMatch)
-        nThMatch = 1;
-    end
-    validateattributes(fileNum, {'numeric'}, {'scalar', 'real', 'finite', 'nonnegative'}, mfilename, 'fileNum');
-    validateattributes(nThMatch, {'numeric'}, {'scalar', 'real', 'finite', 'positive'}, mfilename, 'nThMatch');
-
-    resolvedFile = locateSaveFile(folderOrSource, fileNum, nThMatch);
-    [scan, data, label, rawStruct] = loadSavePayload(resolvedFile, opts.includeRaw);
 end
+opts = parseOptions(varargin{:});
+
+[saved, label] = smReadSavePayload(folderOrSource, fileNum, nThMatch, opts.includeRaw);
+scan = saved.scan;
+data = saved.data;
 
 payload = struct();
 payload.scan = scan;
@@ -60,7 +48,7 @@ payload.channels = channelStruct;
 payload.setchannels = setStruct;
 
 if opts.includeRaw
-    payload.raw = rawStruct;
+    payload.raw = saved;
 end
 
     function optsOut = parseOptions(varargin)
@@ -74,55 +62,13 @@ end
             value = varargin{idx + 1};
             switch char(key)
                 case 'includeraw'
+                    validateattributes(value, {'logical', 'numeric'}, {'scalar', 'binary'}, mfilename, 'includeRaw');
                     optsOut.includeRaw = logical(value);
                 otherwise
                     error('Unknown option %s.', key);
             end
             idx = idx + 2;
         end
-    end
-
-    function [scanOut, dataOut, labelOut, rawOut] = loadSavePayload(source, includeRaw)
-        if isstruct(source) && isfield(source, 'scan') && isfield(source, 'data')
-            payloadStruct = source;
-            labelOut = 'struct input';
-            rawOut = [];
-            if includeRaw
-                rawOut = payloadStruct;
-            end
-        else
-            if isstring(source)
-                source = char(source);
-            end
-            if ~(ischar(source) || isstring(source))
-                error('Filename must be a character vector or string.');
-            end
-            if ~exist(source, 'file')
-                error('File %s does not exist.', source);
-            end
-            try
-                if includeRaw
-                    payloadStruct = load(source);
-                else
-                    payloadStruct = load(source, 'scan', 'data');
-                end
-            catch ME
-                error('Failed to load %s (%s).', source, ME.message);
-            end
-            labelOut = char(source);
-            if includeRaw
-                rawOut = payloadStruct;
-            else
-                rawOut = [];
-            end
-        end
-
-        if ~isfield(payloadStruct, 'scan') || ~isfield(payloadStruct, 'data')
-            error('Save data must contain scan and data fields.');
-        end
-
-        scanOut = payloadStruct.scan;
-        dataOut = payloadStruct.data;
     end
 
     function metadataOut = buildMetadata(scanStruct, labelText)
@@ -155,29 +101,41 @@ end
                 channelName = matlab.lang.makeValidName(getNames{chanIdx});
                 dataIndex = dataIndexOffset + chanIdx;
                 if dataIndex > numel(dataCell)
-                    error('Data cell array is missing channel %s.', channelName);
+                    error('smload:ChannelCountMismatch', 'Data cell array is missing channel %s.', channelName);
+                end
+                if isfield(channelMap, channelName)
+                    error('smload:DuplicateChannelName', 'Multiple channels map to field %s.', channelName);
                 end
                 channelMap.(channelName) = dataCell{dataIndex};
             end
             dataIndexOffset = dataIndexOffset + numel(getNames);
 
-            if isfield(loopDef, 'setchanranges') && ~isempty(loopDef.setchanranges)
-                for setIdx = 1:min(numel(setNames), numel(loopDef.setchanranges))
-                    sourceRange = loopDef.setchanranges{setIdx};
-                    npoints = loopDef.npoints;
-                    setData = linspace(sourceRange(1), sourceRange(end), npoints);
-                    rawName = [setNames{setIdx}, '_set'];
-                    setName = matlab.lang.makeValidName(rawName);
-                    setMap.(setName) = double(setData(:).');
+            for setIdx = 1:numel(setNames)
+                sourceRange = [];
+                if isfield(loopDef, 'setchanranges') && ~isempty(loopDef.setchanranges)
+                    if setIdx <= numel(loopDef.setchanranges)
+                        sourceRange = loopDef.setchanranges{setIdx};
+                    end
+                elseif isfield(loopDef, 'rng') && numel(loopDef.rng) >= 2
+                    sourceRange = loopDef.rng;
                 end
-            elseif isfield(loopDef, 'rng') && ~isempty(loopDef.rng)
-                axisValues = double(loopDef.rng(:).');
-                for setIdx = 1:numel(setNames)
-                    rawName = [setNames{setIdx}, '_set'];
-                    setName = matlab.lang.makeValidName(rawName);
-                    setMap.(setName) = axisValues;
+                npoints = loopDef.npoints;
+                if isempty(sourceRange)
+                    setData = 1:npoints;
+                elseif npoints > 1 && numel(sourceRange) >= 2
+                    setData = linspace(sourceRange(1), sourceRange(2), npoints);
+                else
+                    setData = repmat(sourceRange(1), 1, npoints);
                 end
+                setName = matlab.lang.makeValidName([setNames{setIdx}, '_set']);
+                if isfield(setMap, setName)
+                    error('smload:DuplicateChannelName', 'Multiple set channels map to field %s.', setName);
+                end
+                setMap.(setName) = double(setData(:).');
             end
+        end
+        if dataIndexOffset ~= numel(dataCell)
+            error('smload:ChannelCountMismatch', 'Channel count in data does not match scan definition.');
         end
     end
 
@@ -198,45 +156,4 @@ end
         end
     end
 
-    function filenameOut = locateSaveFile(folderInput, fileNumber, matchIndex)
-        folderStr = string(folderInput);
-        if strlength(folderStr) == 0
-            listing = dir('*.mat');
-            basePath = "";
-        else
-            listing = dir(fullfile(folderStr, '*.mat'));
-            basePath = folderStr;
-        end
-
-        if isempty(listing)
-            error('No .mat files found in %s.', chooseDisplayPath(basePath));
-        end
-
-        names = {listing.name};
-        prefix = sprintf('%03u', round(fileNumber));
-        matches = find(startsWith(names, prefix));
-
-        if isempty(matches)
-            error('No matching data file found for %s in %s.', prefix, chooseDisplayPath(basePath));
-        end
-        if numel(matches) < matchIndex
-            error('Requested match %d exceeds available files (%d).', matchIndex, numel(matches));
-        end
-
-        targetEntry = listing(matches(matchIndex));
-        if strlength(basePath) == 0
-            filenameOut = targetEntry.name;
-        else
-            filenameOut = fullfile(basePath, targetEntry.name);
-        end
-        disp("loading " + filenameOut);
-    end
-
-    function displayPath = chooseDisplayPath(pathInput)
-        if strlength(pathInput) == 0
-            displayPath = '.';
-        else
-            displayPath = char(pathInput);
-        end
-    end
 end

@@ -13,6 +13,7 @@
 - Use `smplot('filename.mat')` to recreate plots
 - Use `smload('filename.mat')` to load saved data into a struct for analysis:
 	- `payload.scan`: original scan struct
+	- `payload.data`: original data cell array, including unacquired `NaN` values
 	- `payload.channels`: struct mapping get-channel names → numeric arrays (fieldnames are sanitized via `matlab.lang.makeValidName`)
 	- `payload.setchannels`: struct mapping set-channel names (with `_set` appended) → axis vectors
 	- `payload.metadata`: filename/comments/consts
