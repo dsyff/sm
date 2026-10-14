@@ -21,7 +21,7 @@ classdef instrument_strainController < instrumentInterface
                 options.address_Montana2 (1, 1) string = "136.167.55.165"
                 options.address_OptiCool (1, 1) string = "127.0.0.1"
                 options.cryostat (1, 1) string {mustBeMember(options.cryostat, ["Montana2", "OptiCool"])}
-                options.strainCellNumber (1, 1) uint8 {mustBeInteger, mustBePositive}
+                options.strainCellNumber (1, 1) uint8 {mustBeMember(options.strainCellNumber, [1, 2, 3])}
                 options.outerCurrentLimit (1, 1) double {mustBePositive} = 1.6e-7
                 options.innerCurrentLimit (1, 1) double {mustBePositive} = 1e-7
                 options.useConservativeVoltageBounds (1, 1) logical = true

@@ -137,6 +137,20 @@
 %    In the instrument class, set `obj.numWorkersRequired = N` and use
 %    `instrumentWorker(...)` for the actual worker startup/handshake.
 %
+% STRAIN CELL CALIBRATION
+% -----------------------
+% instrument_strainController accepts strainCellNumber = 1, 2, or 3.
+% Cell 3 is Razorbill CS130 #0509: alpha = 59.362 um pF, Cp = 0.01782 pF.
+% In a copied demos/demo.m, set strainCellNumber_default = 3 immediately
+% before recipe.addInstrument for the strain controller.
+% The worker uses alpha/(C-Cp) and subtracts the measured tare for del_d.
+% The manufacturer's fixed d_0 = 62.257 um cancels in that difference;
+% it is distinct from the controller's measured tare parameter d_0.
+% When changing cells in an existing experiment folder, stop scans and keep
+% activeControl off, then replace the old tare using the demo's handle:
+%   global engine
+%   engine.evalOnEngine("handle_strainController.tare()");
+%
 % COMMON PITFALLS
 % --------------
 % - addInstrument arg order is (handle, "instName"), not ("instName", handle).

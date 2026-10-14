@@ -7,7 +7,7 @@ arguments
     options.address_Montana2 (1, 1) string;
     options.address_OptiCool (1, 1) string;
     options.cryostat (1, 1) string {mustBeMember(options.cryostat, ["Montana2", "OptiCool"])};
-    options.strainCellNumber (1, 1) uint8 {mustBeInteger, mustBePositive};
+    options.strainCellNumber (1, 1) uint8 {mustBeMember(options.strainCellNumber, [1, 2, 3])};
     options.outerCurrentLimit (1, 1) double {mustBePositive} = 1.6e-7;
     options.innerCurrentLimit (1, 1) double {mustBePositive} = 1e-7;
     options.useConservativeVoltageBounds (1, 1) logical = true;
@@ -828,13 +828,18 @@ end
     end
 
     function displacement = C2d(capacitance)
-        % conversion from capacitance to displacement
+        % Capacitance [F] to displacement [m]. The manufacturer's fixed d_0
+        % cancels in del_d; parameterVariables.d_0 is our measured tare.
         if options.strainCellNumber == 1
             C_0 = 0.01939E-12;
             alpha = 55.963E-18;
         elseif options.strainCellNumber == 2
             C_0 = 0.01394E-12;
             alpha = 57.058E-18;
+        elseif options.strainCellNumber == 3
+            % Razorbill CS130 #0509: Cp [F], alpha [m F].
+            C_0 = 0.01782E-12;
+            alpha = 59.362E-18;
         end
         displacement = alpha ./ (capacitance - C_0);
     end
