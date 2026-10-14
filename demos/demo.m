@@ -260,12 +260,10 @@ if strainController_Use
     if strain_cryostat == "OptiCool"
         strainCellNumber_default = 1;
     elseif strain_cryostat == "Montana2"
-        strainCellNumber_default = 2;
+        strainCellNumber_default = 3; % Razorbill CS130 #0509
     else
         error("demo:InvalidStrainCryostat", "strain_cryostat must be either 'OptiCool' or 'Montana2'");
     end
-    % For Razorbill CS130 #0509, override the cryostat default:
-    % strainCellNumber_default = 3;
 
     recipe.addInstrument("handle_strainController", "instrument_strainController", "strain", "strainController_1", ...
         address_E4980AL = gpibAddress(E4980AL_GPIB, adaptorIndex_strain), ...

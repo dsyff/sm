@@ -141,8 +141,8 @@
 % -----------------------
 % instrument_strainController accepts strainCellNumber = 1, 2, or 3.
 % Cell 3 is Razorbill CS130 #0509: alpha = 59.362 um pF, Cp = 0.01782 pF.
-% In a copied demos/demo.m, set strainCellNumber_default = 3 immediately
-% before recipe.addInstrument for the strain controller.
+% demos/demo.m defaults to cell 1 for OptiCool and cell 3 for Montana2.
+% Set strainCellNumber_default to match the installed cell if it changes.
 % The worker uses alpha/(C-Cp) and subtracts the measured tare for del_d.
 % The manufacturer's fixed d_0 = 62.257 um cancels in that difference;
 % it is distinct from the controller's measured tare parameter d_0.
