@@ -221,12 +221,12 @@ Before adding production code:
 Manual-backed claims above were checked against these local manufacturer
 manuals, including rendered inspection of the cited pages:
 
-- `C:\Users\Thomas\Desktop\manuals\attocube ANC300 positioner controller.pdf`
+- `C:\Users\Thomas\Desktop\sm-dev\manuals\attocube ANC300 positioner controller.pdf`
   — *ANC300 User Manual: Piezo Positioning Electronic*, version 3.4, June
   2019. See pp. 29, 35–41, and 46–48. The exact PDF was formerly
   tracked as `manuals/Attocube ANC300 positioner controller.pdf`; it remains in
   repository history as Git blob `94b589612b51e8e828f67c61e8896cd3e6bd6506`.
-- `C:\Users\Thomas\Desktop\manuals\Attodry\05 Manual FlexPositioners &
+- `C:\Users\Thomas\Desktop\sm-dev\manuals\attocube positioners and scanners\05 Manual FlexPositioners &
   Scanner_v2.9.pdf` — *AN* series positioners & scanners User Manual*, version
   2.9, January 2023. See pp. 29–30.
 - `C:\Users\Thomas\Desktop\sm-dev\temp\133912_5_BC_Ma.pdf` — local offer
