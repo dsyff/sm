@@ -11,6 +11,7 @@
 - Use `smget("channel")` and `smset("channel", value)` for quick channel access
 - Use `smget("instrument", "property")` and `smset("instrument", "property", value)` for screened public-property access on the engine rack
 - Use `smplot('filename.mat')` to recreate plots
+- Use `smplot('filename.mat', "figure", 2000)` to choose the replay figure; incomplete scans show the latest outer slice containing acquired data, with unacquired heatmap regions left blank.
 - Use `smload('filename.mat')` to load saved data into a struct for analysis:
 	- `payload.scan`: original scan struct
 	- `payload.data`: original data cell array, including unacquired `NaN` values
@@ -18,6 +19,7 @@
 	- `payload.setchannels`: struct mapping set-channel names (with `_set` appended) → axis vectors
 	- `payload.metadata`: filename/comments/consts
 	- Optionally: `payload = smload(___, 'includeRaw', true)` adds `payload.raw`
+- Both helpers accept `(folder, fileNum, nThMatch)`; numbered lookup counts data files and skips definition-only `_scan.mat` sidecars. `smload` reports ambiguous sanitized channel names instead of silently overwriting data.
 
 ## 🔑 KEY CONCEPTS:
 - **Batch Optimization (Pipeline Design)**: A major source of scan speed is coordinated design across `measurementEngine`, `instrumentRack`, and instrument classes. The engine precomputes scan metadata, `instrumentRack` caches/compiles channel plans and batches physical access by instrument, and instrument classes split `getWriteChannelHelper`/`getReadChannelHelper` so query writes are dispatched first and reads are collected after parallel settle time. Most users can rely on normal scan definitions without manual batching logic.
