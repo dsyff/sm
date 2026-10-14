@@ -216,23 +216,7 @@ Before adding production code:
 6. Confirm the intentional transition back to `stp` before allowing another
    step command.
 
-## Sources and Evidence Boundary
-
-Manual-backed claims above were checked against these local manufacturer
-manuals, including rendered inspection of the cited pages:
-
-- `C:\Users\Thomas\Desktop\sm-dev\manuals\attocube ANC300 positioner controller.pdf`
-  — *ANC300 User Manual: Piezo Positioning Electronic*, version 3.4, June
-  2019. See pp. 29, 35–41, and 46–48. The exact PDF was formerly
-  tracked as `manuals/Attocube ANC300 positioner controller.pdf`; it remains in
-  repository history as Git blob `94b589612b51e8e828f67c61e8896cd3e6bd6506`.
-- `C:\Users\Thomas\Desktop\sm-dev\manuals\attocube positioners and scanners\05 Manual FlexPositioners &
-  Scanner_v2.9.pdf` — *AN* series positioners & scanners User Manual*, version
-  2.9, January 2023. See pp. 29–30.
-- `C:\Users\Thomas\Desktop\sm-dev\temp\133912_5_BC_Ma.pdf` — local offer
-  133912-5, dated March 21, 2024. PDF p. 5 (printed offer p. 4) lists the
-  positioners, controller, and module quantities summarized above. An offer
-  records the specified system, not a live inventory.
+## Evidence Boundary
 
 The current software-exposure findings come from
 [`instrument_ANC300.m`](../code/instruments/instrument_ANC300.m),
