@@ -280,7 +280,7 @@ if strainController_Use
     recipe.addStatement("strain", "handle_strainController.requireSetCheck = true;");
 
     % Strain controller constructor restores tareData from logs (or tares if missing).
-    % To warm up from the client: smstrainwarmup();
+    % Warm up, then pump down when Montana is Ready (3 purges, no bake): smstrainwarmup();
 
     recipe.addChannel("strain", "del_d", "del_d", [], [], -5E-5, 5E-5);
     recipe.addChannel("strain", "T", "T");

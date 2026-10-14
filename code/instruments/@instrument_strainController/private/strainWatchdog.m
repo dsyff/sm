@@ -229,12 +229,14 @@ otherActiveControlChannelIndex = channelIndices(double(offset + 1));
 rackChannelIndex = channelIndices(double(offset + 2));
 tareChannelIndex = channelIndices(double(offset + 3));
 
-stringCommandIndices = instWorker.instWorkerRegisterStringCommands(["STOP"; "FLUSH"; "*IDN?"; "ERROR"; "WARMUP"]);
+stringCommandIndices = instWorker.instWorkerRegisterStringCommands(["STOP"; "FLUSH"; "*IDN?"; "ERROR"; "WARMUP"; "CRYOSTATSTATE"; "PUMPDOWN"]);
 stopStringCommandIndex = stringCommandIndices(1);
 flushStringCommandIndex = stringCommandIndices(2);
 idnStringCommandIndex = stringCommandIndices(3);
 errorStringCommandIndex = stringCommandIndices(4);
 warmupStringCommandIndex = stringCommandIndices(5);
+cryostatStateStringCommandIndex = stringCommandIndices(6);
+pumpdownStringCommandIndex = stringCommandIndices(7);
 getActionIndex = instWorker.instWorkerActionIndex("GET");
 setActionIndex = instWorker.instWorkerActionIndex("SET");
 checkActionIndex = instWorker.instWorkerActionIndex("CHECK");
@@ -696,6 +698,20 @@ end
                     dogError("cannot call final warmup while activeControl is on", command);
                 end
                 handle_cryostat.warmup();
+                instWorker.instWorkerSendToInst(true);
+            case cryostatStateStringCommandIndex
+                if ~ismethod(handle_cryostat, "getSystemState")
+                    dogError("cryostat %s does not support state queries", command, class(handle_cryostat));
+                end
+                instWorker.instWorkerSendToInst(handle_cryostat.getSystemState());
+            case pumpdownStringCommandIndex
+                if ~ismethod(handle_cryostat, "pumpdown")
+                    dogError("cryostat %s does not support pump down", command, class(handle_cryostat));
+                end
+                if activeControl
+                    dogError("cannot pump down while activeControl is on", command);
+                end
+                handle_cryostat.pumpdown();
                 instWorker.instWorkerSendToInst(true);
             otherwise
                 dogError("invalid string command %s.", command, command.stringCommand);

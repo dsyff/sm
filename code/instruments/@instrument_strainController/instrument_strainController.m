@@ -152,6 +152,18 @@ classdef instrument_strainController < instrumentInterface
             end
         end
 
+        function state = getCryostatState(obj)
+            state = dogQuery(obj.handle_strainWatchdog, "CRYOSTATSTATE", obj.dogGetTimeout);
+        end
+
+        function pumpdown(obj)
+            reply = dogQuery(obj.handle_strainWatchdog, "PUMPDOWN", seconds(60));
+            if ~(islogical(reply) && isscalar(reply) && reply)
+                error("instrument_strainController:PumpdownFailed", ...
+                    "Expected logical true reply for PUMPDOWN. Received:\n%s", formattedDisplayText(reply));
+            end
+        end
+
         function stop(obj)
             if ~isempty(obj.handle_strainWatchdog)
                 try

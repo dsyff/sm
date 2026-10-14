@@ -10,6 +10,7 @@
 - Use `smgui_small` to edit and run one scan; use `sm` for the scans library and turbo queue
 - Use `smget("channel")` and `smset("channel", value)` for quick channel access
 - Use `smget("instrument", "property")` and `smset("instrument", "property", value)` for screened public-property access on the engine rack
+- For the Montana strain setup, run `smstrainwarmup()` after stopping scans: it zeros the strain controls, starts warmup, waits up to 6 hours for `Ready`, then starts pump down with 3 nitrogen purges and no bakeout. It returns when pump down starts.
 - Use `smplot('filename.mat')` to recreate plots
 - Use `smplot('filename.mat', "figure", 2000)` to choose the replay figure; incomplete scans show the latest outer slice containing acquired data, with unacquired heatmap regions left blank.
 - Use `smload('filename.mat')` to load saved data into a struct for analysis:

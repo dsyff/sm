@@ -42,6 +42,21 @@ classdef instrument_Montana2 < instrumentInterface
             obj.webpost(obj.urlRoot + "/controller/methods/warmup()");
         end
 
+        function state = getSystemState(obj)
+            state = string(webread(obj.urlRoot + "/controller/properties/systemState", obj.defaultWeboptions).systemState);
+        end
+
+        function pumpdown(obj)
+            if obj.getSystemState() ~= "Ready" || ...
+                    ~webread(obj.urlRoot + "/controller/properties/canPullVacuum", obj.defaultWeboptions).canPullVacuum
+                error("instrument_Montana2:PumpdownNotReady", "Montana must be Ready and allow pulling vacuum before pump down.");
+            end
+            obj.webput(obj.urlRoot + "/controller/properties/dryNitrogenPurgeEnabled", struct("dryNitrogenPurgeEnabled", true));
+            obj.webput(obj.urlRoot + "/controller/properties/dryNitrogenPurgeNumTimes", struct("dryNitrogenPurgeNumTimes", 3));
+            obj.webput(obj.urlRoot + "/controller/properties/platformBakeoutEnabled", struct("platformBakeoutEnabled", false));
+            obj.webpost(obj.urlRoot + "/controller/methods/pullVacuum()");
+        end
+
         function currentTarget = getCurrentTargetTemperature(obj)
             currentTarget = webread(obj.platformSetUrl, obj.defaultWeboptions).platformTargetTemperature;
         end
