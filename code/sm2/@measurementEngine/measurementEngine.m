@@ -139,8 +139,8 @@ classdef measurementEngine < handle
             slackSettings.webhook = string(slackSettings.webhook);
             slackSettings.api_token = string(slackSettings.api_token);
             slackSettings.channel_id = string(slackSettings.channel_id);
-            slackSettings.user_id = string(slackSettings.user_id);
-            slackSettings.account_email = string(slackSettings.account_email);
+            [slackSettings.account_email, slackSettings.user_id] = ...
+                normalizeSlackNotificationRecipients(slackSettings.account_email, slackSettings.user_id);
             if ~isscalar(slackSettings.webhook)
                 error("measurementEngine:InvalidSlackNotificationSettings", ...
                     "slack_notification_settings.webhook must be a scalar string.");
@@ -152,14 +152,6 @@ classdef measurementEngine < handle
             if ~isscalar(slackSettings.channel_id)
                 error("measurementEngine:InvalidSlackNotificationSettings", ...
                     "slack_notification_settings.channel_id must be a scalar string.");
-            end
-            if ~isscalar(slackSettings.user_id)
-                error("measurementEngine:InvalidSlackNotificationSettings", ...
-                    "slack_notification_settings.user_id must be a scalar string.");
-            end
-            if ~isscalar(slackSettings.account_email)
-                error("measurementEngine:InvalidSlackNotificationSettings", ...
-                    "slack_notification_settings.account_email must be a scalar string.");
             end
             obj.slack_notification_settings = slackSettings;
 
@@ -655,16 +647,17 @@ classdef measurementEngine < handle
         function cacheSlackNotificationUserId(obj, accountEmail, userId)
             arguments
                 obj
-                accountEmail (1, 1) string
-                userId (1, 1) string
+                accountEmail (1, :) string
+                userId (1, :) string
             end
             accountEmail = strip(accountEmail);
             userId = strip(userId);
-            if strlength(accountEmail) == 0 || strlength(userId) == 0
-                return;
+            if numel(accountEmail) ~= numel(userId)
+                error("measurementEngine:InvalidSlackNotificationSettings", "Each Slack account email must have a matching user ID entry.");
             end
-            obj.slack_notification_settings.account_email = accountEmail;
-            obj.slack_notification_settings.user_id = userId;
+            [configured, index] = ismember(lower(accountEmail), lower(obj.slack_notification_settings.account_email));
+            resolved = configured & strlength(accountEmail) > 0 & strlength(userId) > 0;
+            obj.slack_notification_settings.user_id(index(resolved)) = userId(resolved);
         end
     end
 

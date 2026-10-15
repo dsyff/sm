@@ -226,7 +226,7 @@ virtual_hysteresis_B_points = [-1, 1];
 
 %% Create instrumentRackRecipe
 recipe = instrumentRackRecipe();
-recipe.slack_notification_account_email = "";
+recipe.slack_notification_account_email = ""; % One email or a string array of emails; empty uses the group channel.
 
 % Recipe calling syntax (quick reference):
 % recipe.addInstrument("handleVar", "instrument_ClassName", "friendlyName", constructorArgs..., nameValueArgs...);

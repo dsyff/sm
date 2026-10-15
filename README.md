@@ -27,7 +27,7 @@
 - **Vector Channels**: Rack batching can issue at most one physical channel per instrument in each batch step, so multiple scalar channels from the same instrument still require multiple instrument transactions. When an instrument supports vector reads (e.g., `XY`, `XTheta`, `YTheta`, `RTheta`), one request returns multiple values, which can cut communication overhead by large factors. Vector channels are get-only (no vector setting), and they are plotted/saved as scalar channels with `_#` appended (e.g., `XY_1`, `XY_2`).
 - **Worker Engine (safe/turbo)**: Turbo mode uses a multi-process pipeline (client GUI + worker engine process) and asynchronous snapshot updates to achieve extremely fast scan speed. When constructed from an `instrumentRackRecipe`, measurements run on a worker engine by default; use `singleThreaded=true` to materialize the recipe on the client for local debugging. The scan GUI "Run" uses safe mode, while the queue GUI "Start" uses turbo mode.
 - **Class-First Design**: The new codebase uses classes extensively for cleaner structure. Instrument classes inherit `instrumentInterface`, so most plumbing is already handled; simple instruments should require minimal code (typically just constructor/channel definitions plus small get/set helper methods).
-- **Slack Notifications**: Completed and stop-requested queue scans can send their saved image/data and status to Slack; stop notifications include the stop reason. Set `recipe.slack_notification_account_email` to your Slack account email to send a private DM notification; leave it empty to send to the configured group channel. Slack connection/API failures are non-fatal and are reported through `experimentContext`.
+- **Slack Notifications**: Completed and stop-requested queue scans can send their saved image/data and status to Slack; stop notifications include the stop reason. Set `recipe.slack_notification_account_email` to one email or a string array of emails to send a separate private DM to each account; leave it empty to send to the configured group channel. Slack connection/API failures are non-fatal and are reported through `experimentContext`; failure for one recipient does not prevent attempts for the others.
 - **Finish Actions ("Set After")**: The scan GUI's **When finished or canceled** panel uses checked rows to set scalar channels and unchecked rows to record their final values. All sets run before the reads, and the actions run before final saving after normal completion, cancellation, or a handled acquisition error. Refreshed rows are saved in `scan.finish` and included in MAT/PPT output.
 - **Protected Gates**: Enable `virtual_gate_bg_Use` or `virtual_gate_tg_Use` in `demos/demo.m`, then use the protected `V_bg`/`V_tg` and `I_bg`/`VI_bg` channels rather than their `_raw` counterparts. After `occurrence` out-of-range current reads (default 3, minimum 2) at strictly increasing absolute protected SET voltages, the gate is zeroed immediately without a ramp and the active scan stops gracefully, preserving its reason and partial final data. Change live limits with `smset("virtual_gate_bg", "currentMin", ...)`, `currentMax`, or `occurrence`.
 - **GUI Updates**: `smgui_small` has scrollable Constants, loop, and finish-action sections, and numeric range edits update in place so the active textbox keeps focus. The programmatic `sm` queue GUI keeps library, pending-queue, draft, and runner state outside its disposable singleton view; closing it does not stop or clear anything, and `sm` reopens it. Queue controls stay usable during turbo scans and fully lock during an external safe-mode scan. Repeated Run/Start clicks during an active scan are ignored.
@@ -50,14 +50,17 @@ For the normal private-DM workflow, the only required secret is the Slack API to
 slack_notification_api_token=xoxb-your-bot-token
 ```
 
-Set the recipient in the copied recipe:
+Set one or more recipients in the copied recipe (accounts in the bot's Slack workspace):
 
 ```matlab
 recipe.slack_notification_account_email = "you@example.com";
+% Or notify multiple accounts separately:
+recipe.slack_notification_account_email = ["you@example.com", "colleague@example.com"];
 ```
 
 - To send to the configured group channel instead, leave `recipe.slack_notification_account_email` empty and add `slack_notification_channel_id=C0123456789` to `secrets.env`.
-- `slack_notification_account_email` is also accepted in `secrets.env`, but normally omit it so each copied recipe controls its DM recipient. If set there, it takes precedence over the recipe value and over the channel ID.
+- `slack_notification_account_email` is also accepted in `secrets.env` as a comma-separated list, for example `slack_notification_account_email=you@example.com,colleague@example.com`. Normally omit it so each copied recipe controls its DM recipients. If set there, it takes precedence over the recipe value and over the channel ID.
+- Email lists are trimmed, blank entries ignored, and duplicates removed case-insensitively. Each recipient receives the PNG, MAT file, and status; successfully resolved user IDs are cached per account. The queue displays the email list with the full list in its tooltip.
 - Run or rerun `sminit` after creating or changing `secrets.env`, then call `smready(...)` so the loaded settings reach the measurement engine.
 - `slack_notification_webhook` is still loaded for compatibility, but webhook-only setup is not sufficient for the current image/data upload path.
 

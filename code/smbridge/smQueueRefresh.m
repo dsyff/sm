@@ -52,10 +52,14 @@ end
 set(h.content_panels(isgraphics(h.content_panels)), "ForegroundColor", ...
     panelColor(palette, safeLocked));
 smbridgeUpdateEditRackMenuState(engineActive || state.queuePhase ~= "idle");
+account = notificationAccount(engine);
+set(h.notify_account, "String", account, "TooltipString", account);
+accountExtent = get(h.notify_account, "Extent");
+accountPosition = get(h.notify_account, "Position");
+accountPosition(3) = max(accountPosition(3), accountExtent(3));
+set(h.notify_account, "Position", accountPosition); % Parent panel clips one line.
 if safeLocked
     renderActionButtons(h, palette);
-    account = notificationAccount(engine);
-    set(h.notify_account, "String", account, "TooltipString", account);
     return;
 end
 
@@ -75,8 +79,6 @@ renderSource(h, state.source, palette);
 
 [status, statusTooltip] = queueStatus(state);
 set(h.status_sth, "String", status, "TooltipString", statusTooltip);
-account = notificationAccount(engine);
-set(h.notify_account, "String", account, "TooltipString", account);
 
 set(h.openscans, "Enable", "on");
 set(h.savescans, "Enable", onOff(~isempty(state.scans)));
@@ -253,8 +255,8 @@ if ~validEngine(engine)
     return;
 end
 settings = engine.slack_notification_settings;
-if isfield(settings, "account_email") && strlength(strip(string(settings.account_email))) > 0
-    account = strip(string(settings.account_email));
+if isfield(settings, "account_email") && any(strlength(settings.account_email) > 0)
+    account = strjoin(settings.account_email, ", ");
 end
 end
 

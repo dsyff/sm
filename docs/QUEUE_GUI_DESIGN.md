@@ -145,11 +145,11 @@ The scan and queue GUIs must be two views of the same state. They must not maint
 
 ### Notifications
 
-- Display the engine-level Slack account as read-only text.
+- Display the engine-level Slack account list as read-only, comma-separated text.
 - Display exactly `Account not provided` when the account email is empty.
 - Do not vary the display based on the selected scan.
-- Keep the account on one line. Allow natural clipping at the minimum window
-  size, do not wrap or add manual ellipses, and expose the complete account in a
+- Keep the account list on one line. Allow natural clipping at the minimum window
+  size, do not wrap or add manual ellipses, and expose the complete list in a
   tooltip.
 
 Code audit result: normal configuration has no per-scan Slack authoring path. `recipe.slack_notification_account_email` is resolved by `smready` into `engine.slack_notification_settings.account_email`. Remove the dormant compatibility branch that reads a manually supplied `scan.slack_notification_account_email`; no GUI, demo, or scan-building path creates that field.
@@ -391,13 +391,15 @@ the result is secondary and may be skipped when no valid queue view exists.
 - Run number accepts empty or a finite value in `[0, 999]`. Invalid input shows
   an error and clears the shared manual value. The shared run service rounds a
   valid finite value to the nearest integer before using it.
-- Notifications display the engine-level Slack account only. The empty label is
+- Notifications display the engine-level Slack account list only. The empty label is
   exactly `Account not provided`. Notification failures are reported through
   `experimentContext` and never halt queue advancement.
 - A normally completed or gracefully stopped scan sends the saved PNG and MAT
   artifacts, duration, completion/stop state, and stop reason through the
   existing notification service. Raw-command items send no scan notification.
-  Cache a successfully resolved Slack user ID through the engine service.
+  Send a separate private DM to each configured account, continuing with other
+  recipients if one fails. Cache successfully resolved Slack user IDs per account
+  through the engine service. With no accounts, use the configured group channel.
 - Remove the dormant per-scan Slack-account override. It is not part of the
   authored scan contract.
 
@@ -560,6 +562,7 @@ check until a deterministic harness exists.
 | Q-ERROR-02 | Slack send fails | Warning is reported and next pending item still starts | Automated mock |
 | Q-ERROR-03 | Acquisition or final dirty-flush failure is converted to a graceful stop | Finish actions and partial save complete; stop metadata/notification are preserved; queue halts with later pending items untouched and no extra error modal | Automated fault injection |
 | Q-NOTIFY-01 | Complete and gracefully stop scans; run a raw command | Scan notifications include artifacts/duration/state/reason, resolved ID caches, raw sends none | Automated mock |
+| Q-NOTIFY-02 | Configure multiple accounts, duplicates, and a failing recipient | Separate DMs include both artifacts/status; duplicates send once, IDs cache per account, failures do not block other recipients or the next scan | Automated mock |
 | Q-REBIND-01 | `smready` during an engine scan, raw command, or between-item transition, then while idle | Every active call throws before mutation; idle rebind preserves queue model/shared state | Automated |
 | Q-RACK-01 | Observe Edit Rack across queue and engine lifecycles | Disabled through every non-idle queue phase and startup/acquisition/finish/save; restored afterward | Automated slow-finish/raw/between probe |
 | Q-EDIT-09 | Use scan editor and transfer actions during a turbo queue scan | Edit/transfer remain functional without affecting running item; editor Run and Edit Rack remain unavailable | Automated slow-run focus probe |

@@ -9,7 +9,7 @@ Quick start:
 - `_Use` flags
 - `requireSetCheck` flags (`false` = no settle wait)
 - repository-root `secrets.env` with `slack_notification_api_token`; see **Slack API Setup** in `README.md`
-- `recipe.slack_notification_account_email` for private queue notifications (a channel ID is needed only when this is empty)
+- `recipe.slack_notification_account_email` for private queue notifications: one email or a string array of emails for separate DMs (a channel ID is needed only when this is empty)
 - channels and instrument settings as needed
 - use `instrument_K2450` for Keithley 2450 instruments; do not run a 2450 in 2400 emulation mode
 3. Run.

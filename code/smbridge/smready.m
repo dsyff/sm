@@ -30,7 +30,7 @@ inputSettings = options.slack_notification_settings;
 if isfield(inputSettings, "webhook"), slackSettings.webhook = inputSettings.webhook; end
 if isfield(inputSettings, "api_token"), slackSettings.api_token = inputSettings.api_token; end
 if isfield(inputSettings, "channel_id"), slackSettings.channel_id = inputSettings.channel_id; end
-if isfield(inputSettings, "account_email"), slackSettings.account_email = inputSettings.account_email; end
+if isfield(inputSettings, "account_email"), slackSettings.account_email = normalizeSlackNotificationRecipients(inputSettings.account_email); end
 
 if evalin("base", "exist(""slack_notification_settings"", ""var"") == 1")
     baseSettings = evalin("base", "slack_notification_settings");
@@ -38,7 +38,7 @@ if evalin("base", "exist(""slack_notification_settings"", ""var"") == 1")
         if strlength(string(slackSettings.webhook)) == 0 && isfield(baseSettings, "webhook"), slackSettings.webhook = baseSettings.webhook; end
         if strlength(string(slackSettings.api_token)) == 0 && isfield(baseSettings, "api_token"), slackSettings.api_token = baseSettings.api_token; end
         if strlength(string(slackSettings.channel_id)) == 0 && isfield(baseSettings, "channel_id"), slackSettings.channel_id = baseSettings.channel_id; end
-        if strlength(string(slackSettings.account_email)) == 0 && isfield(baseSettings, "account_email"), slackSettings.account_email = baseSettings.account_email; end
+        if all(strlength(slackSettings.account_email) == 0) && isfield(baseSettings, "account_email"), slackSettings.account_email = normalizeSlackNotificationRecipients(baseSettings.account_email); end
     end
 end
 
@@ -49,18 +49,17 @@ if strlength(string(slackSettings.webhook)) == 0 && evalin("base", "exist(""slac
     slackSettings.webhook = evalin("base", "slack_notification_webhook");
 end
 
-if isa(source, "instrumentRackRecipe") && strlength(string(slackSettings.account_email)) == 0
+if isa(source, "instrumentRackRecipe") && all(strlength(slackSettings.account_email) == 0)
     slackSettings.account_email = source.slack_notification_account_email;
 end
 
 slackSettings.webhook = string(slackSettings.webhook);
 slackSettings.api_token = string(slackSettings.api_token);
 slackSettings.channel_id = string(slackSettings.channel_id);
-slackSettings.account_email = string(slackSettings.account_email);
+slackSettings.account_email = normalizeSlackNotificationRecipients(slackSettings.account_email);
 if ~isscalar(slackSettings.webhook), error("smready:InvalidSlackNotificationSettings", "slack_notification_settings.webhook must be a scalar string."); end
 if ~isscalar(slackSettings.api_token), error("smready:InvalidSlackNotificationSettings", "slack_notification_settings.api_token must be a scalar string."); end
 if ~isscalar(slackSettings.channel_id), error("smready:InvalidSlackNotificationSettings", "slack_notification_settings.channel_id must be a scalar string."); end
-if ~isscalar(slackSettings.account_email), error("smready:InvalidSlackNotificationSettings", "slack_notification_settings.account_email must be a scalar string."); end
 
 if ~(isa(source, "instrumentRack") || isa(source, "instrumentRackRecipe"))
     error("smready:InvalidInput", "smready expects instrumentRack or instrumentRackRecipe.");

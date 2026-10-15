@@ -3,7 +3,7 @@ classdef instrumentRackRecipe < handle
     %
     % The recipe is serializable and contains only construction instructions.
     properties
-        slack_notification_account_email (1, 1) string = ""
+        slack_notification_account_email string = ""
     end
 
     properties (SetAccess = private)

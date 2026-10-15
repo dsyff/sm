@@ -268,7 +268,8 @@ set(h.pptauto_cbh, "Position", [8 12 126 24]);
 set(h.pptfile_pbh, "Position", [137 12 54 25]);
 set(h.pptfile_sth, "Position", [197 14 max(20, pptWidth - 205) 19]);
 set(h.notify_label, "Position", [8 14 39 19]);
-set(h.notify_account, "Position", [48 14 max(20, notifyWidth - 56) 19]);
+accountExtent = get(h.notify_account, "Extent");
+set(h.notify_account, "Position", [48 14 max([20, notifyWidth - 56, accountExtent(3)]) 19]);
 
 scheduleY = margin;
 scheduleHeight = max(100, topY - gap - scheduleY);

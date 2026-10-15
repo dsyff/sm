@@ -628,7 +628,7 @@ settings = engine.slack_notification_settings;
 try
     userId = smnotifySlackScanComplete(scanName, metadata.pngFile, metadata.filename, ...
         metadata.duration, settings, stopped, string(metadata.stopMessage));
-    if strlength(string(userId)) > 0 && isfield(settings, "account_email")
+    if any(strlength(string(userId)) > 0) && isfield(settings, "account_email")
         engine.cacheSlackNotificationUserId(string(settings.account_email), string(userId));
     end
 catch ME

@@ -69,23 +69,13 @@ function resolvedUserId = smnotifySlackScanComplete(scanName, imagePath, dataFil
     if isfield(slack_notification_settings, "user_id")
         cachedUserId = string(slack_notification_settings.user_id);
     end
-    cachedUserId = strip(cachedUserId);
-    if ~isscalar(cachedUserId)
-        slackWarning("Slack image notification skipped: cached Slack recipient id must be a scalar string.");
-        return;
-    end
-
     accountEmail = "";
     if isfield(slack_notification_settings, "account_email")
         accountEmail = string(slack_notification_settings.account_email);
     elseif isfield(slack_notification_settings, "slack_notification_account_email")
         accountEmail = string(slack_notification_settings.slack_notification_account_email);
     end
-    accountEmail = strip(accountEmail);
-    if ~isscalar(accountEmail)
-        slackWarning("Slack image notification skipped: slack_notification_settings.account_email must be a scalar string.");
-        return;
-    end
+    [accountEmail, cachedUserId] = normalizeSlackNotificationRecipients(accountEmail, cachedUserId);
 
     channelId = "";
     if isfield(slack_notification_settings, "channel_id")
@@ -96,6 +86,22 @@ function resolvedUserId = smnotifySlackScanComplete(scanName, imagePath, dataFil
     channelId = strip(channelId);
     if ~isscalar(channelId)
         slackWarning("Slack image notification skipped: slack_notification_settings.channel_id must be a scalar string.");
+        return;
+    end
+
+    if numel(accountEmail) > 1
+        resolvedUserId = strings(size(accountEmail));
+        for recipient = 1:numel(accountEmail)
+            settings = slack_notification_settings;
+            settings.account_email = accountEmail(recipient);
+            settings.user_id = cachedUserId(recipient);
+            try
+                resolvedUserId(recipient) = smnotifySlackScanComplete(scanName, imagePath, ...
+                    dataFilePath, scanDuration, settings, stopRequested, stopMessage);
+            catch ME
+                slackWarning("Slack notification for %s failed (%s).", accountEmail(recipient), ME.message);
+            end
+        end
         return;
     end
 
