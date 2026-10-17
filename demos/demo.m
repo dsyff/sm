@@ -34,6 +34,8 @@ LS336_GPIB = 27;
 GMPS4_GPIB = 15;
 TM620_COM = "COM3";
 
+K33512B_GPIB = 29;
+
 SR860_1_GPIB = 7; % use same GPIB as SR830_1
 SR830_1_GPIB = SR860_1_GPIB; %sd
 SR860_2_GPIB = 8; % use same GPIB as SR830_2
@@ -96,6 +98,7 @@ SDG2042X_mixed_TARB_Address = SDG2042X_mixed_Address;
 % use visadevlist() to find out gpib addresses
 adaptorIndex = 0;        % Standard instruments
 adaptorIndex_strain = 2; % Strain controller instruments
+adaptorIndex_FG = 1;     % Keysight waveform generator
 
 
 %% instrument usage flags
@@ -120,6 +123,9 @@ GMPS4_Use = 0;
 TM620_Use = 0;
 attoDRY2100_Use = 0;
 ANC300_Use = 0; % nano positioner for attoDRY2100
+
+K33512B_Use = 0;
+K33512B_keyword = "FG";
 
 SR860_1_Use = 0;
 SR860_1_keyword = "Ixx";
@@ -358,6 +364,24 @@ if TM620_Use
     recipe.addStatement("TM620", "handle_TM620.requireSetCheck = false;");
     recipe.addChannel("TM620", "MEAS_A", "T_Shield");
     recipe.addChannel("TM620", "MEAS_B", "T_Magnet");
+end
+
+% Startup inverts CH2 AC and mirrors CH1's DC offset with opposite sign.
+% The demo selects High Z and Vrms on BOTH channels; limits assume sine waves:
+% 2 mVpp to 20 Vpp / (2*sqrt(2)) gives Vrms; DC range is +/-10 V.
+% Combined headroom: abs(V_dc) + sqrt(2)*V_exc <= 10 V per channel.
+% Configure waveform, output enable, phase and CH1 polarity manually.
+if K33512B_Use
+    recipe.addInstrument("handle_K33512B", "instrument_K33512B", "K33512B", gpibAddress(K33512B_GPIB, adaptorIndex_FG));
+    recipe.addStatement("K33512B", "handle_K33512B.requireSetCheck = false;"); % true verifies both outputs
+    recipe.addStatement("K33512B", "h = handle_K33512B.communicationHandle;");
+    recipe.addStatement("K33512B", "writeline(h, "":OUTP1:LOAD INF;:OUTP2:LOAD INF"");");
+    recipe.addStatement("K33512B", "writeline(h, "":SOUR1:VOLT:UNIT VRMS;:SOUR2:VOLT:UNIT VRMS"");");
+    % Load changes rescale offsets; re-establish the opposite pair.
+    recipe.addStatement("K33512B", "handle_K33512B.setWriteChannel(""dc_offset"", handle_K33512B.getChannel(""dc_offset""));");
+    recipe.addChannel("K33512B", "frequency", K33512B_keyword + "_Freq"); % Hz
+    recipe.addChannel("K33512B", "amplitude", K33512B_keyword + "_V_exc", [], [], 2e-3/(2*sqrt(2)), 20/(2*sqrt(2))); % Vrms per channel
+    recipe.addChannel("K33512B", "dc_offset", K33512B_keyword + "_V_dc", 0.5, 0.5, -10, 10); % V; 0.5 V/s ramp, 0.5 V threshold
 end
 
 if SR860_1_Use

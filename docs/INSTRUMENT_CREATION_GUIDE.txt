@@ -78,8 +78,8 @@ Rules:
   - If omitted, setTolerances defaults to 1E-6 * ones(channelSize, 1)
   - Channel names must be unique within the instrument
   - Only NUMERIC values are allowed - non-numeric data use class methods
-  - setTolerances is only meaningful for SETTABLE channels that use the default
-    setCheckChannelHelper (which compares the readback value against setTolerances).
+  - setTolerances is meaningful for SETTABLE channels that use the default
+    setCheckChannelHelper or an override that explicitly uses setTolerances.
     If obj.requireSetCheck = false, then setCheckChannelHelper is never used and
     setTolerances is ignored (so including setTolerances is misleading).
     For read-only channels (not implemented in setWriteChannelHelper), setTolerances
@@ -178,8 +178,30 @@ GUARANTEES from the framework:
 
 setCheckChannelHelper(obj, channelIndex, channelLastSetValues)
 --------------------------------------------------------------
-Verifies set values have been reached. Default compares getChannel result
-against setTolerances. Override only for special verification:
+Verifies set values have been reached. Prefer the inherited implementation:
+it reads getChannelByIndex(channelIndex) and returns
+  all(abs(readback - channelLastSetValues) <= obj.setTolerances{channelIndex}).
+It uses absolute tolerances in channel units. A mismatch returns false so the
+framework can poll again; malformed replies and instrument errors should throw.
+Do not override just to duplicate this comparison or add an unnecessary *OPC?.
+
+Override when additional hardware state or setpoint-dependent resolution must
+be checked. For a scalar channel controlling two outputs while getChannel
+reports only CH1, the default alone cannot verify CH2. Call the superclass check
+for CH1 and extend the result
+with a CH2 comparison when a fixed absolute tolerance suffices.
+Do not average the outputs to hide a mismatch or return an artificial readback.
+requireSetCheck=false skips the entire check, including any paired-output check.
+
+Choose tolerances from programming/readback resolution in channel units, not
+analog output accuracy or the number of printed digits in an example reply.
+Account for rounding/truncation and unit conversions. If resolution scales with
+the setpoint, a small override may use max(setTolerances, resolutionAllowance)
+plus floating-point roundoff. Document the allowance and keep setTolerances as
+the user-configurable absolute floor; do not overwrite it on each set. See
+instrument_K33512B for paired checks with a four-digit voltage allowance.
+
+For an instrument with a dedicated settled-status query:
 
   function TF = setCheckChannelHelper(obj, channelIndex, channelLastSetValues)
       handle = obj.communicationHandle;

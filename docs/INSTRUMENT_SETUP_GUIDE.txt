@@ -137,6 +137,79 @@
 %    In the instrument class, set `obj.numWorkersRequired = N` and use
 %    `instrumentWorker(...)` for the actual worker startup/handshake.
 %
+% K33512B PAIRED OUTPUTS
+% ----------------------------
+% Enable K33512B_Use in your copied demos/demo.m and set its GPIB
+% address/adaptorIndex_FG. The demo sets requireSetCheck = false; standalone
+% instances inherit the instrumentInterface default (true).
+% Set it true to verify BOTH channels after each set: frequency and amplitude
+% must match the requested value on both; DC must match +value/-value.
+% With it false, even an explicit setCheckChannel call skips readback and returns
+% true, following instrumentInterface behavior. Enable it before a manual check.
+% frequency / FG_Freq: Hz, writes the same frequency to CH1 and CH2.
+% amplitude / FG_V_exc: Vrms per channel, before external dividers; writes both.
+% dc_offset / FG_V_dc: volts, writes +value to CH1 and -value to CH2.
+% Startup preserves CH1's existing DC offset and commands CH2 to its negative,
+% without a forced readback check. Each ramp step also writes that +/- pair.
+% The demo uses rampRate = 0.5 V/s and rampThreshold = 0.5 V for FG_V_dc.
+% The demo sets both output loads to High Z (OUTP1:LOAD INF / OUTP2:LOAD INF)
+% and both amplitude units to VRMS. It then reapplies the opposite DC pair using
+% CH1's rescaled offset, since load changes rescale voltage values.
+% For sine waves into high impedance on both channels, demo soft limits are:
+%   FG_V_exc: 2e-3/(2*sqrt(2)) to 20/(2*sqrt(2)) Vrms per channel
+%             (about 0.707 mVrms to 7.071 Vrms; 2 mVpp to 20 Vpp).
+%   FG_V_dc: -10 to +10 V.
+% These independent limits do not enforce the combined voltage envelope:
+% abs(V_dc) + sqrt(2)*V_exc must also fit within 10 V per channel. The two
+% independent maxima cannot be used together. Hardware range/error checks
+% remain active; use a lower AC amplitude when scanning large DC offsets.
+% Different waveforms or output-load settings require different soft limits.
+% Reads report CH1 settings, not measured output voltages or a differential value.
+% Startup sends OUTP2:POL INV to invert CH2's AC waveform around its DC offset.
+% Polarity inversion itself leaves DC unchanged; startup and dc_offset separately
+% set opposite DC offsets. Configure waveform, output enable and phase manually;
+% set CH1 polarity Normal for opposite AC outputs with matching, aligned waveforms.
+% Tracking and Ampl Cpl must be OFF. Freq Cpl may be OFF, or ON with ratio 1 /
+% offset 0 Hz. Equal frequencies alone do not establish relative phase.
+% An internal mirror mode exists (TRAC ON / INV), but TRAC INV copies the DC
+% offset unchanged while inverting AC. Separate writes are needed for opposite DC.
+% Amplitude access selects VRMS units on the instrument (also on the front panel).
+% Arbitrary waveform sequences cannot use VRMS and produce an instrument error.
+% The configured output load must match the real load for correct voltage scaling.
+% Use smget/smset for scans and software limits. For standalone bring-up, use the
+% inherited getChannel/setChannel methods; these bypass rack software limits.
+% Set checks use setTolerances (default 1e-6 Hz or V) as an absolute floor,
+% configurable with setSetTolerances. Effective tolerances also cover resolution:
+%   frequency: max(setTolerances, 1e-6 Hz), from the 1-uHz specification;
+%   amplitude / dc_offset: max(setTolerances, 0.001*abs(requested value)).
+% The voltage allowance conservatively covers rounding or truncation to the
+% specified four digits, including Vpp-to-Vrms conversion. It scales with the
+% setpoint instead of applying a full-range millivolt tolerance to small signals.
+% A small floating-point margin (8 eps at the target scale) is added to both.
+% The manual does not specify the exact SCPI quantization algorithm; this is a
+% resolution allowance, not the analog accuracy specification. Both readbacks
+% must match their own target (+/- for DC); a mismatch returns false. The driver
+% keeps this small override because the inherited check accepts only a fixed
+% absolute tolerance and checks CH1 only. Readbacks do not measure AC settling.
+% Both hardware ranges are checked before either setpoint is sent. Only numeric
+% reply roundoff (64 eps at each boundary) is allowed past a queried boundary;
+% the transmitted value is then clamped to that boundary. The larger set-check
+% tolerance is NOT used to admit
+% out-of-range requests. Paired writes are sequential, not atomic.
+% Amplitude/offset conflicts can adjust the other parameter; an instrument error
+% or partial write requires inspecting both outputs. Do not assume automatic
+% rollback. Errors are reported without resets.
+% Opposite DC is commanded at startup and at every DC ramp step;
+% it cannot be guaranteed during the brief sequential update or after manual
+% front-panel changes. Enable requireSetCheck=true to verify completed settings.
+% Programming reference: Keysight Trueform Series Operating and Service Guide,
+% OUTPut:LOAD, OUTPut:POLarity, FREQuency:COUPle, TRACk, VOLTage, VOLTage:OFFSet and
+% VOLTage:UNIT sections:
+% https://www.keysight.com/us/en/assets/9018-03714/service-manuals/9018-03714.pdf
+% Resolution reference: 33500B/33600A data sheet, Waveform characteristics / Sine
+% and Output characteristics / Amplitude / DC offset:
+% https://www.keysight.com/us/en/assets/7018-05928/data-sheets/5992-2572.pdf
+%
 % STRAIN CELL CALIBRATION
 % -----------------------
 % instrument_strainController accepts strainCellNumber = 1, 2, or 3.
